@@ -114,6 +114,8 @@ export default function DiarioGlobalPage() {
   const [mostrarTicket, setMostrarTicket] = useState(false);
   const [citaConfirmadaData, setCitaConfirmadaData] = useState<any>(null);
   const [usuarioLogueado, setUsuarioLogueado] = useState<string | null>(null);
+  const [userRol, setUserRol] = useState<string>('');
+  const puedeVerAgendaCompleta = ['ADMIN', 'RECEPCIONISTA', 'ASISTENTE'].includes(userRol);
   const duracionesDisponibles = [15, 30, 45, 60, 90, 120, 150, 180, 210, 240, 270, 300];
   const alertaRef = useRef(false);
 
@@ -144,8 +146,19 @@ export default function DiarioGlobalPage() {
   }, [horasSeleccionadas]);
 
   useEffect(() => { fetchDatos(); }, [semanaInicio]);
-  useEffect(() => { supabase.auth.getSession().then(({ data }) => { if (data.session) setUsuarioLogueado(data.session.user.id); }); }, []);
-  useEffect(() => { if (modalAbierto && filtro.profesional_id) { fetchCitasOcupadas(); fetchHorariosDoctor(); fetchBloqueosSemana(); } }, [semanaAgendamiento, modalAbierto, filtro.profesional_id]);
+useEffect(() => {
+    const initAuth = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (data.session?.user) {
+        setUsuarioLogueado(data.session.user.id);
+        // Buscamos el rol del usuario en la tabla perfiles
+        const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', data.session.user.id).maybeSingle();
+        if (perfil) setUserRol(perfil.rol);
+      }
+    };
+    initAuth();
+  }, []);
+    useEffect(() => { if (modalAbierto && filtro.profesional_id) { fetchCitasOcupadas(); fetchHorariosDoctor(); fetchBloqueosSemana(); } }, [semanaAgendamiento, modalAbierto, filtro.profesional_id]);
 
   useEffect(() => {
     if (mostrarModalConflictos && citaEnEdicion) { calcularDisponibilidadSemanalConflicto() }
