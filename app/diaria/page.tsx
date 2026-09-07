@@ -129,7 +129,20 @@ export default function VistaDiariaPage() {
     return () => clearInterval(timer); 
   }, []);
 
-  useEffect(() => { supabase.auth.getSession().then(({ data }) => { if (data.session) setUsuarioLogueado(data.session.user.id); }); }, []);
+const [userRol, setUserRol] = useState<string>('');
+const puedeVerAgendaCompleta = ['ADMIN', 'RECEPCIONISTA', 'ASISTENTE'].includes(userRol);
+
+useEffect(() => { 
+  const initAuth = async () => {
+    const { data } = await supabase.auth.getSession();
+    if (data.session?.user) {
+      setUsuarioLogueado(data.session.user.id);
+      const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', data.session.user.id).maybeSingle();
+      if (perfil) setUserRol(perfil.rol);
+    }
+  };
+  initAuth();
+}, []);
   useEffect(() => { fetchDatosDia(); }, [selectedDate]);
 
   useEffect(() => {
@@ -176,16 +189,19 @@ export default function VistaDiariaPage() {
   }
 
   const profesionalesDelDia = useMemo(() => {
-    const diaSemanaActual = selectedDate.getDay();
-    const fechaISO = getLocalDateISO(selectedDate);
-    
-    return profesionales.filter(p => {
-        const tieneDispo = disponibilidades.some(d => d.profesional_id === p.user_id && ((d.fecha_especifica && d.fecha_especifica === fechaISO) || (!d.fecha_especifica && d.dia_semana === diaSemanaActual)));
-        const tieneCitas = citas.some(c => c.profesional_id === p.user_id);
-        const tieneBloqueos = bloqueos.some(b => b.profesional_id === p.id); // CORRECCIÓN UUID
-        return tieneDispo || tieneCitas || tieneBloqueos;
-    });
-  }, [profesionales, disponibilidades, citas, bloqueos, selectedDate]);
+  const diaSemanaActual = selectedDate.getDay();
+  const fechaISO = getLocalDateISO(selectedDate);
+  
+  return profesionales.filter(p => {
+      // 🔒 RESTRICCIÓN: Si es dentista, ocultar las columnas de los demás
+      if (!puedeVerAgendaCompleta && p.user_id !== usuarioLogueado) return false;
+
+      const tieneDispo = disponibilidades.some(d => d.profesional_id === p.user_id && ((d.fecha_especifica && d.fecha_especifica === fechaISO) || (!d.fecha_especifica && d.dia_semana === diaSemanaActual)));
+      const tieneCitas = citas.some(c => c.profesional_id === p.user_id);
+      const tieneBloqueos = bloqueos.some(b => b.profesional_id === p.id);
+      return tieneDispo || tieneCitas || tieneBloqueos;
+  });
+}, [profesionales, disponibilidades, citas, bloqueos, selectedDate, puedeVerAgendaCompleta, usuarioLogueado]);
 
   // ES HORARIO LABORAL PARA LA VISTA PRINCIPAL (CORREGIDO HORARIOS ESPECIALES)
   const esHorarioLaboral = (profId: string, fecha: string, hora: string, duracionMinutos: number) => {
@@ -759,9 +775,17 @@ export default function VistaDiariaPage() {
                                         <div className="flex gap-4 w-full md:w-auto flex-1">
                                           <div className="space-y-1.5 md:space-y-2 flex-1">
                                             <label className="text-[8px] md:text-[9px] font-black text-[#C9A24B] uppercase ml-2 flex items-center gap-1"><User size={12}/> Especialista</label>
-                                            <select className="w-full py-3 px-3 md:p-4 bg-white border border-[#C9A24B]/30 rounded-xl font-bold text-base md:text-xs outline-none text-[#0A111F] focus:border-[#C9A24B] appearance-none" value={reagendaProps.especialistaId} onChange={(e) => setReagendaProps(prev => ({...prev, especialistaId: e.target.value}))}>
-                                              {profesionales.map(p => <option key={p.user_id} value={p.user_id}>Dr. {p.nombre} {p.apellido}</option>)}
-                                            </select>
+                                            <select 
+  className="w-full py-3 px-3 md:p-4 bg-white border border-[#C9A24B]/30 rounded-xl font-bold text-base md:text-xs outline-none text-[#0A111F] focus:border-[#C9A24B] appearance-none disabled:cursor-not-allowed disabled:bg-slate-50" 
+  value={reagendaProps.especialistaId} 
+  onChange={(e) => setReagendaProps(prev => ({...prev, especialistaId: e.target.value}))}
+  disabled={!puedeVerAgendaCompleta}
+>
+  {profesionales
+    .filter(p => puedeVerAgendaCompleta || p.user_id === usuarioLogueado)
+    .map(p => <option key={p.user_id} value={p.user_id}>Dr. {p.nombre} {p.apellido}</option>)
+  }
+</select>
                                           </div>
                                         </div>
                                         <div className="bg-emerald-50 px-3 py-2.5 md:px-4 md:py-3 rounded-xl border border-emerald-100 self-end md:self-auto w-full md:w-auto text-center">
@@ -879,16 +903,20 @@ export default function VistaDiariaPage() {
                                       <div className="flex-1 w-full">
                                           <label className="text-[8px] md:text-[9px] font-black text-[#C9A24B] uppercase ml-2 flex items-center gap-1"><User size={12}/> Especialista</label>
                                           <select 
-                                              className="w-full mt-1 py-3 px-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-base md:text-xs outline-none text-[#0A111F] focus:border-[#C9A24B] appearance-none" 
-                                              value={reagendaProps.especialistaId} 
-                                              onChange={(e) => {
-                                                  setReagendaProps(prev => ({...prev, especialistaId: e.target.value}));
-                                                  setFiltro(prev => ({...prev, profesional_id: e.target.value}));
-                                                  setHorasSeleccionadas([{ ...horasSeleccionadas[0], fecha: '', hora: '' }]); // Limpiar al cambiar doctor
-                                              }}
-                                          >
-                                              {profesionales.map(p => <option key={p.user_id} value={p.user_id}>Dr. {p.nombre} {p.apellido}</option>)}
-                                          </select>
+  className="w-full mt-1 py-3 px-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-base md:text-xs outline-none text-[#0A111F] focus:border-[#C9A24B] appearance-none disabled:cursor-not-allowed disabled:opacity-80" 
+  value={reagendaProps.especialistaId} 
+  onChange={(e) => {
+      setReagendaProps(prev => ({...prev, especialistaId: e.target.value}));
+      setFiltro(prev => ({...prev, profesional_id: e.target.value}));
+      setHorasSeleccionadas([{ ...horasSeleccionadas[0], fecha: '', hora: '' }]); // Limpiar al cambiar doctor
+  }}
+  disabled={!puedeVerAgendaCompleta}
+>
+  {profesionales
+    .filter(p => puedeVerAgendaCompleta || p.user_id === usuarioLogueado)
+    .map(p => <option key={p.user_id} value={p.user_id}>Dr. {p.nombre} {p.apellido}</option>)
+  }
+</select>
                                       </div>
                                       <div className="w-full md:w-auto">
                                           <label className="text-[8px] md:text-[9px] font-black text-[#C9A24B] uppercase ml-2 flex items-center gap-1"><Timer size={12}/> Duración</label>
