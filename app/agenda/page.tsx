@@ -1038,11 +1038,22 @@ let detalleText = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, t
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-start gap-3 md:gap-4 mb-8">
         
         <div className="bg-white border border-slate-200 rounded-full px-4 md:px-5 py-3 md:py-2 shadow-sm flex items-center gap-2 w-full md:w-auto justify-between md:justify-start">
-           <Users size={16} className="text-[#C9A24B] shrink-0"/>
-           <select className="text-base sm:text-sm md:text-[11px] font-bold uppercase text-slate-600 bg-transparent outline-none cursor-pointer pr-4 w-full" value={filtroEspecialista} onChange={(e) => setFiltroEspecialista(e.target.value)}>
-             <option value="Todos">Todos los especialistas</option>
-{profesionales.map(p => <option key={p.id} value={p.user_id}>Dr. {p.apellido}</option>)}           </select>
-        </div>
+   <Users size={16} className="text-[#C9A24B] shrink-0"/>
+   <select 
+      className="text-base sm:text-sm md:text-[11px] font-bold uppercase text-slate-600 bg-transparent outline-none cursor-pointer pr-4 w-full disabled:cursor-not-allowed disabled:opacity-80" 
+      value={filtroEspecialista} 
+      onChange={(e) => setFiltroEspecialista(e.target.value)}
+      disabled={!puedeVerAgendaCompleta}
+   >
+     {puedeVerAgendaCompleta && <option value="Todos">Todos los especialistas</option>}
+     
+     {/* Si puede ver todo, mostramos a todos. Si no, solo mostramos al profesional logueado */}
+     {profesionales
+        .filter(p => puedeVerAgendaCompleta || p.user_id === usuarioLogueado)
+        .map(p => <option key={p.id} value={p.user_id}>Dr. {p.apellido}</option>)
+     }
+   </select>
+</div>
 
         <div className="flex items-center justify-between bg-white rounded-full p-1 border border-slate-200 shadow-sm w-full md:w-auto">
           <button onClick={() => setVistaAgenda('dia')} className={`flex-1 justify-center px-4 md:px-6 py-2.5 md:py-2 rounded-full text-sm md:text-[11px] font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${vistaAgenda === 'dia' ? 'bg-[#C9A24B] text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
@@ -1439,8 +1450,17 @@ let detalleText = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, t
                          <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-4">
                              <h3 className="text-sm font-black uppercase text-slate-800 flex items-center gap-2"><Clock size={16} className="text-[#C9A24B]"/> 3. Fecha y Hora</h3>
                              <div className="flex items-center gap-2 w-full md:w-auto">
-                                <select className="w-full md:w-auto p-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg outline-none" value={filtro.profesional_id} onChange={e => setFiltro({...filtro, profesional_id: e.target.value})}>
-{profesionales.map(p => <option key={p.user_id} value={p.user_id}>Dr. {p.apellido}</option>)}                                </select>
+                                <select 
+  className="w-full md:w-auto p-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg outline-none disabled:cursor-not-allowed disabled:bg-slate-100" 
+  value={filtro.profesional_id} 
+  onChange={e => setFiltro({...filtro, profesional_id: e.target.value})}
+  disabled={!puedeVerAgendaCompleta}
+>
+  {profesionales
+    .filter(p => puedeVerAgendaCompleta || p.user_id === usuarioLogueado)
+    .map(p => <option key={p.user_id} value={p.user_id}>Dr. {p.apellido}</option>)
+  }
+</select>
                                 <select className="w-full md:w-auto p-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-lg outline-none" value={filtro.duracionDefault} onChange={e => setFiltro({...filtro, duracionDefault: Number(e.target.value)})}>
                                    {duracionesDisponibles.map(d => <option key={d} value={d}>{d} min</option>)}
                                 </select>
@@ -1840,9 +1860,17 @@ if(seleccionado) {
                                         <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
                                             <div className="space-y-2 flex-1 w-full">
                                             <label className="text-[11px] md:text-[9px] font-black uppercase ml-2 flex items-center gap-1" style={{ color: GOLD }}><UserCheck className="md:w-[12px] md:h-[12px]" size={14} /> Especialista a derivar</label>
-                                            <select className="w-full p-4 bg-white border border-[#C9A24B]/40 rounded-xl font-bold text-base md:text-xs outline-none text-slate-700" value={nuevoEspecialista} onChange={(e) => setNuevoEspecialista(e.target.value)}>
-                                                {profesionales.map(p => <option key={p.user_id} value={p.user_id}>Dr. {p.nombre} {p.apellido}</option>)}
-                                            </select>
+                                            <select 
+  className="w-full p-4 bg-white border border-[#C9A24B]/40 rounded-xl font-bold text-base md:text-xs outline-none text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-50" 
+  value={nuevoEspecialista} 
+  onChange={(e) => setNuevoEspecialista(e.target.value)}
+  disabled={!puedeVerAgendaCompleta}
+>
+    {profesionales
+      .filter(p => puedeVerAgendaCompleta || p.user_id === usuarioLogueado)
+      .map(p => <option key={p.user_id} value={p.user_id}>Dr. {p.nombre} {p.apellido}</option>)
+    }
+</select>
                                             </div>
                                             <div className="bg-emerald-50 w-full md:w-auto px-4 py-3 rounded-xl border border-emerald-100 self-end md:self-auto shrink-0 mt-2 md:mt-0 text-center">
                                             <span className="text-[11px] md:text-[10px] font-black text-emerald-600 uppercase">Buscando huecos de {duracionCitaEdicion} min</span>
