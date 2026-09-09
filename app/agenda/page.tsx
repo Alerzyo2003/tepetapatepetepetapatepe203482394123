@@ -40,6 +40,16 @@ interface NuevoPaciente { nombre: string; apellido: string; rut: string; telefon
 
 const getDiasLunesSabado = (d: Date) => { const curr = new Date(d); const day = curr.getDay(); const diff = curr.getDate() - day + (day === 0 ? -6 : 1); return Array.from({ length: 6 }, (_, i) => new Date(curr.getFullYear(), curr.getMonth(), diff + i)); }
 const getInitials = (n: string, a: string) => `${n?.charAt(0) || ''}${a?.charAt(0) || ''}`.toUpperCase();
+
+const formatNombreDoctor = (nombre: string = '', apellido: string = '') => {
+  if (!nombre && !apellido) return 'S/A';
+  const primerNombre = nombre.trim().split(' ')[0] || '';
+  const apellidosArr = apellido.trim().split(' ');
+  // Toma las últimas 2 palabras del string de apellidos (o todo si hay menos)
+  const dosApellidos = apellidosArr.slice(-2).join(' ');
+  return `${primerNombre} ${dosApellidos}`.trim();
+};
+
 const getAvatarColorClass = (name: string) => {
   const styles = [{ bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-500' }, { bg: 'bg-red-100', text: 'text-red-700', border: 'border-red-500' }, { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-500' }, { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-500' }, { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-500' }];
   let hash = 0; for (let i = 0; i < (name || '').length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash); return styles[Math.abs(hash) % styles.length];
@@ -1050,8 +1060,7 @@ let detalleText = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, t
      {/* Si puede ver todo, mostramos a todos. Si no, solo mostramos al profesional logueado */}
      {profesionales
         .filter(p => puedeVerAgendaCompleta || p.user_id === usuarioLogueado)
-        .map(p => <option key={p.id} value={p.user_id}>Dr. {p.apellido}</option>)
-     }
+.map(p => <option key={p.user_id} value={p.user_id}>Dr. {p.nombre} {p.apellido}</option>)     }
    </select>
 </div>
 
@@ -1191,8 +1200,7 @@ let detalleText = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, t
                                   <span className="hidden sm:inline-block w-1 h-1 rounded-full bg-slate-300"></span>
                                   <span className="flex items-center gap-1"><Phone className="text-slate-400 md:w-[12px] md:h-[12px]" size={14} /> {c.pacientes?.telefono || 'Sin teléfono'}</span>
                                   <span className="hidden sm:inline-block w-1 h-1 rounded-full bg-slate-300"></span>
-                                  <span className="flex items-center gap-1"><User className="text-slate-400 md:w-[12px] md:h-[12px]" size={14} /> Dr. {doctor?.apellido || 'S/A'}</span>
-                              </div>
+<span className="flex items-center gap-1"><User className="text-slate-400 md:w-[12px] md:h-[12px]" size={14} /> Dr. {formatNombreDoctor(doctor?.nombre, doctor?.apellido)}</span>                              </div>
                                     
                                     {c.motivo && !c.motivo.includes('Online') && (
                                         <div className="flex items-center gap-1.5 text-[11px] md:text-[10px] font-black uppercase tracking-widest mt-1 w-fit px-2 py-1 rounded-md bg-slate-50 text-slate-500 border border-slate-200">
