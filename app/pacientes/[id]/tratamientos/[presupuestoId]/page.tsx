@@ -1596,38 +1596,44 @@ if (profesionalRowId) {
            </div>
 
            {puedeVerFinanzas && (
-             <div className="p-5 border-b border-slate-100">
-                <div className="flex items-center gap-2 mb-4">
-                   <Wallet className="text-slate-700" size={16}/>
-                   <h3 className="text-xs font-black uppercase text-slate-800">Presupuesto</h3>
-                </div>
+              <div className="p-5 border-b border-slate-100">
+                 <div className="flex items-center gap-2 mb-4">
+                    <Wallet className="text-slate-700" size={16}/>
+                    <h3 className="text-xs font-black uppercase text-slate-800">Presupuesto</h3>
+                 </div>
 
-                <div className="grid grid-cols-4 gap-2 text-center mb-3">
-                   <div className="flex flex-col gap-1">
-                      <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">Total Plan</p>
-                      <p className="text-[11px] font-black text-slate-800">${totalPlan.toLocaleString('es-CL')}</p>
-                   </div>
-                   <div className="flex flex-col gap-1 border-l border-slate-100">
-                      <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">Dcto.</p>
-                      <p className="text-[11px] font-black text-slate-800">{porcentajeDctoGlobal}%</p>
-                   </div>
-                   <div className="flex flex-col gap-1 border-l border-slate-100">
-                      <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">Abonado</p>
-                      <p className="text-[11px] font-black text-slate-800">${abonadoPlan.toLocaleString('es-CL')}</p>
-                   </div>
-                   <div className="flex flex-col gap-1 border-l border-slate-100">
-                      <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">Realizado</p>
-                      <p className={`text-[11px] font-black px-1 py-0.5 rounded-md ${deudaRealizada > 0 ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>
-                         ${deudaRealizada.toLocaleString('es-CL')}
-                      </p>
-                   </div>
-                </div>
-                {abonadoPlan === 0 && (
-                  <p className="text-[10px] font-bold text-slate-400 mt-2">No hay abonos ($0)</p>
-                )}
-             </div>
-           )}
-
+                 <div className="grid grid-cols-4 gap-2 text-center mb-3">
+                    <div className="flex flex-col gap-1">
+                       <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">Total Plan</p>
+                       <p className="text-[11px] font-black text-slate-800">${totalPlan.toLocaleString('es-CL')}</p>
+                    </div>
+                    <div className="flex flex-col gap-1 border-l border-slate-100">
+                       <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">Dcto.</p>
+                       <p className="text-[11px] font-black text-slate-800">{porcentajeDctoGlobal}%</p>
+                    </div>
+                    {/* CAMBIO APLICADO AQUÍ: "Abonado" por "Saldo a Favor" conectado a pacienteInfo */}
+                    <div className="flex flex-col gap-1 border-l border-slate-100">
+                       <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">Saldo a favor</p>
+                       <p className="text-[11px] font-black text-emerald-600">
+                          ${Number(pacienteInfo?.saldo_a_favor || 0).toLocaleString('es-CL')}
+                       </p>
+                    </div>
+                    <div className="flex flex-col gap-1 border-l border-slate-100">
+                       <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">Realizado</p>
+                       <p className={`text-[11px] font-black px-1 py-0.5 rounded-md ${deudaRealizada > 0 ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                          ${deudaRealizada.toLocaleString('es-CL')}
+                       </p>
+                    </div>
+                 </div>
+                 
+                 {/* CAMBIO APLICADO AQUÍ: El texto inferior para reflejar el saldo a favor */}
+                 {Number(pacienteInfo?.saldo_a_favor || 0) === 0 ? (
+                   <p className="text-[10px] font-bold text-slate-400 mt-2">No hay saldo a favor ($0)</p>
+                 ) : (
+                   <p className="text-[10px] font-bold text-emerald-600 mt-2">Billetera virtual disponible</p>
+                 )}
+              </div>
+            )}
            <div className="p-5 border-b border-slate-100 flex flex-col gap-3">
               <div className="flex items-center gap-2">
                  <User className="text-slate-700" size={16}/>
