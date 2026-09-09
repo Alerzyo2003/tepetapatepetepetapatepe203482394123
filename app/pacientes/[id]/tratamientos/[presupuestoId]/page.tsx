@@ -1705,20 +1705,20 @@ if (profesionalRowId) {
             </div>
 
             {/* DATOS DENTISTA Y PACIENTE */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', fontSize: 12, marginBottom: 24 }}>
-              <div style={{ border: '1px solid #cbd5e1', padding: '12px', borderRadius: '8px' }}>
-                <p style={{ fontWeight: 700, borderBottom: '1px solid #cbd5e1', paddingBottom: '4px', marginBottom: '8px' }}>DENTISTA A CARGO</p>
-                <p style={{ marginBottom: '4px' }}><strong>Nombre:</strong> Dr(a). {presupuestoData?.profesionales?.nombre || ''} {presupuestoData?.profesionales?.apellido || ''}</p>
-                <p style={{ marginBottom: '4px' }}><strong>RUT:</strong> {presupuestoData?.profesionales?.rut || 'No registrado'}</p>
-                <p style={{ marginBottom: '4px' }}><strong>Especialidad:</strong> {presupuestoData?.profesionales?.especialidad || 'Odontología General'}</p>
-                <p style={{ marginBottom: '4px' }}><strong>Fecha de impresión:</strong> {new Date().toLocaleDateString('es-CL')}</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', fontSize: 10, marginBottom: 16 }}>
+              <div style={{ border: '1px solid #cbd5e1', padding: '8px', borderRadius: '8px', lineHeight: '1.3' }}>
+                <p style={{ fontWeight: 700, borderBottom: '1px solid #cbd5e1', paddingBottom: '2px', marginBottom: '4px', fontSize: 11 }}>DENTISTA A CARGO</p>
+                <p style={{ marginBottom: '2px' }}><strong>Nombre:</strong> Dr(a). {presupuestoData?.profesionales?.nombre || ''} {presupuestoData?.profesionales?.apellido || ''}</p>
+                <p style={{ marginBottom: '2px' }}><strong>RUT:</strong> {presupuestoData?.profesionales?.rut || 'No registrado'}</p>
+                <p style={{ marginBottom: '2px' }}><strong>Especialidad:</strong> {presupuestoData?.profesionales?.especialidad || 'Odontología General'}</p>
+                <p style={{ marginBottom: '0px' }}><strong>Fecha de impresión:</strong> {new Date().toLocaleDateString('es-CL')}</p>
               </div>
-              <div style={{ border: '1px solid #cbd5e1', padding: '12px', borderRadius: '8px' }}>
-                <p style={{ fontWeight: 700, borderBottom: '1px solid #cbd5e1', paddingBottom: '4px', marginBottom: '8px' }}>INFORMACIÓN DEL PACIENTE</p>
-                <p style={{ marginBottom: '4px' }}><strong>Nombre:</strong> {pacienteInfo?.nombre} {pacienteInfo?.apellido}</p>
-                <p style={{ marginBottom: '4px' }}><strong>RUT:</strong> {pacienteInfo?.rut || 'No registrado'}</p>
-                <p style={{ marginBottom: '4px' }}><strong>Fecha de Nacimiento:</strong> {pacienteInfo?.fecha_nacimiento ? new Date(pacienteInfo.fecha_nacimiento).toLocaleDateString('es-CL', { timeZone: 'UTC' }) : 'No registrada'}</p>
-                <p style={{ marginBottom: '4px' }}><strong>Convenio:</strong> {pacienteInfo?.prevision && pacienteInfo?.prevision !== 'Sin convenio' ? pacienteInfo.prevision : 'Sin convenio'}</p>
+              <div style={{ border: '1px solid #cbd5e1', padding: '8px', borderRadius: '8px', lineHeight: '1.3' }}>
+                <p style={{ fontWeight: 700, borderBottom: '1px solid #cbd5e1', paddingBottom: '2px', marginBottom: '4px', fontSize: 11 }}>INFORMACIÓN DEL PACIENTE</p>
+                <p style={{ marginBottom: '2px' }}><strong>Nombre:</strong> {pacienteInfo?.nombre} {pacienteInfo?.apellido}</p>
+                <p style={{ marginBottom: '2px' }}><strong>RUT:</strong> {pacienteInfo?.rut || 'No registrado'}</p>
+                <p style={{ marginBottom: '2px' }}><strong>Fecha de Nacimiento:</strong> {pacienteInfo?.fecha_nacimiento ? new Date(pacienteInfo.fecha_nacimiento).toLocaleDateString('es-CL', { timeZone: 'UTC' }) : 'No registrada'}</p>
+                <p style={{ marginBottom: '0px' }}><strong>Convenio:</strong> {pacienteInfo?.prevision && pacienteInfo?.prevision !== 'Sin convenio' ? pacienteInfo.prevision : 'Sin convenio'}</p>
               </div>
             </div>
 
@@ -1798,10 +1798,10 @@ if (profesionalRowId) {
             </div>
 
             {/* PIE DE PÁGINA */}
-            <div style={{ textAlign: 'center', fontSize: 10, color: '#64748b', marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid #e2e8f0', pageBreakInside: 'avoid' }}>
+            <div style={{ textAlign: 'center', fontSize: 10, color: '#64748b', marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid #e2e8f0', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
               <p style={{ fontWeight: 700, color: '#1e293b', fontSize: 12 }}>Centro Médico y Dental Dignidad SpA</p>
-              <p>Ubicación: Av. Observatorio 1500, La Pintana | Teléfono: +56 9 1234 5678</p>
-              <p style={{ marginTop: '12px', fontStyle: 'italic', fontWeight: 600 }}>
+              <p>Ubicación: Av. Venancia Leiva 1871, La Pintana | Teléfono: +56 9 6646 7641</p>
+              <p style={{ marginTop: '8px', fontStyle: 'italic', fontWeight: 600 }}>
                 Al iniciar este tratamiento declaro que acepto la política de privacidad de la clínica y la plataforma establecida.
               </p>
             </div>
