@@ -6,22 +6,23 @@ import {
   X, Search, ChevronLeft, ChevronRight, Loader2, Clock,
   CalendarDays, Timer, UserCheck, Trash2, Ban, RefreshCcw, 
   ChevronDown, CalendarClock, LayoutGrid, Plus, CheckCircle2, 
-  User, Users, Save, Briefcase, MessageCircle, AlertCircle, Info
+  User, Users, Save, Briefcase, MessageCircle, AlertCircle, Info,
+  Phone, Activity
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import Link from 'next/link'
 
 // 🎨 PALETA DE ESTADOS MODERNA
-const ESTADOS_CITA: Record<string, { label: string; bg: string; text: string; dot: string }> = {
-  programada: { label: 'No confirmado', bg: 'bg-amber-50', text: 'text-amber-700', dot: 'bg-amber-400' },
-  confirmado_tel: { label: 'Confirmado', bg: 'bg-emerald-50', text: 'text-emerald-700', dot: 'bg-emerald-400' },
-  en_espera: { label: 'En espera', bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-400' },
-  atendiendose: { label: 'En box', bg: 'bg-sky-50', text: 'text-sky-700', dot: 'bg-sky-400' },
-  atendido: { label: 'Atendido', bg: 'bg-teal-50', text: 'text-teal-700', dot: 'bg-teal-400' },
-  no_asiste: { label: 'No asistió', bg: 'bg-rose-50', text: 'text-rose-700', dot: 'bg-rose-400' },
-  cancelada: { label: 'Anulada', bg: 'bg-gray-100', text: 'text-gray-500', dot: 'bg-gray-400' },
-  reprogramada: { label: 'Reprogramada', bg: 'bg-purple-50', text: 'text-purple-600', dot: 'bg-purple-500' }
+const ESTADOS_CITA: Record<string, { label: string, bg: string, text: string, dot: string, icon: any }> = {
+  programada: { label: 'No Confirmado', bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400', icon: <Clock /> },
+  confirmado_tel: { label: 'Confirmado', bg: 'bg-indigo-50', text: 'text-indigo-600', dot: 'bg-indigo-500', icon: <Phone /> },
+  en_espera: { label: 'En Espera', bg: 'bg-amber-50', text: 'text-amber-600', dot: 'bg-amber-500', icon: <Timer /> },
+  atendiendose: { label: 'En Box', bg: 'bg-blue-50', text: 'text-blue-600', dot: 'bg-blue-500', icon: <Activity /> },
+  atendido: { label: 'Atendido', bg: 'bg-emerald-50', text: 'text-emerald-600', dot: 'bg-emerald-500', icon: <CheckCircle2 /> },
+  no_asiste: { label: 'No Asistió', bg: 'bg-red-50', text: 'text-red-600', dot: 'bg-red-500', icon: <Ban /> },
+  cancelada: { label: 'Anulada', bg: 'bg-gray-100', text: 'text-gray-500', dot: 'bg-gray-400', icon: <Trash2 /> },
+  reprogramada: { label: 'Reprogramada', bg: 'bg-purple-50', text: 'text-purple-600', dot: 'bg-purple-500', icon: <RefreshCcw /> }
 };
 
 const slotsHorarios = [
@@ -165,9 +166,7 @@ useEffect(() => {
 
       if (dentistas.length > 0) {
         const [citasRes, dispoRes, bloqueosRes] = await Promise.all([
-          supabase.from('citas').select('id, inicio, fin, estado, pacientes(id, nombre, apellido, rut, telefono, activo, motivo_deshabilitado), profesional_id, motivo')
-            .in('profesional_id', idsDentistasUserId)
-            .gte('inicio', `${fechaISO}T00:00:00`)
+supabase.from('citas').select('id, inicio, fin, estado, pacientes(id, nombre, apellido, rut, telefono, activo, motivo_deshabilitado), profesional_id, motivo, created_at')            .gte('inicio', `${fechaISO}T00:00:00`)
             .lte('inicio', `${fechaISO}T23:59:59`)
             .neq('estado', 'cancelada'),
           supabase.from('disponibilidad_profesional').select('*').in('profesional_id', idsDentistasUserId),
@@ -637,7 +636,7 @@ useEffect(() => {
                                 );
                               })}
 
-                              {/* Renderizar Citas Absolutas */}
+                             {/* Renderizar Citas Absolutas */}
                               {citasDoc.map(cita => {
                                 const ini = getMinsFromDateStr(cita.inicio);
                                 const fin = getMinsFromDateStr(cita.fin);
@@ -648,31 +647,73 @@ useEffect(() => {
                                 const iniciales = getIniciales(cita.pacientes?.nombre, cita.pacientes?.apellido);
                                 const hFormat = new Date(cita.inicio).toLocaleTimeString('es-CL', {hour: '2-digit', minute:'2-digit'});
 
+                                // 🔥 DETECCIÓN AUTOMÁTICA DE SOBRECUPO POR CRUCE DE HORARIOS 🔥
+                                const isSobrecupo = citasDoc.some(otra => {
+                                    if (otra.id === cita.id) return false;
+                                    const cIni = new Date(cita.inicio.replace(' ', 'T')).getTime();
+                                    const cFin = new Date(cita.fin.replace(' ', 'T')).getTime();
+                                    const oIni = new Date(otra.inicio.replace(' ', 'T')).getTime();
+                                    const oFin = new Date(otra.fin.replace(' ', 'T')).getTime();
+                                    
+                                    if (cIni >= oFin || cFin <= oIni) return false; 
+                                    
+                                    const timeC = cita.created_at ? new Date(cita.created_at).getTime() : 0;
+                                    const timeO = otra.created_at ? new Date(otra.created_at).getTime() : 0;
+                                    if (timeC !== timeO && timeC > 0 && timeO > 0) return timeC > timeO;
+                                    return String(cita.id) > String(otra.id);
+                                }) || cita.es_sobrecupo === true || (cita.motivo && cita.motivo.toUpperCase().includes('SOBRECUPO'));
+
+                                const boxBg = isSobrecupo ? 'bg-rose-100' : estadoStyle.bg;
+                                const boxBorder = isSobrecupo ? 'border-rose-400 border-dashed border-2 shadow-[0_0_15px_rgba(244,63,94,0.4)]' : `border ${estadoStyle.bg.replace('bg-', 'border-').replace('50', '200')}`;
+                                const textColor = isSobrecupo ? 'text-rose-900' : estadoStyle.text;
+
+                                // Si es sobrecupo, le damos un z-index superior y la desplazamos a la derecha (efecto cascada)
+                                const posicionEstilo = isSobrecupo 
+                                  ? 'z-[20] left-[8px] md:left-[14px] w-[calc(100%-10px)] md:w-[calc(100%-18px)]' 
+                                  : 'z-10 left-[2px] md:left-1 w-[calc(100%-4px)] md:w-[calc(100%-8px)]';
+
                                 return (
                                   <motion.div
                                     key={cita.id}
                                     initial={{ opacity: 0, scale: 0.9 }}
                                     animate={{ opacity: 1, scale: 1 }}
                                     onClick={() => iniciarReprogramacion(cita)}
-                                    className={`absolute z-10 w-[calc(100%-4px)] md:w-[calc(100%-8px)] left-[2px] md:left-1 ${estadoStyle.bg} border ${estadoStyle.bg.replace('bg-', 'border-')} rounded-[4px] md:rounded-lg p-1 md:p-2 cursor-pointer hover:shadow-lg transition-all duration-200 flex flex-col justify-center overflow-hidden group`}
+                                    className={`absolute ${posicionEstilo} ${boxBg} ${boxBorder} rounded-[4px] md:rounded-lg p-1 md:p-2 cursor-pointer hover:shadow-md hover:z-30 transition-all duration-200 flex flex-col justify-center overflow-hidden group`}
                                     style={{ 
                                       top: `calc(${top} * var(--slot-h))`, 
                                       height: `calc(${height} * var(--slot-h))` 
                                     }}
                                   >
-                                    <div className="flex items-center justify-between mb-0.5 md:mb-1">
-                                      <div className="flex items-center gap-1 md:gap-1.5 overflow-hidden">
-                                        <div className="w-3 h-3 md:w-5 md:h-5 rounded-full bg-white/90 flex items-center justify-center text-[7px] md:text-[9px] font-black text-slate-700 shadow-sm border border-slate-100/50 shrink-0">
+                                    <div className="flex items-center justify-between mb-0.5 md:mb-1 w-full gap-1">
+                                      <div className="flex items-center gap-1 md:gap-1.5 overflow-hidden flex-1">
+                                        <div className={`w-3 h-3 md:w-5 md:h-5 rounded-full bg-white/90 flex items-center justify-center text-[7px] md:text-[9px] font-black shadow-sm border border-white/50 shrink-0 ${isSobrecupo ? 'text-rose-600' : estadoStyle.text}`}>
                                           {iniciales}
                                         </div>
-                                        <span className="text-[8px] md:text-[11px] font-black text-[#0A111F] truncate uppercase">
+                                        <span className={`text-[8px] md:text-[11px] font-black truncate uppercase transition-colors ${isSobrecupo ? 'text-rose-950' : `text-slate-900 group-hover:${estadoStyle.text}`}`}>
                                           {cita.pacientes?.nombre?.split(' ')[0]} {cita.pacientes?.apellido?.split(' ')[0]}
                                         </span>
                                       </div>
+                                      
+                                      {/* 🔥 SELLO DE SOBRECUPO 🔥 */}
+                                      {isSobrecupo && (
+                                        <div className="shrink-0 bg-rose-600 text-white px-1 md:px-1.5 py-0.5 rounded shadow-sm flex items-center justify-center -rotate-3 border border-rose-500">
+                                          <span className="text-[6px] md:text-[7.5px] font-black uppercase tracking-widest leading-none">SOBRECUPO</span>
+                                        </div>
+                                      )}
                                     </div>
-                                    <div className="flex items-center gap-1 md:gap-1.5 mt-0 md:mt-1">
-                                      <span className={`w-1 h-1 md:w-2 md:h-2 rounded-full ${estadoStyle.dot}`}></span>
-                                      <span className={`text-[6.5px] md:text-[8px] font-bold uppercase tracking-widest truncate ${estadoStyle.text}`}>{hFormat}</span>
+                                    
+                                    <div className="flex items-center justify-between mt-0 md:mt-0.5 w-full">
+                                      <div className="flex items-center gap-0.5 md:gap-1 truncate">
+                                        <span className={`${isSobrecupo ? 'text-rose-600' : estadoStyle.text} shrink-0 [&>svg]:w-[8px] [&>svg]:h-[8px] md:[&>svg]:w-[11px] md:[&>svg]:h-[11px]`}>
+                                          {estadoStyle.icon}
+                                        </span>
+                                        <span className={`text-[6px] md:text-[8.5px] font-black uppercase tracking-widest truncate ${textColor}`}>
+                                          {estadoStyle.label}
+                                        </span>
+                                      </div>
+                                      <span className={`text-[6.5px] md:text-[8px] font-bold uppercase tracking-widest shrink-0 opacity-80 ${textColor}`}>
+                                        {hFormat}
+                                      </span>
                                     </div>
                                   </motion.div>
                                 );
