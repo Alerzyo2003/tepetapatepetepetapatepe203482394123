@@ -415,9 +415,7 @@ export default function DetalleTratamientoPage() {
       
       let caraMatch = item.cara ? String(item.cara).toUpperCase().trim() : null; 
       let zonaMatch = item.zona || null; 
-      let iconoMatch = null, dctoMatch = 0, faseMatch = 'Plan General';
-
-      let dienteParseado = null;
+let iconoMatch = null, dctoMatch = 0, faseMatch = 'Plan General', evoDocMatch = null, evoFecMatch = null, pptoDocMatch = null;      let dienteParseado = null;
       if (item.diente_id !== null && item.diente_id !== undefined) {
           const strDiente = String(item.diente_id).toLowerCase().trim();
           if (!strDiente.includes('arcada') && !strDiente.includes('general')) {
@@ -432,6 +430,9 @@ export default function DetalleTratamientoPage() {
           if (p.startsWith('Icono:')) iconoMatch = p.replace('Icono:', '').trim();
           if (p.startsWith('Dcto:')) dctoMatch = parseInt(p.replace('Dcto:', '').trim());
           if (p.startsWith('Fase:')) faseMatch = p.replace('Fase:', '').trim();
+          if (p.startsWith('EvoDoc:')) evoDocMatch = p.replace('EvoDoc:', '').trim();
+          if (p.startsWith('EvoFec:')) evoFecMatch = p.replace('EvoFec:', '').trim();
+          if (p.startsWith('PptoDoc:')) pptoDocMatch = p.replace('PptoDoc:', '').trim();
       });
 
       let nombreDisplay = item.prestaciones?.["Nombre Accion"] || item.prestaciones?.["Nombre"] || partes[0] || "Tratamiento Genérico";
@@ -493,7 +494,10 @@ export default function DetalleTratamientoPage() {
           display_pactado: pactado, display_abonado: abonado, display_saldo: pactado - abonado,
           texto_db: textoBase,
           costo_laboratorio: Number(item.costo_laboratorio || 0),
-          lab_pagado_por_dr: Boolean(item.lab_pagado_por_dr)
+          lab_pagado_por_dr: Boolean(item.lab_pagado_por_dr),
+          evo_doc: evoDocMatch,
+          evo_fecha: evoFecMatch,
+          ppto_doc: pptoDocMatch || item.profesional_id
       };
   }
 
@@ -1029,7 +1033,8 @@ export default function DetalleTratamientoPage() {
             display_pactado: d.precio_pactado, display_abonado: 0, display_saldo: d.precio_pactado,
             texto_db: observacionFinal,
             costo_laboratorio: costoLabAuto,
-            lab_pagado_por_dr: false
+            lab_pagado_por_dr: false,
+            ppto_doc: d.profesional_id
         }));
         setAcciones(prev => [...prev, ...nuevosItems]);
         toast.success(`Prestación agregada exitosamente ${inserts.length > 1 ? `(${inserts.length} piezas)` : ''}`);
@@ -1168,7 +1173,8 @@ export default function DetalleTratamientoPage() {
                 display_pactado: d.precio_pactado, display_abonado: 0, display_saldo: d.precio_pactado,
                 texto_db: d.observacion,
                 costo_laboratorio: d.costo_laboratorio || 0,
-                lab_pagado_por_dr: false
+                lab_pagado_por_dr: false,
+                ppto_doc: d.profesional_id
             }
         });
         setAcciones(prev => [...prev, ...nuevosItems]);
@@ -1250,6 +1256,17 @@ export default function DetalleTratamientoPage() {
 
         let nuevaObs = item.texto_db || item.display_nombre || '';
         nuevaObs = nuevaObs.replace(/ \| Avance: [0-9]+/g, ''); 
+        nuevaObs = nuevaObs.replace(/ \| EvoDoc: [^|]+/g, '');
+        nuevaObs = nuevaObs.replace(/ \| EvoFec: [^|]+/g, '');
+        
+        // Atrapamos al doctor original ANTES de que el sistema le cambie el dueño
+        if (!nuevaObs.includes('PptoDoc:')) {
+            nuevaObs += ` | PptoDoc: ${item.ppto_doc || item.profesional_id}`;
+        }
+
+        if (avance > 0) {
+            nuevaObs += ` | EvoDoc: ${doctorId} | EvoFec: ${new Date().toISOString()}`;
+        }
         
         const nuevoEstado = avance === 100 ? 'realizado' : item.estado;
         const doctorFinalParaPago = item.tipo_reparto === 'doctor' ? item.profesional_id : doctorId;
@@ -1258,6 +1275,7 @@ export default function DetalleTratamientoPage() {
           // 1. Actualizamos el ítem en el presupuesto
           await supabase.from('presupuesto_items').update({ 
             observacion: nuevaObs,
+            nombre_prestacion: nuevaObs,
             estado: nuevoEstado,
             profesional_id: doctorFinalParaPago, 
             progreso: avance
@@ -1300,6 +1318,7 @@ if (profesionalRowId) {
         } else if (item.id_dentalink) {
           await supabase.from('temp_items').update({ 
             nombre_prestacion: nuevaObs, 
+            observacion: nuevaObs,
             estado: nuevoEstado 
           }).eq('id', itemId);
         }
@@ -1328,7 +1347,10 @@ if (profesionalRowId) {
             avance: avance, 
             progreso: avance,
             texto_db: nuevaObs, 
-            profesional_id: doctorFinalParaPago 
+            profesional_id: doctorFinalParaPago,
+            evo_doc: avance > 0 ? doctorId : a.evo_doc,
+            evo_fecha: avance > 0 ? new Date().toISOString() : a.evo_fecha,
+            ppto_doc: a.ppto_doc || a.profesional_id
           };
         }
         return a;
@@ -1596,44 +1618,38 @@ if (profesionalRowId) {
            </div>
 
            {puedeVerFinanzas && (
-              <div className="p-5 border-b border-slate-100">
-                 <div className="flex items-center gap-2 mb-4">
-                    <Wallet className="text-slate-700" size={16}/>
-                    <h3 className="text-xs font-black uppercase text-slate-800">Presupuesto</h3>
-                 </div>
+             <div className="p-5 border-b border-slate-100">
+                <div className="flex items-center gap-2 mb-4">
+                   <Wallet className="text-slate-700" size={16}/>
+                   <h3 className="text-xs font-black uppercase text-slate-800">Presupuesto</h3>
+                </div>
 
-                 <div className="grid grid-cols-4 gap-2 text-center mb-3">
-                    <div className="flex flex-col gap-1">
-                       <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">Total Plan</p>
-                       <p className="text-[11px] font-black text-slate-800">${totalPlan.toLocaleString('es-CL')}</p>
-                    </div>
-                    <div className="flex flex-col gap-1 border-l border-slate-100">
-                       <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">Dcto.</p>
-                       <p className="text-[11px] font-black text-slate-800">{porcentajeDctoGlobal}%</p>
-                    </div>
-                    {/* CAMBIO APLICADO AQUÍ: "Abonado" por "Saldo a Favor" conectado a pacienteInfo */}
-                    <div className="flex flex-col gap-1 border-l border-slate-100">
-                       <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">Saldo a favor</p>
-                       <p className="text-[11px] font-black text-emerald-600">
-                          ${Number(pacienteInfo?.saldo_a_favor || 0).toLocaleString('es-CL')}
-                       </p>
-                    </div>
-                    <div className="flex flex-col gap-1 border-l border-slate-100">
-                       <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">Realizado</p>
-                       <p className={`text-[11px] font-black px-1 py-0.5 rounded-md ${deudaRealizada > 0 ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>
-                          ${deudaRealizada.toLocaleString('es-CL')}
-                       </p>
-                    </div>
-                 </div>
-                 
-                 {/* CAMBIO APLICADO AQUÍ: El texto inferior para reflejar el saldo a favor */}
-                 {Number(pacienteInfo?.saldo_a_favor || 0) === 0 ? (
-                   <p className="text-[10px] font-bold text-slate-400 mt-2">No hay saldo a favor ($0)</p>
-                 ) : (
-                   <p className="text-[10px] font-bold text-emerald-600 mt-2">Billetera virtual disponible</p>
-                 )}
-              </div>
-            )}
+                <div className="grid grid-cols-4 gap-2 text-center mb-3">
+                   <div className="flex flex-col gap-1">
+                      <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">Total Plan</p>
+                      <p className="text-[11px] font-black text-slate-800">${totalPlan.toLocaleString('es-CL')}</p>
+                   </div>
+                   <div className="flex flex-col gap-1 border-l border-slate-100">
+                      <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">Dcto.</p>
+                      <p className="text-[11px] font-black text-slate-800">{porcentajeDctoGlobal}%</p>
+                   </div>
+                   <div className="flex flex-col gap-1 border-l border-slate-100">
+                      <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">Abonado</p>
+                      <p className="text-[11px] font-black text-slate-800">${abonadoPlan.toLocaleString('es-CL')}</p>
+                   </div>
+                   <div className="flex flex-col gap-1 border-l border-slate-100">
+                      <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">Realizado</p>
+                      <p className={`text-[11px] font-black px-1 py-0.5 rounded-md ${deudaRealizada > 0 ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                         ${deudaRealizada.toLocaleString('es-CL')}
+                      </p>
+                   </div>
+                </div>
+                {abonadoPlan === 0 && (
+                  <p className="text-[10px] font-bold text-slate-400 mt-2">No hay abonos ($0)</p>
+                )}
+             </div>
+           )}
+
            <div className="p-5 border-b border-slate-100 flex flex-col gap-3">
               <div className="flex items-center gap-2">
                  <User className="text-slate-700" size={16}/>
@@ -1705,20 +1721,20 @@ if (profesionalRowId) {
             </div>
 
             {/* DATOS DENTISTA Y PACIENTE */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', fontSize: 10, marginBottom: 16 }}>
-              <div style={{ border: '1px solid #cbd5e1', padding: '8px', borderRadius: '8px', lineHeight: '1.3' }}>
-                <p style={{ fontWeight: 700, borderBottom: '1px solid #cbd5e1', paddingBottom: '2px', marginBottom: '4px', fontSize: 11 }}>DENTISTA A CARGO</p>
-                <p style={{ marginBottom: '2px' }}><strong>Nombre:</strong> Dr(a). {presupuestoData?.profesionales?.nombre || ''} {presupuestoData?.profesionales?.apellido || ''}</p>
-                <p style={{ marginBottom: '2px' }}><strong>RUT:</strong> {presupuestoData?.profesionales?.rut || 'No registrado'}</p>
-                <p style={{ marginBottom: '2px' }}><strong>Especialidad:</strong> {presupuestoData?.profesionales?.especialidad || 'Odontología General'}</p>
-                <p style={{ marginBottom: '0px' }}><strong>Fecha de impresión:</strong> {new Date().toLocaleDateString('es-CL')}</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', fontSize: 12, marginBottom: 24 }}>
+              <div style={{ border: '1px solid #cbd5e1', padding: '12px', borderRadius: '8px' }}>
+                <p style={{ fontWeight: 700, borderBottom: '1px solid #cbd5e1', paddingBottom: '4px', marginBottom: '8px' }}>DENTISTA A CARGO</p>
+                <p style={{ marginBottom: '4px' }}><strong>Nombre:</strong> Dr(a). {presupuestoData?.profesionales?.nombre || ''} {presupuestoData?.profesionales?.apellido || ''}</p>
+                <p style={{ marginBottom: '4px' }}><strong>RUT:</strong> {presupuestoData?.profesionales?.rut || 'No registrado'}</p>
+                <p style={{ marginBottom: '4px' }}><strong>Especialidad:</strong> {presupuestoData?.profesionales?.especialidad || 'Odontología General'}</p>
+                <p style={{ marginBottom: '4px' }}><strong>Fecha de impresión:</strong> {new Date().toLocaleDateString('es-CL')}</p>
               </div>
-              <div style={{ border: '1px solid #cbd5e1', padding: '8px', borderRadius: '8px', lineHeight: '1.3' }}>
-                <p style={{ fontWeight: 700, borderBottom: '1px solid #cbd5e1', paddingBottom: '2px', marginBottom: '4px', fontSize: 11 }}>INFORMACIÓN DEL PACIENTE</p>
-                <p style={{ marginBottom: '2px' }}><strong>Nombre:</strong> {pacienteInfo?.nombre} {pacienteInfo?.apellido}</p>
-                <p style={{ marginBottom: '2px' }}><strong>RUT:</strong> {pacienteInfo?.rut || 'No registrado'}</p>
-                <p style={{ marginBottom: '2px' }}><strong>Fecha de Nacimiento:</strong> {pacienteInfo?.fecha_nacimiento ? new Date(pacienteInfo.fecha_nacimiento).toLocaleDateString('es-CL', { timeZone: 'UTC' }) : 'No registrada'}</p>
-                <p style={{ marginBottom: '0px' }}><strong>Convenio:</strong> {pacienteInfo?.prevision && pacienteInfo?.prevision !== 'Sin convenio' ? pacienteInfo.prevision : 'Sin convenio'}</p>
+              <div style={{ border: '1px solid #cbd5e1', padding: '12px', borderRadius: '8px' }}>
+                <p style={{ fontWeight: 700, borderBottom: '1px solid #cbd5e1', paddingBottom: '4px', marginBottom: '8px' }}>INFORMACIÓN DEL PACIENTE</p>
+                <p style={{ marginBottom: '4px' }}><strong>Nombre:</strong> {pacienteInfo?.nombre} {pacienteInfo?.apellido}</p>
+                <p style={{ marginBottom: '4px' }}><strong>RUT:</strong> {pacienteInfo?.rut || 'No registrado'}</p>
+                <p style={{ marginBottom: '4px' }}><strong>Fecha de Nacimiento:</strong> {pacienteInfo?.fecha_nacimiento ? new Date(pacienteInfo.fecha_nacimiento).toLocaleDateString('es-CL', { timeZone: 'UTC' }) : 'No registrada'}</p>
+                <p style={{ marginBottom: '4px' }}><strong>Convenio:</strong> {pacienteInfo?.prevision && pacienteInfo?.prevision !== 'Sin convenio' ? pacienteInfo.prevision : 'Sin convenio'}</p>
               </div>
             </div>
 
@@ -1762,8 +1778,15 @@ if (profesionalRowId) {
   {item.display_nombre}
   <br/>
   <span style={{fontSize: 9, color: '#64748b', fontWeight: 'normal'}}>
-    Dr(a). {profesionales.find(p => p.user_id === item.profesional_id)?.apellido || 'Sin asignar'}
-  </span>
+Presupuestado: Dr. {profesionales.find(p => p.user_id === item.ppto_doc)?.apellido || 'Sin asignar'}  </span>
+  {item.evo_doc && (
+      <>
+        <br/>
+        <span style={{fontSize: 9, color: '#3b82f6', fontWeight: 'normal'}}>
+          Evolucionado: Dr. {profesionales.find(p => p.user_id === item.evo_doc)?.apellido || ''} el {new Date(item.evo_fecha).toLocaleDateString('es-CL')}
+        </span>
+      </>
+  )}
 </td>
                             <td style={{ padding: '8px', textAlign: 'right' }}>${Number(item.precio_base || item.display_pactado).toLocaleString('es-CL')}</td>
                             <td style={{ padding: '8px', textAlign: 'right' }}>{item.descuento > 0 ? `${item.descuento}%` : '0%'}</td>
@@ -1798,10 +1821,10 @@ if (profesionalRowId) {
             </div>
 
             {/* PIE DE PÁGINA */}
-            <div style={{ textAlign: 'center', fontSize: 10, color: '#64748b', marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid #e2e8f0', pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+            <div style={{ textAlign: 'center', fontSize: 10, color: '#64748b', marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid #e2e8f0', pageBreakInside: 'avoid' }}>
               <p style={{ fontWeight: 700, color: '#1e293b', fontSize: 12 }}>Centro Médico y Dental Dignidad SpA</p>
-              <p>Ubicación: Av. Venancia Leiva 1871, La Pintana | Teléfono: +56 9 6646 7641</p>
-              <p style={{ marginTop: '8px', fontStyle: 'italic', fontWeight: 600 }}>
+              <p>Ubicación: Av. Observatorio 1500, La Pintana | Teléfono: +56 9 1234 5678</p>
+              <p style={{ marginTop: '12px', fontStyle: 'italic', fontWeight: 600 }}>
                 Al iniciar este tratamiento declaro que acepto la política de privacidad de la clínica y la plataforma establecida.
               </p>
             </div>
@@ -2122,11 +2145,18 @@ if (profesionalRowId) {
                                 {item.cara && <span className="text-[8px] opacity-70 mt-1">CARA {item.cara}</span>}
                               </div>
                             </td>
-                            <td className="px-6 py-5 font-black uppercase text-slate-800 text-[11px]">
+                           <td className="px-6 py-5 font-black uppercase text-slate-800 text-[11px]">
   {item.display_nombre}
-  <div className="text-[9px] font-bold text-slate-400 mt-1 flex items-center gap-1 normal-case tracking-normal">
-     <User size={10} />
-     {profesionales.find(p => p.user_id === item.profesional_id) ? `Dr(a). ${profesionales.find(p => p.user_id === item.profesional_id)?.apellido}` : 'Sin asignar'}
+  <div className="flex flex-col gap-0.5 mt-1">
+    <div className="text-[9px] font-bold text-slate-400 flex items-center gap-1 normal-case tracking-normal">
+       <User size={10} />
+Presupuestado: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr. ${profesionales.find(p => p.user_id === item.ppto_doc)?.apellido}` : 'Sin asignar'}    </div>
+    {item.evo_doc && (
+       <div className="text-[9px] font-bold text-blue-500 flex items-center gap-1 normal-case tracking-normal">
+          <CheckCircle2 size={10} />
+          Evolucionado: Dr. {profesionales.find(p => p.user_id === item.evo_doc)?.apellido || 'Desconocido'} el {new Date(item.evo_fecha).toLocaleDateString('es-CL')}
+       </div>
+    )}
   </div>
 </td>
                             
@@ -2863,15 +2893,20 @@ if (profesionalRowId) {
                                    <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${isSelected ? 'border-blue-600 border-blue-600' : 'border-slate-300 bg-white'}`}>
                                       {isSelected && <CheckCircle2 className="text-white" size={16}/>}
                                    </div>
-                                   <div>
+                                  <div>
   <p className="text-[10px] font-black text-slate-400 uppercase leading-none">
     {item.zona ? item.zona : `Pieza ${item.diente_id || 'General'}`} {item.cara && `- Cara ${item.cara}`}
   </p>
   <p className="text-xs font-black text-slate-800 uppercase mt-1 leading-tight">{item.display_nombre}</p>
   <p className="text-[9px] font-bold text-slate-500 mt-1 flex items-center gap-1 normal-case">
      <User size={10} /> 
-     {profesionales.find(p => p.user_id === item.profesional_id) ? `Dr(a). ${profesionales.find(p => p.user_id === item.profesional_id)?.apellido}` : 'Sin asignar'}
-  </p>
+Presupuestado por: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr(a). ${profesionales.find(p => p.user_id === item.ppto_doc)?.apellido}` : 'Sin asignar'}  </p>
+  {item.evo_doc && (
+     <p className="text-[9px] font-bold text-blue-500 mt-0.5 flex items-center gap-1 normal-case">
+        <CheckCircle2 size={10} />
+        Evolucionado por Dr(a). {profesionales.find(p => p.user_id === item.evo_doc)?.apellido} el {new Date(item.evo_fecha).toLocaleDateString('es-CL')}
+     </p>
+  )}
 </div>
                                 </div>
                               )
@@ -3061,8 +3096,13 @@ if (profesionalRowId) {
    <p className="text-[10px] font-black uppercase text-slate-800 leading-tight mt-0.5">{item.display_nombre}</p>
    <span className="text-[8px] font-bold text-slate-400 mt-1 flex items-center gap-1 normal-case tracking-normal">
       <User size={8} /> 
-      {profesionales.find(p => p.user_id === item.profesional_id) ? `Dr(a). ${profesionales.find(p => p.user_id === item.profesional_id)?.apellido}` : 'Sin asignar'}
-   </span>
+Ppto: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr. ${profesionales.find(p => p.user_id === item.ppto_doc)?.apellido}` : 'Sin asignar'}   </span>
+   {item.evo_doc && (
+       <span className="text-[8px] font-bold text-blue-500 mt-0.5 flex items-center gap-1 normal-case tracking-normal">
+          <CheckCircle2 size={8} />
+          Evol: Dr. {profesionales.find(p => p.user_id === item.evo_doc)?.apellido} ({new Date(item.evo_fecha).toLocaleDateString('es-CL')})
+       </span>
+   )}
 </div>
                               </div>
 
