@@ -3,7 +3,7 @@ import { useParams } from 'next/navigation'
 import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
-import { ChevronLeft, Printer, DollarSign, Loader2, CheckCircle2, History, AlertCircle, Eye, X, Wallet } from 'lucide-react'
+import { ChevronLeft, Printer, Download, DollarSign, Loader2, CheckCircle2, History, AlertCircle, Eye, X, Wallet } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -329,6 +329,176 @@ export default function MiDetalleLiquidacionPage() {
     }, 100);
   }
 
+  const liquidables = itemsPendientes.filter(i => i.paymentStatus === 'paid');
+  const parciales = itemsPendientes.filter(i => i.paymentStatus === 'partially-paid');
+  const deudas = itemsPendientes.filter(i => i.paymentStatus !== 'paid' && i.paymentStatus !== 'partially-paid');
+
+  const handleExportExcel = () => {
+    // Función para evitar que caracteres especiales rompan el formato del Excel
+    const escapeXml = (unsafe: any) => (unsafe || '').toString().replace(/[<>&'"]/g, (c: string) => {
+        switch (c) {
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '&': return '&amp;';
+            case '\'': return '&apos;';
+            case '"': return '&quot;';
+            default: return c;
+        }
+    });
+
+    const xmlTemplate = `<?xml version="1.0"?>
+    <?mso-application progid="Excel.Sheet"?>
+    <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+     xmlns:o="urn:schemas-microsoft-com:office:office"
+     xmlns:x="urn:schemas-microsoft-com:office:excel"
+     xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+     xmlns:html="http://www.w3.org/TR/REC-html40">
+     <Styles>
+      <Style ss:ID="Header">
+       <Font ss:Bold="1" ss:Color="#FFFFFF"/>
+       <Interior ss:Color="#0A111F" ss:Pattern="Solid"/>
+      </Style>
+      <Style ss:ID="Money">
+       <NumberFormat ss:Format="&quot;$&quot;#,##0"/>
+      </Style>
+      <Style ss:ID="Title">
+       <Font ss:Bold="1" ss:Size="14"/>
+      </Style>
+      <Style ss:ID="BoldRight">
+       <Font ss:Bold="1"/>
+       <Alignment ss:Horizontal="Right"/>
+      </Style>
+      <Style ss:ID="BoldMoney">
+       <Font ss:Bold="1"/>
+       <NumberFormat ss:Format="&quot;$&quot;#,##0"/>
+      </Style>
+     </Styles>
+
+     <!-- ================= HOJA 1 ================= -->
+     <Worksheet ss:Name="1. Pagados (A Liquidar)">
+      <Table>
+       <Column ss:Width="80"/>
+       <Column ss:Width="180"/>
+       <Column ss:Width="250"/>
+       <Column ss:Width="100"/>
+       <Column ss:Width="90"/>
+       <Column ss:Width="90"/>
+       <Column ss:Width="100"/>
+       <Row><Cell ss:StyleID="Title"><Data ss:Type="String">TRATAMIENTOS PAGADOS AL 100%</Data></Cell></Row>
+       <Row>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Fecha</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Paciente</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Prestación</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Pieza</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Total Prest.</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Total Pagado</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Honorario Dr.</Data></Cell>
+       </Row>
+       ${liquidables.map(i => `
+       <Row>
+        <Cell><Data ss:Type="String">${escapeXml(i.fecha ? new Date(i.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F')}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml(i.paciente)}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml(i.prestacion)}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml((i.diente ? i.diente : 'General') + (i.cara ? ' ('+i.cara+')' : ''))}</Data></Cell>
+        <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.costoTotalPrestacion)}</Data></Cell>
+        <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.pagadoTotalPrestacion)}</Data></Cell>
+        <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.honorario)}</Data></Cell>
+       </Row>
+       `).join('')}
+       <Row>
+        <Cell ss:Index="6" ss:StyleID="BoldRight"><Data ss:Type="String">TOTAL HONORARIOS:</Data></Cell>
+        <Cell ss:StyleID="BoldMoney"><Data ss:Type="Number">${Math.round(liquidables.reduce((acc, i) => acc + (i.honorario || 0), 0))}</Data></Cell>
+       </Row>
+      </Table>
+     </Worksheet>
+
+     <!-- ================= HOJA 2 ================= -->
+     <Worksheet ss:Name="2. Parciales (Aun No)">
+      <Table>
+       <Column ss:Width="80"/>
+       <Column ss:Width="180"/>
+       <Column ss:Width="250"/>
+       <Column ss:Width="100"/>
+       <Column ss:Width="90"/>
+       <Column ss:Width="90"/>
+       <Column ss:Width="100"/>
+       <Row><Cell ss:StyleID="Title"><Data ss:Type="String">PACIENTES CON PAGOS PARCIALES</Data></Cell></Row>
+       <Row>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Fecha</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Paciente</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Prestación</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Pieza</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Total Prest.</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Total Pagado</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Falta Pagar</Data></Cell>
+       </Row>
+       ${parciales.map(i => `
+       <Row>
+        <Cell><Data ss:Type="String">${escapeXml(i.fecha ? new Date(i.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F')}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml(i.paciente)}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml(i.prestacion)}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml((i.diente ? i.diente : 'General') + (i.cara ? ' ('+i.cara+')' : ''))}</Data></Cell>
+        <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.costoTotalPrestacion)}</Data></Cell>
+        <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.pagadoTotalPrestacion)}</Data></Cell>
+        <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round((i.costoTotalPrestacion || 0) - (i.pagadoTotalPrestacion || 0))}</Data></Cell>
+       </Row>
+       `).join('')}
+       <Row>
+        <Cell ss:Index="6" ss:StyleID="BoldRight"><Data ss:Type="String">TOTAL POR PAGAR:</Data></Cell>
+        <Cell ss:StyleID="BoldMoney"><Data ss:Type="Number">${Math.round(parciales.reduce((acc, i) => acc + ((i.costoTotalPrestacion || 0) - (i.pagadoTotalPrestacion || 0)), 0))}</Data></Cell>
+       </Row>
+      </Table>
+     </Worksheet>
+
+     <!-- ================= HOJA 3 ================= -->
+     <Worksheet ss:Name="3. Deudas (Sin Pago)">
+      <Table>
+       <Column ss:Width="80"/>
+       <Column ss:Width="180"/>
+       <Column ss:Width="250"/>
+       <Column ss:Width="100"/>
+       <Column ss:Width="90"/>
+       <Column ss:Width="90"/>
+       <Column ss:Width="100"/>
+       <Row><Cell ss:StyleID="Title"><Data ss:Type="String">PACIENTES CON DEUDA (SIN PAGOS)</Data></Cell></Row>
+       <Row>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Fecha</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Paciente</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Prestación</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Pieza</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Total Prest.</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Total Pagado</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Deuda Total</Data></Cell>
+       </Row>
+       ${deudas.map(i => `
+       <Row>
+        <Cell><Data ss:Type="String">${escapeXml(i.fecha ? new Date(i.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F')}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml(i.paciente)}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml(i.prestacion)}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml((i.diente ? i.diente : 'General') + (i.cara ? ' ('+i.cara+')' : ''))}</Data></Cell>
+        <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.costoTotalPrestacion)}</Data></Cell>
+        <Cell ss:StyleID="Money"><Data ss:Type="Number">0</Data></Cell>
+        <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.costoTotalPrestacion)}</Data></Cell>
+       </Row>
+       `).join('')}
+       <Row>
+        <Cell ss:Index="6" ss:StyleID="BoldRight"><Data ss:Type="String">TOTAL DEUDAS:</Data></Cell>
+        <Cell ss:StyleID="BoldMoney"><Data ss:Type="Number">${Math.round(deudas.reduce((acc, i) => acc + (i.costoTotalPrestacion || 0), 0))}</Data></Cell>
+       </Row>
+      </Table>
+     </Worksheet>
+    </Workbook>`;
+
+    const blob = new Blob([xmlTemplate], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Liquidacion_Dr_${profesional?.apellido}_${mesSeleccionado}.xls`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   const obtenerFechaFinalizacion = () => {
     const [year, month] = mesSeleccionado.split('-');
     const ultimoDiaNum = new Date(Number(year), Number(month), 0).getDate();
@@ -414,9 +584,14 @@ export default function MiDetalleLiquidacionPage() {
                 </div>
               </div>
             </div>
-            <button onClick={handlePrint} className="w-full md:w-auto bg-[#0A111F] text-[#C9A24B] px-6 py-4 rounded-2xl hover:bg-[#1a2538] hover:text-white transition-all shadow-lg font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95">
-              <Printer size={16} /> Imprimir Reporte
-            </button>
+            <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+              <button onClick={handleExportExcel} className="w-full md:w-auto bg-emerald-600 text-white px-6 py-4 rounded-2xl hover:bg-emerald-700 transition-all shadow-lg font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95">
+                <Download size={16} /> Excel (Por Secciones)
+              </button>
+              <button onClick={handlePrint} className="w-full md:w-auto bg-[#0A111F] text-[#C9A24B] px-6 py-4 rounded-2xl hover:bg-[#1a2538] hover:text-white transition-all shadow-lg font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95">
+                <Printer size={16} /> Imprimir Reporte
+              </button>
+            </div>
           </div>
 
           <div className="space-y-12">
@@ -596,53 +771,62 @@ export default function MiDetalleLiquidacionPage() {
       {/* ========================================================================= */}
       {/* VISTA IMPRESIÓN (OCULTA EN WEB, VISIBLE AL IMPRIMIR) */}
       {/* ========================================================================= */}
-      <div className="hidden print:block bg-white text-black p-4 font-sans text-[11px] leading-tight max-w-[800px] mx-auto text-left">
-
-        <div className="text-center mb-6">
-          <h1 className="font-bold text-lg mb-1">CENTRO MEDICO Y DENTAL DIGNIDAD SPA</h1>
+      <div className="hidden print:block bg-white text-slate-900 p-8 font-sans w-full max-w-[1000px] mx-auto">
+        
+        {/* Cabecera del Documento */}
+        <div className="flex justify-between items-start border-b-2 border-slate-800 pb-6 mb-6">
+          <div>
+            <h1 className="text-2xl font-black uppercase tracking-tighter text-[#0A111F]">Centro Médico y Dental Dignidad SpA</h1>
+            <p className="text-xs text-slate-500 mt-1">Av. Venancia Leiva 1871, Región Metropolitana, La Pintana</p>
+            <p className="text-xs text-slate-500">+56 9 6646 7641 / +56 9 9446 4662</p>
+          </div>
+          <div className="text-right">
+            <h2 className="text-xl font-bold uppercase text-[#C9A24B]">Liquidación de Honorarios</h2>
+            <p className="text-sm font-bold mt-1">Periodo: <span className="font-normal">{mesSeleccionado}</span></p>
+            <p className="text-xs text-slate-500">Impreso: {fechaEmision || new Date().toLocaleDateString('es-CL')}</p>
+          </div>
         </div>
 
-        <div className="mb-4">
-          <p>Fecha Finalización: {obtenerFechaFinalizacion()}, Fecha Impresión: {fechaEmision}</p>
-          <p>Liquidación Periodo: {mesSeleccionado}</p>
+        {/* Cajas de Resumen */}
+        <div className="flex gap-6 mb-8">
+          <div className="flex-1 border border-slate-200 p-4 rounded-xl">
+            <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 border-b border-slate-100 pb-1">Datos del Profesional</h3>
+            <p className="text-sm font-bold uppercase">Dr(a). {profesional?.nombre} {profesional?.apellido}</p>
+            <p className="text-xs text-slate-600 mt-1">RUT: {profesional?.rut || 'No Registrado'}</p>
+            <p className="text-xs text-slate-600">Porcentaje Convenio: {profesional?.porcentaje_comision || 40}%</p>
+          </div>
+          <div className="flex-1 border border-[#C9A24B] bg-[#C9A24B]/5 p-4 rounded-xl">
+            <h3 className="text-[10px] font-black uppercase text-[#C9A24B] tracking-widest mb-2 border-b border-[#C9A24B]/20 pb-1">Resumen Monetario del Periodo</h3>
+            <div className="flex justify-between text-xs mb-1 text-slate-700"><span>Producción Total (Mes):</span> <span className="font-bold">${Math.round(resumenMes.totalMes).toLocaleString('es-CL')}</span></div>
+            <div className="flex justify-between text-xs mb-1 text-slate-700"><span>Anticipos/Cierres Previos:</span> <span className="font-bold">${Math.round(resumenMes.totalPagado).toLocaleString('es-CL')}</span></div>
+            <div className="flex justify-between text-sm font-black text-[#0A111F] mt-2 pt-2 border-t border-[#C9A24B]/30"><span>TOTAL A TRANSFERIR:</span> <span>${Math.round(resumenMes.saldoPendiente).toLocaleString('es-CL')}</span></div>
+          </div>
         </div>
 
-        <div className="mb-4">
-          <p className="font-bold underline mb-1">Profesional:</p>
-          <p>Nombre: {profesional?.nombre} {profesional?.apellido} RUT: {profesional?.rut || ''} Sucursal: CENTRO MEDICO Y DENTAL DIGNIDAD</p>
-        </div>
-
-        <div className="mb-6">
-          <p className="font-bold underline mb-1">Resumen de la Liquidación:</p>
-          <p>Producción Mes ${Math.round(resumenMes.totalMes).toLocaleString('es-CL')}</p>
-          <p>Ya Pagado (Cierres Previos) ${Math.round(resumenMes.totalPagado).toLocaleString('es-CL')}</p>
-          <p className="font-bold mt-1">Saldo Pendiente a Pagar ${Math.round(resumenMes.saldoPendiente).toLocaleString('es-CL')}</p>
-        </div>
-
-        {itemsPendientes.length > 0 && (
-          <div className="mb-6">
-            <p className="font-bold underline mb-2">Detalle de Tratamientos y Pagos:</p>
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-black">
-                  <th className="py-1 w-20">Fecha</th>
-                  <th className="py-1">Paciente</th>
-                  <th className="py-1">Acción</th>
-                  <th className="py-1 text-right w-24">Honorario</th>
+        {/* 1. SECCIÓN PAGADOS (LIQUIDABLES) */}
+        {liquidables.length > 0 && (
+          <div className="mb-8 page-break-inside-avoid">
+            <h3 className="text-[11px] font-black text-white bg-emerald-600 px-4 py-2 uppercase tracking-widest mb-2 rounded-t-lg">1. Tratamientos Pagados 100% (Liquidables)</h3>
+            <table className="w-full text-left text-[10px] border-collapse">
+              <thead className="bg-slate-100 border-b-2 border-slate-300 text-slate-600 uppercase">
+                <tr>
+                  <th className="p-2 w-16">Fecha</th>
+                  <th className="p-2">Paciente</th>
+                  <th className="p-2">Prestación</th>
+                  <th className="p-2 text-right">T. Costo</th>
+                  <th className="p-2 text-right">Pagado</th>
+                  <th className="p-2 text-right text-emerald-800">Honorario</th>
                 </tr>
               </thead>
               <tbody>
-                {itemsPendientes.map((item: any, idx: number) => (
-                  <tr key={`pend-${idx}`}>
-                    <td className="py-1">{item.fecha ? new Date(item.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F'}</td>
-                    <td className="py-1 uppercase">{item.paciente}</td>
-                    <td className="py-1 uppercase pr-2">
-                      {item.prestacion}
-                      <span className="text-[8px] text-gray-500 ml-1">
-                        ({item.paymentStatus === 'paid' ? 'Pagado' : item.paymentStatus === 'partially-paid' ? 'Parcial' : 'Deuda'})
-                      </span>
-                    </td>
-                    <td className="py-1 text-right font-bold">${Math.round(item.honorario).toLocaleString('es-CL')}</td>
+                {liquidables.map((item: any, idx: number) => (
+                  <tr key={idx} className="border-b border-slate-200">
+                    <td className="p-2">{item.fecha ? new Date(item.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F'}</td>
+                    <td className="p-2 uppercase font-bold text-slate-800">{item.paciente}</td>
+                    <td className="p-2 uppercase text-slate-600">{item.prestacion} <span className="text-[8px] opacity-60">({item.diente ? item.diente : 'Gen'})</span></td>
+                    <td className="p-2 text-right text-slate-500">${Math.round(item.costoTotalPrestacion).toLocaleString('es-CL')}</td>
+                    <td className="p-2 text-right text-slate-500">${Math.round(item.pagadoTotalPrestacion).toLocaleString('es-CL')}</td>
+                    <td className="p-2 text-right font-black text-emerald-700">${Math.round(item.honorario).toLocaleString('es-CL')}</td>
                   </tr>
                 ))}
               </tbody>
@@ -650,28 +834,92 @@ export default function MiDetalleLiquidacionPage() {
           </div>
         )}
 
+        {/* 2. SECCIÓN PAGOS PARCIALES */}
+        {parciales.length > 0 && (
+          <div className="mb-8 page-break-inside-avoid">
+            <h3 className="text-[11px] font-black text-slate-900 bg-amber-300 px-4 py-2 uppercase tracking-widest mb-2 rounded-t-lg">2. Pacientes con Pagos Parciales (Aún no Liquidables)</h3>
+            <table className="w-full text-left text-[10px] border-collapse">
+              <thead className="bg-slate-100 border-b-2 border-slate-300 text-slate-600 uppercase">
+                <tr>
+                  <th className="p-2 w-16">Fecha</th>
+                  <th className="p-2">Paciente</th>
+                  <th className="p-2">Prestación</th>
+                  <th className="p-2 text-right">T. Costo</th>
+                  <th className="p-2 text-right">Pagado</th>
+                  <th className="p-2 text-right text-amber-800">Falta Pagar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {parciales.map((item: any, idx: number) => (
+                  <tr key={idx} className="border-b border-slate-200">
+                    <td className="p-2">{item.fecha ? new Date(item.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F'}</td>
+                    <td className="p-2 uppercase font-bold text-slate-800">{item.paciente}</td>
+                    <td className="p-2 uppercase text-slate-600">{item.prestacion} <span className="text-[8px] opacity-60">({item.diente ? item.diente : 'Gen'})</span></td>
+                    <td className="p-2 text-right text-slate-500">${Math.round(item.costoTotalPrestacion).toLocaleString('es-CL')}</td>
+                    <td className="p-2 text-right font-bold text-amber-600">${Math.round(item.pagadoTotalPrestacion).toLocaleString('es-CL')}</td>
+                    <td className="p-2 text-right font-black text-amber-700">${Math.round(item.costoTotalPrestacion - item.pagadoTotalPrestacion).toLocaleString('es-CL')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* 3. SECCIÓN DEUDAS */}
+        {deudas.length > 0 && (
+          <div className="mb-8 page-break-inside-avoid">
+            <h3 className="text-[11px] font-black text-white bg-red-600 px-4 py-2 uppercase tracking-widest mb-2 rounded-t-lg">3. Pacientes con Deudas Completas (Sin Pagos)</h3>
+            <table className="w-full text-left text-[10px] border-collapse">
+              <thead className="bg-slate-100 border-b-2 border-slate-300 text-slate-600 uppercase">
+                <tr>
+                  <th className="p-2 w-16">Fecha</th>
+                  <th className="p-2">Paciente</th>
+                  <th className="p-2">Prestación</th>
+                  <th className="p-2 text-right">T. Costo</th>
+                  <th className="p-2 text-right text-red-800">Deuda Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deudas.map((item: any, idx: number) => (
+                  <tr key={idx} className="border-b border-slate-200 text-slate-500">
+                    <td className="p-2">{item.fecha ? new Date(item.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F'}</td>
+                    <td className="p-2 uppercase font-bold text-slate-800">{item.paciente}</td>
+                    <td className="p-2 uppercase text-slate-600">{item.prestacion} <span className="text-[8px] opacity-60">({item.diente ? item.diente : 'Gen'})</span></td>
+                    <td className="p-2 text-right">${Math.round(item.costoTotalPrestacion).toLocaleString('es-CL')}</td>
+                    <td className="p-2 text-right font-black text-red-600">${Math.round(item.costoTotalPrestacion).toLocaleString('es-CL')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* 4. CIERRES PREVIOS */}
         {cierresCompletados.length > 0 && (
-          <div className="mb-6">
-            <p className="font-bold underline mb-2">Detalle de Historial (Cierres ya pagados este mes):</p>
+          <div className="mb-8 break-before-page">
+            <h3 className="text-[11px] font-black text-slate-800 bg-slate-200 px-4 py-2 uppercase tracking-widest mb-4 rounded-t-lg">4. Historial de Cierres Anteriores (Mes Actual)</h3>
             {cierresCompletados.map((cierre) => (
-              <div key={cierre.id} className="mb-4">
-                <p className="font-bold italic text-[10px] mb-1">{cierre.titulo} (Total: ${Number(cierre.montoTotal).toLocaleString('es-CL')})</p>
-                <table className="w-full text-left text-[9px] mb-2 text-gray-700">
-                  <thead>
-                    <tr className="border-b border-gray-300">
-                      <th className="py-1 w-20">Fecha</th>
-                      <th className="py-1">Paciente</th>
-                      <th className="py-1">Acción</th>
-                      <th className="py-1 text-right w-24">Pagado</th>
+              <div key={cierre.id} className="mb-6 border border-slate-200 rounded-xl p-4 bg-slate-50/50">
+                <div className="flex justify-between items-center mb-3">
+                    <p className="font-black text-xs uppercase tracking-tight text-slate-800">{cierre.titulo}</p>
+                    <p className="font-black text-[11px] bg-slate-200 text-slate-700 px-2 py-1 rounded">Total Cierre: ${Number(cierre.montoTotal).toLocaleString('es-CL')}</p>
+                </div>
+                <table className="w-full text-left text-[9px] text-gray-700 border-collapse">
+                  <thead className="border-b-2 border-slate-300">
+                    <tr>
+                      <th className="pb-1 w-16 uppercase">Fecha</th>
+                      <th className="pb-1 uppercase">Paciente</th>
+                      <th className="pb-1 uppercase">Prestación</th>
+                      <th className="pb-1 text-right uppercase">Pagado Dr.</th>
                     </tr>
                   </thead>
                   <tbody>
                     {cierre.items.map((item: any, idx: number) => (
-                      <tr key={`cierre-${cierre.id}-${idx}`}>
-                        <td className="py-1">{item.fecha ? new Date(item.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F'}</td>
-                        <td className="py-1 uppercase">{item.paciente}</td>
-                        <td className="py-1 uppercase pr-2">{item.prestacion}</td>
-                        <td className="py-1 text-right">${Math.round(item.honorario).toLocaleString('es-CL')}</td>
+                      <tr key={`cierre-${cierre.id}-${idx}`} className="border-b border-gray-200 last:border-0">
+                        <td className="py-1.5">{item.fecha ? new Date(item.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F'}</td>
+                        <td className="py-1.5 uppercase font-bold">{item.paciente}</td>
+                        <td className="py-1.5 uppercase text-slate-500">{item.prestacion}</td>
+                        <td className="py-1.5 text-right font-bold text-slate-900">${Math.round(item.honorario).toLocaleString('es-CL')}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -680,11 +928,6 @@ export default function MiDetalleLiquidacionPage() {
             ))}
           </div>
         )}
-
-        <div className="mt-16 text-center border-t border-black pt-4 text-[10px]">
-          <p className="font-bold uppercase">CENTRO MEDICO Y DENTAL DIGNIDAD SPA</p>
-          <p>Venancia Leiva 1871, Región Metropolitana, La Pintana | +56966467641 / +56994464662</p>
-        </div>
 
       </div>
 
