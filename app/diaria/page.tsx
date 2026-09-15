@@ -597,11 +597,11 @@ export default function VistaDiariaPage() {
               </button>
             </div>
 
-            <div className="flex flex-row gap-2 w-full lg:w-auto">
-              <Link href="/semana" className="flex-1 lg:flex-none justify-center bg-[#C9A24B] text-white px-3 md:px-4 py-2 md:py-2.5 rounded-lg md:rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest shadow-md hover:bg-[#a7853b] transition-all flex items-center gap-1.5">
+           <div className="flex flex-row gap-2 w-full lg:w-auto">
+              <Link prefetch={false} href="/semana" className="flex-1 lg:flex-none justify-center bg-[#C9A24B] text-white px-3 md:px-4 py-2 md:py-2.5 rounded-lg md:rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest shadow-md hover:bg-[#a7853b] transition-all flex items-center gap-1.5">
                 <CalendarDays className="md:w-[14px] md:h-[14px]" size={14} /> <span className="hidden sm:inline">Semanal</span>
               </Link>
-              <Link href="/agenda" className="flex-1 lg:flex-none justify-center bg-[#0A111F] text-white px-3 md:px-4 py-2 md:py-2.5 rounded-lg md:rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest shadow-md hover:bg-[#1a2538] transition-all flex items-center gap-1.5">
+              <Link prefetch={false} href="/agenda" className="flex-1 lg:flex-none justify-center bg-[#0A111F] text-white px-3 md:px-4 py-2 md:py-2.5 rounded-lg md:rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest shadow-md hover:bg-[#1a2538] transition-all flex items-center gap-1.5">
                 <LayoutGrid className="md:w-[14px] md:h-[14px]" size={14} /> Agenda
               </Link>
             </div>
@@ -820,18 +820,18 @@ export default function VistaDiariaPage() {
                                               className="absolute top-10 right-0 w-52 md:w-56 bg-white/95 backdrop-blur-xl rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100 z-[50] flex flex-col py-2 overflow-hidden"
                                               onClick={(e) => e.stopPropagation()}
                                            >
-                                              {/* SECCIÓN PACIENTE */}
+                                             {/* SECCIÓN PACIENTE */}
                                               <div className="px-4 py-2 border-b border-slate-50 mb-1">
                                                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Atajos del Paciente</p>
                                               </div>
-                                              <Link href={`/pacientes/${cita.pacientes?.id}`} prefetch={false} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><ClipboardList size={14} className="opacity-70"/> Ficha Clínica</Link>
-                                              <Link href={`/pacientes/${cita.pacientes?.id}/tratamientos`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><Activity size={14} className="opacity-70"/> Tratamientos</Link>
+                                              <Link prefetch={false} href={`/pacientes/${cita.pacientes?.id}`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><ClipboardList size={14} className="opacity-70"/> Ficha Clínica</Link>
+                                              <Link prefetch={false} href={`/pacientes/${cita.pacientes?.id}/tratamientos`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><Activity size={14} className="opacity-70"/> Tratamientos</Link>
                                               
                                               {puedeVerFinanzas && (
-                                                 <Link href={`/pacientes/${cita.pacientes?.id}/pagos`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><Wallet size={14} className="opacity-70"/> Pagos</Link>
+                                                 <Link prefetch={false} href={`/pacientes/${cita.pacientes?.id}/pagos`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><Wallet size={14} className="opacity-70"/> Pagos</Link>
                                               )}
 
-                                              <Link href={`/pacientes/${cita.pacientes?.id}/datos`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><User size={14} className="opacity-70"/> Datos Personales</Link>
+                                              <Link prefetch={false} href={`/pacientes/${cita.pacientes?.id}/datos`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><User size={14} className="opacity-70"/> Datos Personales</Link>
 
                                               <div className="h-px bg-slate-100 my-1 mx-2"></div>
 
