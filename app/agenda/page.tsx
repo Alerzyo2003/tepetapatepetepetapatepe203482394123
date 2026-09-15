@@ -877,9 +877,33 @@ let detalleText = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, t
       if (modoNuevoPaciente && !citaEnReprogramacion) {
         let rutFinal: string | null = nuevoPaciente.rut.toUpperCase().trim();
         if (esOtroDocumento) { if (!rutFinal) rutFinal = `OTRO-DOC-${Date.now()}`; } else { rutFinal = rutFinal.replace(/[^0-9kK-]/g, ''); }
-        const { data: pNew, error: pErr } = await supabase.from('pacientes').insert([{ nombre: nuevoPaciente.nombre.toUpperCase().trim(), apellido: nuevoPaciente.apellido.toUpperCase().trim(), rut: rutFinal, telefono: nuevoPaciente.telefono, fecha_nacimiento: nuevoPaciente.fecha_nacimiento || null, sexo: nuevoPaciente.sexo || null, activo: true }]).select().single();
+        
+        // --- INICIO CÓDIGO NUEVO PARA FORMATEO DE TELÉFONO ---
+        let telefonoFinal = nuevoPaciente.telefono ? nuevoPaciente.telefono.trim() : null;
+        if (telefonoFinal) {
+            let numLimpio = telefonoFinal.replace(/\D/g, ''); // Deja solo los números
+            
+            if (numLimpio.length === 9) {
+                // Si el usuario puso 9 dígitos (ej: 912344321), le agregamos el +56
+                telefonoFinal = `+56${numLimpio}`;
+            } else if (numLimpio.length === 11 && numLimpio.startsWith('56')) {
+                // Si el usuario puso 11 dígitos y empieza con 56 (ej: 56912344321), nos aseguramos del +
+                telefonoFinal = `+${numLimpio}`;
+            }
+        }
+        // --- FIN CÓDIGO NUEVO ---
+
+        const { data: pNew, error: pErr } = await supabase.from('pacientes').insert([{ 
+            nombre: nuevoPaciente.nombre.toUpperCase().trim(), 
+            apellido: nuevoPaciente.apellido.toUpperCase().trim(), 
+            rut: rutFinal, 
+            telefono: telefonoFinal, // <-- Aquí le pasamos el teléfono ya arreglado
+            fecha_nacimiento: nuevoPaciente.fecha_nacimiento || null, 
+            sexo: nuevoPaciente.sexo || null, 
+            activo: true 
+        }]).select().single();
         if (pErr) throw pErr;
-        pId = pNew.id; pNombreFull = `${nuevoPaciente.nombre} ${nuevoPaciente.apellido}`; pTelefono = nuevoPaciente.telefono;
+        pId = pNew.id; pNombreFull = `${nuevoPaciente.nombre} ${nuevoPaciente.apellido}`; pTelefono = telefonoFinal;
       }
 
       const parsearAFechaLocal = (fechaStr: string, horaStr: string, duracionMin: number) => {
