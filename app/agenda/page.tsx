@@ -1057,8 +1057,7 @@ let detalleText = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, t
               <Lock className="md:w-[14px] md:h-[14px]" size={14} /> Bloquear
             </button>
           )}
-          <Link href="/diaria" className="w-full lg:w-auto justify-center px-2 md:px-5 py-2.5 md:py-2.5 rounded-lg border border-[#C9A24B]/30 text-slate-600 text-[10px] md:text-[11px] font-bold uppercase tracking-wider hover:bg-[#C9A24B]/5 transition-colors flex items-center gap-2 bg-white">
-            <CalendarDays className="text-[#C9A24B] md:w-[14px] md:h-[14px]" size={14} /> <span className="truncate">Vista Diaria</span>
+<Link prefetch={false} href="/diaria" className="w-full lg:w-auto justify-center px-2 md:px-5 py-2.5 md:py-2.5 rounded-lg border border-[#C9A24B]/30 text-slate-600 text-[10px] md:text-[11px] font-bold uppercase tracking-wider hover:bg-[#C9A24B]/5 transition-colors flex items-center gap-2 bg-white">            <CalendarDays className="text-[#C9A24B] md:w-[14px] md:h-[14px]" size={14} /> <span className="truncate">Vista Diaria</span>
           </Link>
           <button onClick={() => { fetchCitasHuerfanas(); setModalHuerfanasAbierto(true); }} className="w-full lg:w-auto justify-center px-2 md:px-5 py-2.5 md:py-2.5 rounded-lg border border-amber-200 text-slate-600 text-[10px] md:text-[11px] font-bold uppercase tracking-wider hover:bg-amber-50 transition-colors flex items-center gap-2 bg-white">
             <AlertTriangle className="text-amber-500 md:w-[14px] md:h-[14px]" size={14} /> Huérfanas
@@ -1284,8 +1283,7 @@ let detalleText = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, t
                             
                             <button onClick={() => handleEliminarCita(c)} className="p-2.5 md:p-2 border border-slate-200 rounded-lg text-slate-500 hover:text-red-500 hover:bg-red-50 transition-colors" title="Eliminar"><Trash2 className="md:w-[16px] md:h-[16px]" size={18} /></button>
                             
-                            <Link href={`/pacientes/${c.paciente_id}`} className="ml-auto sm:ml-2 text-xs md:text-[10px] font-black text-blue-600 px-4 py-2 uppercase tracking-widest hover:bg-blue-50 rounded-lg transition-colors">
-                            FICHA
+<Link prefetch={false} href={`/pacientes/${c.paciente_id}`} className="ml-auto sm:ml-2 text-xs md:text-[10px] font-black text-blue-600 px-4 py-2 uppercase tracking-widest hover:bg-blue-50 rounded-lg transition-colors">                            FICHA
                             </Link>
                         </div>
                         </div>
@@ -2143,8 +2141,7 @@ if(seleccionado) {
                                  <MessageSquareText size={18} />
                                </a>
                              )}
-                             <Link href={`/pacientes/${cita.paciente_id}`} onClick={() => setModalAnuladasAbierto(false)} className="flex-1 sm:flex-none p-3 sm:p-2 bg-slate-50 text-slate-600 hover:text-blue-500 rounded-xl border border-slate-200 transition-colors flex justify-center items-center" title="Ver ficha del paciente">
-                                <User size={18} />
+<Link prefetch={false} href={`/pacientes/${cita.paciente_id}`} onClick={() => setModalAnuladasAbierto(false)} className="flex-1 sm:flex-none p-3 sm:p-2 bg-slate-50 text-slate-600 hover:text-blue-500 rounded-xl border border-slate-200 transition-colors flex justify-center items-center" title="Ver ficha del paciente">                                <User size={18} />
                              </Link>
                           </div>
                         </div>
