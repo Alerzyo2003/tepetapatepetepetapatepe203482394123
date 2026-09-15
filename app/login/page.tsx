@@ -56,7 +56,7 @@ export default function LoginPage() {
       }
 
       if (data?.session) {
-        window.location.replace('/')
+        window.location.replace('/agenda')
       }
     } catch (err) {
       setError('Error de comunicación con el servidor')
