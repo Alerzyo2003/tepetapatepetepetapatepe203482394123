@@ -443,7 +443,7 @@ export default function ListaTratamientosPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Link href={`/pacientes/${paciente_id}`} className="bg-slate-100 text-slate-600 px-5 py-3.5 rounded-2xl font-black text-[10px] uppercase hover:bg-slate-200 transition-all shadow-sm">
+            <Link prefetch={false} href={`/pacientes/${paciente_id}`} className="bg-slate-100 text-slate-600 px-5 py-3.5 rounded-2xl font-black text-[10px] uppercase hover:bg-slate-200 transition-all shadow-sm">
               Volver
             </Link>
             <button onClick={() => setModalNuevoPlan(true)} className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-7 py-3.5 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:from-slate-900 hover:to-slate-900 transition-all flex items-center gap-2 border border-blue-500">
