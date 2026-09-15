@@ -7,7 +7,8 @@ import {
   CalendarDays, Timer, UserCheck, Trash2, Ban, RefreshCcw, 
   ChevronDown, CalendarClock, LayoutGrid, Plus, CheckCircle2, 
   User, Users, Save, Briefcase, MessageCircle, AlertCircle, Info,
-  Phone, Activity
+  Phone, Activity, FileText, Wallet, MessageSquare, ClipboardList,
+  MoreVertical // <--- Agrega este
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -69,7 +70,6 @@ export default function VistaDiariaPage() {
   const [disponibilidades, setDisponibilidades] = useState<any[]>([]);
   const [bloqueos, setBloqueos] = useState<any[]>([]);
   const [cargando, setCargando] = useState(true);
-  const [filtroDoctor, setFiltroDoctor] = useState('TODOS');
   
   // Estados para Agendamiento
   const [modalAbierto, setModalAbierto] = useState(false);
@@ -94,6 +94,10 @@ export default function VistaDiariaPage() {
   const [citaConfirmadaData, setCitaConfirmadaData] = useState<any>(null);
   const [usuarioLogueado, setUsuarioLogueado] = useState<string | null>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
+
+  // Estados del Menú Desplegable (Citas)
+  const [menuAbiertoId, setMenuAbiertoId] = useState<string | null>(null);
+  const [modalComentario, setModalComentario] = useState<{abierto: boolean, cita: any, texto: string}>({abierto: false, cita: null, texto: ''});
   
   // ESTADOS DEL MODAL DE CONFLICTOS Y REAGENDAMIENTO
   const [citasConflictivas, setCitasConflictivas] = useState<any[]>([]);
@@ -107,6 +111,26 @@ export default function VistaDiariaPage() {
   
   const duracionesDisponibles = [15, 30, 45, 60, 90, 120];
   const [currentTime, setCurrentTime] = useState(new Date());
+
+
+ useEffect(() => {
+    const handleOutsideClick = (e: any) => {
+      // Si el clic NO fue dentro de un elemento con la clase 'menu-acciones-cita', cierra el menú
+      if (!e.target.closest('.menu-acciones-cita')) {
+        setMenuAbiertoId(null);
+      }
+    };
+
+    if (menuAbiertoId) {
+      // CAMBIAMOS 'mousedown' por 'click' AQUÍ ABAJO 👇
+      document.addEventListener('click', handleOutsideClick);
+    }
+
+    return () => {
+      // CAMBIAMOS 'mousedown' por 'click' AQUÍ ABAJO 👇
+      document.removeEventListener('click', handleOutsideClick);
+    };
+  }, [menuAbiertoId]);
 
   useEffect(() => {
     if (typeof document !== 'undefined') {
@@ -130,20 +154,22 @@ export default function VistaDiariaPage() {
     return () => clearInterval(timer); 
   }, []);
 
-const [userRol, setUserRol] = useState<string>('');
-const puedeVerAgendaCompleta = ['ADMIN', 'RECEPCIONISTA', 'ASISTENTE'].includes(userRol);
+  const [userRol, setUserRol] = useState<string>('');
+  const puedeVerAgendaCompleta = ['ADMIN', 'RECEPCIONISTA', 'ASISTENTE'].includes(userRol);
+  const puedeVerFinanzas = ['ADMIN', 'RECEPCIONISTA'].includes(userRol);
 
-useEffect(() => { 
-  const initAuth = async () => {
-    const { data } = await supabase.auth.getSession();
-    if (data.session?.user) {
-      setUsuarioLogueado(data.session.user.id);
-      const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', data.session.user.id).maybeSingle();
-      if (perfil) setUserRol(perfil.rol);
-    }
-  };
-  initAuth();
-}, []);
+  useEffect(() => { 
+    const initAuth = async () => {
+      const { data } = await supabase.auth.getSession();
+      if (data.session?.user) {
+        setUsuarioLogueado(data.session.user.id);
+        const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', data.session.user.id).maybeSingle();
+        if (perfil) setUserRol(perfil.rol);
+      }
+    };
+    initAuth();
+  }, []);
+  
   useEffect(() => { fetchDatosDia(); }, [selectedDate]);
 
   useEffect(() => {
@@ -162,15 +188,15 @@ useEffect(() => {
 
       const dentistas = profs || [];
       const idsDentistasUserId = dentistas.map(p => p.user_id);
-      const idsDentistasId = dentistas.map(p => p.id); // CORRECCIÓN UUID
+      const idsDentistasId = dentistas.map(p => p.id);
 
       if (dentistas.length > 0) {
         const [citasRes, dispoRes, bloqueosRes] = await Promise.all([
-supabase.from('citas').select('id, inicio, fin, estado, pacientes(id, nombre, apellido, rut, telefono, activo, motivo_deshabilitado), profesional_id, motivo, created_at')            .gte('inicio', `${fechaISO}T00:00:00`)
+          supabase.from('citas').select('id, inicio, fin, estado, pacientes(id, nombre, apellido, rut, telefono, activo, motivo_deshabilitado), profesional_id, motivo, created_at')
+            .gte('inicio', `${fechaISO}T00:00:00`)
             .lte('inicio', `${fechaISO}T23:59:59`)
             .neq('estado', 'cancelada'),
           supabase.from('disponibilidad_profesional').select('*').in('profesional_id', idsDentistasUserId),
-          // CORRECCIÓN UUID EN BLOQUEOS
           supabase.from('bloqueos_agenda').select('*').in('profesional_id', idsDentistasId).eq('fecha', fechaISO)
         ]);
         
@@ -187,22 +213,66 @@ supabase.from('citas').select('id, inicio, fin, estado, pacientes(id, nombre, ap
     }
   }
 
+  // ACCIONES RÁPIDAS DEL MENÚ DESPLEGABLE
+  const actualizarEstadoCita = async (citaId: string, nuevoEstado: string) => {
+    // 1. ACTUALIZACIÓN OPTIMISTA: Cambiamos el estado localmente al instante sin recargar nada
+    setCitas(prevCitas => 
+      prevCitas.map(cita => 
+        cita.id === citaId ? { ...cita, estado: nuevoEstado } : cita
+      )
+    );
+    toast.success("Estado actualizado exitosamente");
+
+    // 2. Guardamos en la base de datos en segundo plano (silenciosamente)
+    try {
+      const updateData: any = { estado: nuevoEstado, modificado_por: usuarioLogueado };
+      if (nuevoEstado === 'cancelada') updateData.cancelado_por = usuarioLogueado;
+      if (nuevoEstado === 'en_espera') { updateData.llegada_confirmada = true; updateData.hora_llegada = new Date().toISOString(); }
+
+      const { error } = await supabase.from('citas').update(updateData).eq('id', citaId);
+      if (error) throw error;
+      
+      // Ya NO llamamos a fetchDatosDia() aquí, a menos que haya un error.
+    } catch(e) {
+      toast.error("Error de conexión al guardar el estado.");
+      fetchDatosDia(); // Solo recargamos si algo falló para devolver la cita a su estado real
+    }
+  }
+
+  const abrirModalComentario = (cita: any) => {
+    setModalComentario({ abierto: true, cita, texto: cita.motivo || '' });
+  };
+
+  const guardarComentario = async () => {
+    if (!modalComentario.cita) return;
+    setCargandoAccion(true);
+    try {
+      await supabase.from('citas')
+        .update({ motivo: modalComentario.texto.toUpperCase(), modificado_por: usuarioLogueado })
+        .eq('id', modalComentario.cita.id);
+      toast.success("Comentario/Motivo actualizado");
+      setModalComentario({ abierto: false, cita: null, texto: '' });
+      fetchDatosDia();
+    } catch (error) {
+      toast.error("Error al guardar comentario");
+    } finally {
+      setCargandoAccion(false);
+    }
+  };
+
   const profesionalesDelDia = useMemo(() => {
-  const diaSemanaActual = selectedDate.getDay();
-  const fechaISO = getLocalDateISO(selectedDate);
-  
-  return profesionales.filter(p => {
-      // 🔒 RESTRICCIÓN: Si es dentista, ocultar las columnas de los demás
-      if (!puedeVerAgendaCompleta && p.user_id !== usuarioLogueado) return false;
+    const diaSemanaActual = selectedDate.getDay();
+    const fechaISO = getLocalDateISO(selectedDate);
+    
+    return profesionales.filter(p => {
+        if (!puedeVerAgendaCompleta && p.user_id !== usuarioLogueado) return false;
+        const tieneDispo = disponibilidades.some(d => d.profesional_id === p.user_id && ((d.fecha_especifica && d.fecha_especifica === fechaISO) || (!d.fecha_especifica && d.dia_semana === diaSemanaActual)));
+        const tieneCitas = citas.some(c => c.profesional_id === p.user_id);
+        const tieneBloqueos = bloqueos.some(b => b.profesional_id === p.id);
+        return tieneDispo || tieneCitas || tieneBloqueos;
+    });
+  }, [profesionales, disponibilidades, citas, bloqueos, selectedDate, puedeVerAgendaCompleta, usuarioLogueado]);
 
-      const tieneDispo = disponibilidades.some(d => d.profesional_id === p.user_id && ((d.fecha_especifica && d.fecha_especifica === fechaISO) || (!d.fecha_especifica && d.dia_semana === diaSemanaActual)));
-      const tieneCitas = citas.some(c => c.profesional_id === p.user_id);
-      const tieneBloqueos = bloqueos.some(b => b.profesional_id === p.id);
-      return tieneDispo || tieneCitas || tieneBloqueos;
-  });
-}, [profesionales, disponibilidades, citas, bloqueos, selectedDate, puedeVerAgendaCompleta, usuarioLogueado]);
-
-  // ES HORARIO LABORAL PARA LA VISTA PRINCIPAL (CORREGIDO HORARIOS ESPECIALES)
   const esHorarioLaboral = (profId: string, fecha: string, hora: string, duracionMinutos: number) => {
     const diaSemana = new Date(fecha + 'T00:00:00').getDay();
     const slotStart = new Date(`${fecha}T${hora}:00`).getTime();
@@ -294,6 +364,7 @@ supabase.from('citas').select('id, inicio, fin, estado, pacientes(id, nombre, ap
     setCitaEnReprogramacion(null); setNuevoTratamientoNombre(''); setEsOtroDocumento(false);
     setModoNuevoPaciente(false); setTratamientosPaciente([]); setTratamientoSeleccionadoId(null);
     setNuevoPaciente({ nombre: '', apellido: '', rut: '', telefono: '', fecha_nacimiento: '', sexo: '' }); setCargandoAccion(false);
+    setMenuAbiertoId(null);
   };
 
   const buscarPacientes = async (term: string) => {
@@ -397,7 +468,6 @@ supabase.from('citas').select('id, inicio, fin, estado, pacientes(id, nombre, ap
       const profNuevo = profesionales.find(p => p.user_id === reagendaProps.especialistaId);
 
       const [bloqueosRes, dispoRes, citasRes] = await Promise.all([
-        // CORRECCIÓN: Filtrar bloqueos por profNuevo?.id
         supabase.from('bloqueos_agenda').select('fecha, hora_inicio, hora_fin').eq('profesional_id', profNuevo?.id).gte('fecha', inicioSemanaStr).lte('fecha', finSemanaStr),
         supabase.from('disponibilidad_profesional').select('*').eq('profesional_id', reagendaProps.especialistaId),
         supabase.from('citas').select('id, inicio, fin').eq('profesional_id', reagendaProps.especialistaId).gte('inicio', `${inicioSemanaStr}T00:00:00`).lte('inicio', `${finSemanaStr}T23:59:59`).neq('estado', 'cancelada')
@@ -410,7 +480,6 @@ supabase.from('citas').select('id, inicio, fin, estado, pacientes(id, nombre, ap
         const bloqueosDia = bloqueosRes.data?.filter(bl => bl.fecha === dateStr) || [];
         if (bloqueosDia.some(bl => !bl.hora_inicio || !bl.hora_fin)) return { date: dateStr, dateObj, status: 'bloqueado', slots: [] };
         
-        // CORRECCIÓN: Separar Especiales vs Semanales en Reagendamiento
         const dispoEspecialDia = dispoRes.data?.filter(di => di.fecha_especifica === dateStr) || [];
         const dispoDia = dispoEspecialDia.length > 0 ? dispoEspecialDia : (dispoRes.data?.filter(di => di.dia_semana === diaSemanaNum && !di.fecha_especifica) || []);
 
@@ -484,56 +553,56 @@ supabase.from('citas').select('id, inicio, fin, estado, pacientes(id, nombre, ap
   const mostrarLineaTiempo = esHoy && minutosDesdeLas8 >= 0 && minutosDesdeLas8 <= ((21 - 8) * 60);
 
   return (
-    <main className="min-h-screen bg-[#FBF8F2] p-4 md:p-10 pb-24 md:pb-10 font-sans text-slate-900 relative overflow-hidden z-0">
+    <main className="min-h-screen bg-[#FBF8F2] p-3 md:p-5 pb-24 md:pb-6 font-sans text-slate-900 relative overflow-hidden z-0">
       
       {/* IMAGEN DE FONDO GLOBAL */}
       <div 
         className="absolute top-0 right-0 w-[700px] h-[800px] bg-[url('/fondo-profesionales.png')] bg-contain bg-right-top bg-no-repeat -z-10 pointer-events-none opacity-40 mix-blend-multiply"
       ></div>
 
-      <div className="max-w-[1600px] mx-auto space-y-6 md:space-y-8 relative z-10 text-left">
+      <div className="max-w-[1600px] mx-auto space-y-3 md:space-y-4 relative z-10 text-left">
         
-        {/* HEADER TIPO TARJETA BLANCA */}
-        <header className="bg-white/90 backdrop-blur-md p-5 md:p-8 rounded-[2rem] md:rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-5 md:gap-6 text-left">
-          <div className="flex items-center gap-4 md:gap-5 text-left w-full md:w-auto">
-            <div className="bg-[#0A111F] w-14 h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center text-[#C9A24B] shadow-lg shrink-0">
-              <LayoutGrid className="md:w-[28px] md:h-[28px]" size={24} />
+        {/* HEADER SÚPER COMPACTO */}
+        <header className="bg-white/90 backdrop-blur-md p-3 md:p-4 rounded-xl md:rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 text-left">
+          <div className="flex items-center gap-3 text-left w-full md:w-auto">
+            <div className="bg-[#0A111F] w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center text-[#C9A24B] shadow-sm shrink-0">
+              <LayoutGrid className="md:w-[18px] md:h-[18px]" size={16} />
             </div>
             <div className="text-left">
-              <h1 className="text-xl md:text-3xl font-black text-[#0A111F] uppercase italic leading-none tracking-tight text-left">
+              <h1 className="text-lg md:text-xl font-black text-[#0A111F] uppercase italic leading-none tracking-tight text-left">
                 AGENDA MÉDICOS
               </h1>
-              <p className="text-slate-400 text-[9px] md:text-xs font-bold uppercase tracking-widest mt-1 md:mt-1.5 flex items-center gap-1.5 md:gap-2">
-                <span className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-[#C9A24B] animate-pulse"></span> Vista Diaria Combinada
+              <p className="text-slate-400 text-[9px] md:text-[10px] font-bold uppercase tracking-widest mt-0.5 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#C9A24B] animate-pulse"></span> Vista Diaria
               </p>
             </div>
           </div>
 
-          <div className="flex flex-col xl:flex-row items-stretch xl:items-center gap-3 md:gap-4 w-full xl:w-auto">
-            {/* Control de Fechas */}
-            <div className="bg-slate-50 border border-slate-100 rounded-xl md:rounded-[2rem] p-1 md:p-2 flex items-center justify-between gap-4 shadow-inner">
-              <button onClick={() => navegarDia(-1)} className="p-2 md:p-3 hover:bg-white hover:shadow-sm rounded-lg md:rounded-2xl transition-all text-slate-500">
-                <ChevronLeft className="md:w-[20px] md:h-[20px]" size={18} />
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2 md:gap-3 w-full lg:w-auto">
+            {/* Control de Fechas Compacto */}
+            <div className="bg-slate-50 border border-slate-100 rounded-lg md:rounded-xl p-1 flex items-center justify-between gap-2 shadow-inner">
+              <button onClick={() => navegarDia(-1)} className="p-1.5 md:p-2 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-500">
+                <ChevronLeft className="md:w-[16px] md:h-[16px]" size={16} />
               </button>
               
-              <div className="relative flex items-center justify-center cursor-pointer group" onClick={() => dateInputRef.current?.showPicker()}>
-                 <span className="text-[10px] md:text-sm font-black uppercase text-slate-800 tracking-widest min-w-[140px] md:min-w-[200px] text-center hover:text-[#C9A24B] transition-colors">
+              <div className="relative flex items-center justify-center cursor-pointer group px-2" onClick={() => dateInputRef.current?.showPicker()}>
+                 <span className="text-[10px] md:text-xs font-black uppercase text-slate-800 tracking-widest min-w-[120px] md:min-w-[140px] text-center hover:text-[#C9A24B] transition-colors">
                    {selectedDate.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'short' })}
                  </span>
                  <input ref={dateInputRef} type="date" className="sr-only" value={getLocalDateISO(selectedDate)} onChange={(e) => { if(e.target.value) { const [y, m, d] = e.target.value.split('-'); setSelectedDate(new Date(Number(y), Number(m)-1, Number(d))); } }} />
               </div>
 
-              <button onClick={() => navegarDia(1)} className="p-2 md:p-3 hover:bg-white hover:shadow-sm rounded-lg md:rounded-2xl transition-all text-slate-500">
-                <ChevronRight className="md:w-[20px] md:h-[20px]" size={18} />
+              <button onClick={() => navegarDia(1)} className="p-1.5 md:p-2 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-500">
+                <ChevronRight className="md:w-[16px] md:h-[16px]" size={16} />
               </button>
             </div>
 
-            <div className="flex flex-row gap-2 w-full md:w-auto">
-              <Link href="/semana" className="flex-1 md:flex-none justify-center bg-[#C9A24B] text-white px-4 md:px-6 py-3 md:py-4 rounded-xl md:rounded-[2rem] text-[10px] md:text-xs font-black uppercase tracking-widest shadow-xl hover:bg-[#a7853b] transition-all flex items-center gap-2">
-                <CalendarDays className="md:w-[18px] md:h-[18px]" size={16} /> <span className="hidden sm:inline">Vista</span> Semanal
+            <div className="flex flex-row gap-2 w-full lg:w-auto">
+              <Link href="/semana" className="flex-1 lg:flex-none justify-center bg-[#C9A24B] text-white px-3 md:px-4 py-2 md:py-2.5 rounded-lg md:rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest shadow-md hover:bg-[#a7853b] transition-all flex items-center gap-1.5">
+                <CalendarDays className="md:w-[14px] md:h-[14px]" size={14} /> <span className="hidden sm:inline">Semanal</span>
               </Link>
-              <Link href="/agenda" className="flex-1 md:flex-none justify-center bg-[#0A111F] text-white px-4 md:px-6 py-3 md:py-4 rounded-xl md:rounded-[2rem] text-[10px] md:text-xs font-black uppercase tracking-widest shadow-xl hover:bg-[#1a2538] transition-all flex items-center gap-2">
-                <LayoutGrid className="md:w-[18px] md:h-[18px]" size={16} /> Agenda
+              <Link href="/agenda" className="flex-1 lg:flex-none justify-center bg-[#0A111F] text-white px-3 md:px-4 py-2 md:py-2.5 rounded-lg md:rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest shadow-md hover:bg-[#1a2538] transition-all flex items-center gap-1.5">
+                <LayoutGrid className="md:w-[14px] md:h-[14px]" size={14} /> Agenda
               </Link>
             </div>
           </div>
@@ -571,160 +640,245 @@ supabase.from('citas').select('id, inicio, fin, estado, pacientes(id, nombre, ap
                 </div>
 
                 {/* Contenedor Horizontal Scrolleable de Doctores */}
-                <div className="flex-1 flex relative bg-slate-50/20">
-                   {profesionalesDelDia.map(p => {
-                      const citasDoc = citas.filter(c => c.profesional_id === p.user_id);
-                      const fechaStr = getLocalDateISO(selectedDate);
-                      const bloqueosDiaCompletos = bloqueos.some(b => b.profesional_id === p.id && b.fecha === fechaStr && (!b.hora_inicio || !b.hora_fin));
+                {profesionalesDelDia.map(p => {
+                    const citasDoc = citas.filter(c => c.profesional_id === p.user_id);
+                    const fechaStr = getLocalDateISO(selectedDate);
+                    const bloqueosDiaCompletos = bloqueos.some(b => b.profesional_id === p.id && b.fecha === fechaStr && (!b.hora_inicio || !b.hora_fin));
+                    
+                    // 🔥 DETECTAR SI ES EL ÚNICO DOCTOR EN PANTALLA 🔥
+                    const isUnicoDoctor = profesionalesDelDia.length === 1;
 
-                      return (
-                        <div key={p.user_id} className="min-w-[110px] md:min-w-[200px] border-r border-slate-100 flex flex-col relative">
-                          
-                          {/* Header Doctor Sticky Top */}
-                          <div className="h-[50px] md:h-[80px] border-b border-slate-200 bg-white/90 backdrop-blur-md flex flex-col items-center justify-center shrink-0 sticky top-0 z-30 p-1 md:p-2 text-center shadow-sm">
-                             <div className="w-5 h-5 md:w-8 md:h-8 bg-[#C9A24B]/10 text-[#C9A24B] rounded-full flex items-center justify-center mb-0.5 md:mb-1">
-                                <User className="md:w-[14px] md:h-[14px]" size={10} />
-                             </div>
-                             <p className="text-[9px] md:text-[11px] font-black uppercase tracking-tight text-[#0A111F] truncate w-full leading-none">
-                               {p.nombre.split(' ')[0]} {p.apellido.split(' ')[0]}
-                             </p>
-                          </div>
+                    return (
+                      <div key={p.user_id} className={`${isUnicoDoctor ? 'flex-1 min-w-full md:min-w-0' : 'min-w-[120px] md:min-w-[200px]'} border-r border-slate-100 flex flex-col relative transition-all duration-300`}>
+                        
+                        {/* Header Doctor Sticky Top (AHORA SÍ QUEDARÁ FIJO) */}
+                        <div className={`h-[50px] md:h-[80px] border-b border-slate-200 bg-white/95 backdrop-blur-xl flex ${isUnicoDoctor ? 'flex-row gap-3 md:gap-4' : 'flex-col'} items-center justify-center shrink-0 sticky top-0 z-30 p-2 md:p-4 text-center shadow-md`}>
+                           <div className={`bg-[#C9A24B]/10 text-[#C9A24B] rounded-full flex items-center justify-center ${isUnicoDoctor ? 'w-8 h-8 md:w-10 md:h-10 shadow-inner border border-[#C9A24B]/20' : 'w-5 h-5 md:w-8 md:h-8 mb-0.5 md:mb-1'}`}>
+                              <User className={isUnicoDoctor ? "md:w-[18px] md:h-[18px] w-[14px] h-[14px]" : "md:w-[14px] md:h-[14px] w-[10px] h-[10px]"} />
+                           </div>
+                           <p className={`${isUnicoDoctor ? 'text-sm md:text-xl text-[#8A6D2F]' : 'text-[9px] md:text-[11px] text-[#0A111F]'} font-black uppercase tracking-tight truncate w-full md:w-auto leading-none`}>
+                             {isUnicoDoctor ? `Dr(a). ${p.nombre} ${p.apellido}` : `${p.nombre.split(' ')[0]} ${p.apellido.split(' ')[0]}`}
+                           </p>
+                        </div>
 
-                          {/* Grilla Slots */}
-                          <div className="relative min-h-[400px] md:min-h-[600px] [--slot-h:1.5rem] md:[--slot-h:2.5rem] bg-white/50">
-                              {mostrarLineaTiempo && (
-                                <div className="absolute left-0 w-full z-20 flex items-center pointer-events-none" style={{ top: `calc(${(minutosDesdeLas8 / 15)} * var(--slot-h))`, transform: 'translateY(-50%)' }}>
-                                  <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] z-10 -ml-0.5"></div>
-                                  <div className="flex-1 border-b-2 border-red-500 border-dashed opacity-50"></div>
-                                </div>
-                              )}
+                        {/* Grilla Slots */}
+                        <div className="relative min-h-[400px] md:min-h-[600px] [--slot-h:1.5rem] md:[--slot-h:2.5rem] bg-white/50">
+                            {mostrarLineaTiempo && (
+                              <div className="absolute left-0 w-full z-20 flex items-center pointer-events-none" style={{ top: `calc(${(minutosDesdeLas8 / 15)} * var(--slot-h))`, transform: 'translateY(-50%)' }}>
+                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)] z-10 -ml-0.5"></div>
+                                <div className="flex-1 border-b-2 border-red-500 border-dashed opacity-50"></div>
+                              </div>
+                            )}
+                            
+                            {slotsHorarios.map(hora => {
+                              const laboral = esHorarioLaboral(p.user_id, fechaStr, hora, 15);
+                              const ocupado = esCitaOcupada(p.user_id, fechaStr, hora, 15);
                               
-                              {slotsHorarios.map(hora => {
-                                const laboral = esHorarioLaboral(p.user_id, fechaStr, hora, 15);
-                                const ocupado = esCitaOcupada(p.user_id, fechaStr, hora, 15);
-                                
-                                const esBloqueado = bloqueos.some(b => {
-                                    if (b.profesional_id !== p.id || b.fecha !== fechaStr) return false;
-                                    if (!b.hora_inicio || !b.hora_fin) return true;
-                                    const bIni = parseInt(b.hora_inicio.split(':')[0]) * 60 + parseInt(b.hora_inicio.split(':')[1]);
-                                    const bFin = parseInt(b.hora_fin.split(':')[0]) * 60 + parseInt(b.hora_fin.split(':')[1]);
-                                    const slotInicioMins = parseInt(hora.split(':')[0]) * 60 + parseInt(hora.split(':')[1]);
-                                    return slotInicioMins >= bIni && slotInicioMins < bFin;
-                                });
+                              const esBloqueado = bloqueos.some(b => {
+                                  if (b.profesional_id !== p.id || b.fecha !== fechaStr) return false;
+                                  if (!b.hora_inicio || !b.hora_fin) return true;
+                                  const bIni = parseInt(b.hora_inicio.split(':')[0]) * 60 + parseInt(b.hora_inicio.split(':')[1]);
+                                  const bFin = parseInt(b.hora_fin.split(':')[0]) * 60 + parseInt(b.hora_fin.split(':')[1]);
+                                  const slotInicioMins = parseInt(hora.split(':')[0]) * 60 + parseInt(hora.split(':')[1]);
+                                  return slotInicioMins >= bIni && slotInicioMins < bFin;
+                              });
 
-                                const esDisponible = laboral && !ocupado && !bloqueosDiaCompletos && !esBloqueado;
+                              const esDisponible = laboral && !ocupado && !bloqueosDiaCompletos && !esBloqueado;
 
-                                return (
-                                  <div key={hora} className="w-full h-[var(--slot-h)] border-b border-r border-slate-100/50 p-0.5 md:p-1 relative">
-                                    {bloqueosDiaCompletos || esBloqueado ? (
-                                      <div className="h-full w-full rounded-[4px] md:rounded-lg bg-rose-50/50 border border-rose-200 border-dashed flex items-center justify-center" title="Horario Bloqueado">
-                                        <Ban className="text-rose-300 w-[10px] h-[10px] md:w-[16px] md:h-[16px]" />
-                                      </div>
-                                    ) : esDisponible ? (
-                                      <div 
-                                        onClick={() => agendarDesdeSlot(p.user_id, hora)} 
-                                        className="h-full w-full rounded-[4px] md:rounded-lg bg-emerald-100/80 border border-emerald-200 hover:border-emerald-400 hover:bg-emerald-200 cursor-pointer transition-all flex items-center justify-center" 
-                                        title="Agendar cita"
-                                      >
-                                        {/* 🔥 ICONO SIEMPRE VISIBLE 🔥 */}
-                                        <Plus className="text-emerald-700 w-[10px] h-[10px] md:w-[16px] md:h-[16px]" />
-                                      </div>
-                                    ) : (
-                                      <div className="h-full w-full rounded-[4px] md:rounded-lg bg-slate-50/40" />
-                                    )}
-                                  </div>
-                                );
-                              })}
+                              return (
+                                <div key={hora} className="w-full h-[var(--slot-h)] border-b border-r border-slate-100/50 p-0.5 md:p-1 relative">
+                                  {bloqueosDiaCompletos || esBloqueado ? (
+                                    <div className="h-full w-full rounded-[4px] md:rounded-lg bg-rose-50/50 border border-rose-200 border-dashed flex items-center justify-center" title="Horario Bloqueado">
+                                      <Ban className="text-rose-300 w-[10px] h-[10px] md:w-[16px] md:h-[16px]" />
+                                    </div>
+                                  ) : esDisponible ? (
+                                    <div 
+                                      onClick={() => agendarDesdeSlot(p.user_id, hora)} 
+                                      className="h-full w-full rounded-[4px] md:rounded-lg bg-emerald-100/80 border border-emerald-200 hover:border-emerald-400 hover:bg-emerald-200 cursor-pointer transition-all flex items-center justify-center group/slot" 
+                                      title="Agendar cita"
+                                    >
+                                      <Plus className="text-emerald-700 opacity-0 group-hover/slot:opacity-100 transition-opacity w-[10px] h-[10px] md:w-[16px] md:h-[16px]" />
+                                    </div>
+                                  ) : (
+                                    <div className="h-full w-full rounded-[4px] md:rounded-lg bg-slate-50/40" />
+                                  )}
+                                </div>
+                              );
+                            })}
 
-                             {/* Renderizar Citas Absolutas */}
-                              {citasDoc.map(cita => {
-                                const ini = getMinsFromDateStr(cita.inicio);
-                                const fin = getMinsFromDateStr(cita.fin);
-                                const duracionMins = fin - ini;
-                                const top = (ini - (8 * 60)) / 15; 
-                                const height = duracionMins / 15;
-                                const estadoStyle = ESTADOS_CITA[cita.estado] || ESTADOS_CITA.programada;
-                                const iniciales = getIniciales(cita.pacientes?.nombre, cita.pacientes?.apellido);
-                                const hFormat = new Date(cita.inicio).toLocaleTimeString('es-CL', {hour: '2-digit', minute:'2-digit'});
+                           {/* Renderizar Citas Absolutas */}
+                            {citasDoc.map(cita => {
+                              const ini = getMinsFromDateStr(cita.inicio);
+                              const fin = getMinsFromDateStr(cita.fin);
+                              const duracionMins = fin - ini;
+                              const top = (ini - (8 * 60)) / 15; 
+                              const height = duracionMins / 15;
+                              const estadoStyle = ESTADOS_CITA[cita.estado] || ESTADOS_CITA.programada;
+                              const iniciales = getIniciales(cita.pacientes?.nombre, cita.pacientes?.apellido);
+                              const hFormat = new Date(cita.inicio).toLocaleTimeString('es-CL', {hour: '2-digit', minute:'2-digit'});
 
-                                // 🔥 DETECCIÓN AUTOMÁTICA DE SOBRECUPO POR CRUCE DE HORARIOS 🔥
-                                const isSobrecupo = citasDoc.some(otra => {
-                                    if (otra.id === cita.id) return false;
-                                    const cIni = new Date(cita.inicio.replace(' ', 'T')).getTime();
-                                    const cFin = new Date(cita.fin.replace(' ', 'T')).getTime();
-                                    const oIni = new Date(otra.inicio.replace(' ', 'T')).getTime();
-                                    const oFin = new Date(otra.fin.replace(' ', 'T')).getTime();
+                              // DETECCIÓN AUTOMÁTICA DE SOBRECUPO
+                              const isSobrecupo = citasDoc.some(otra => {
+                                  if (otra.id === cita.id) return false;
+                                  const cIni = new Date(cita.inicio.replace(' ', 'T')).getTime();
+                                  const cFin = new Date(cita.fin.replace(' ', 'T')).getTime();
+                                  const oIni = new Date(otra.inicio.replace(' ', 'T')).getTime();
+                                  const oFin = new Date(otra.fin.replace(' ', 'T')).getTime();
+                                  
+                                  if (cIni >= oFin || cFin <= oIni) return false; 
+                                  
+                                  const timeC = cita.created_at ? new Date(cita.created_at).getTime() : 0;
+                                  const timeO = otra.created_at ? new Date(otra.created_at).getTime() : 0;
+                                  if (timeC !== timeO && timeC > 0 && timeO > 0) return timeC > timeO;
+                                  return String(cita.id) > String(otra.id);
+                              }) || cita.es_sobrecupo === true || (cita.motivo && cita.motivo.toUpperCase().includes('SOBRECUPO'));
+
+                              const isMenuAbierto = menuAbiertoId === cita.id;
+
+                              const boxBg = isSobrecupo ? 'bg-rose-100' : estadoStyle.bg;
+                              const boxBorder = isSobrecupo ? 'border-rose-400 border-dashed border-2 shadow-[0_0_15px_rgba(244,63,94,0.4)]' : `border ${estadoStyle.bg.replace('bg-', 'border-').replace('50', '200')}`;
+                              const textColor = isSobrecupo ? 'text-rose-900' : estadoStyle.text;
+
+                              // Si el menú está abierto, le damos z-[50] para que pase por encima de TODAS las demás tarjetas
+                              const baseZ = isSobrecupo ? 'z-[20]' : 'z-10';
+                              const zIndexClass = isMenuAbierto ? 'z-[50] shadow-xl ring-2 ring-[#C9A24B]/30' : `${baseZ} hover:z-30`;
+
+                              const posicionEstilo = isSobrecupo 
+                                ? `${zIndexClass} left-[8px] md:left-[14px] w-[calc(100%-10px)] md:w-[calc(100%-18px)]` 
+                                : `${zIndexClass} left-[2px] md:left-1 w-[calc(100%-4px)] md:w-[calc(100%-8px)]`;
+
+                              return (
+                                <motion.div
+                                  key={cita.id}
+                                  initial={{ opacity: 0, scale: 0.9 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  className={`absolute ${posicionEstilo} ${boxBg} ${boxBorder} rounded-[4px] md:rounded-lg p-1 md:p-2 hover:shadow-md transition-all duration-200 flex flex-col justify-center group`}
+                                  style={{ 
+                                    top: `calc(${top} * var(--slot-h))`, 
+                                    height: `calc(${height} * var(--slot-h))` 
+                                  }}
+                                >
+                                  {/* CLIC BACKGROUND = REAGENDAR */}
+                                  <div className="absolute inset-0 z-0 overflow-hidden rounded-[4px] md:rounded-lg cursor-pointer" onClick={() => iniciarReprogramacion(cita)}></div>
+
+                                  {/* CONTENT */}
+                                  <div className={`relative z-10 flex ${isUnicoDoctor ? 'flex-row items-center justify-between' : 'flex-col'} h-full pointer-events-none px-1`}>
                                     
-                                    if (cIni >= oFin || cFin <= oIni) return false; 
-                                    
-                                    const timeC = cita.created_at ? new Date(cita.created_at).getTime() : 0;
-                                    const timeO = otra.created_at ? new Date(otra.created_at).getTime() : 0;
-                                    if (timeC !== timeO && timeC > 0 && timeO > 0) return timeC > timeO;
-                                    return String(cita.id) > String(otra.id);
-                                }) || cita.es_sobrecupo === true || (cita.motivo && cita.motivo.toUpperCase().includes('SOBRECUPO'));
-
-                                const boxBg = isSobrecupo ? 'bg-rose-100' : estadoStyle.bg;
-                                const boxBorder = isSobrecupo ? 'border-rose-400 border-dashed border-2 shadow-[0_0_15px_rgba(244,63,94,0.4)]' : `border ${estadoStyle.bg.replace('bg-', 'border-').replace('50', '200')}`;
-                                const textColor = isSobrecupo ? 'text-rose-900' : estadoStyle.text;
-
-                                // Si es sobrecupo, le damos un z-index superior y la desplazamos a la derecha (efecto cascada)
-                                const posicionEstilo = isSobrecupo 
-                                  ? 'z-[20] left-[8px] md:left-[14px] w-[calc(100%-10px)] md:w-[calc(100%-18px)]' 
-                                  : 'z-10 left-[2px] md:left-1 w-[calc(100%-4px)] md:w-[calc(100%-8px)]';
-
-                                return (
-                                  <motion.div
-                                    key={cita.id}
-                                    initial={{ opacity: 0, scale: 0.9 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    onClick={() => iniciarReprogramacion(cita)}
-                                    className={`absolute ${posicionEstilo} ${boxBg} ${boxBorder} rounded-[4px] md:rounded-lg p-1 md:p-2 cursor-pointer hover:shadow-md hover:z-30 transition-all duration-200 flex flex-col justify-center overflow-hidden group`}
-                                    style={{ 
-                                      top: `calc(${top} * var(--slot-h))`, 
-                                      height: `calc(${height} * var(--slot-h))` 
-                                    }}
-                                  >
-                                    <div className="flex items-center justify-between mb-0.5 md:mb-1 w-full gap-1">
-                                      <div className="flex items-center gap-1 md:gap-1.5 overflow-hidden flex-1">
-                                        <div className={`w-3 h-3 md:w-5 md:h-5 rounded-full bg-white/90 flex items-center justify-center text-[7px] md:text-[9px] font-black shadow-sm border border-white/50 shrink-0 ${isSobrecupo ? 'text-rose-600' : estadoStyle.text}`}>
-                                          {iniciales}
-                                        </div>
-                                        <span className={`text-[8px] md:text-[11px] font-black truncate uppercase transition-colors ${isSobrecupo ? 'text-rose-950' : `text-slate-900 group-hover:${estadoStyle.text}`}`}>
-                                          {cita.pacientes?.nombre?.split(' ')[0]} {cita.pacientes?.apellido?.split(' ')[0]}
-                                        </span>
+                                    {/* Info Paciente */}
+                                    <div className={`flex items-center gap-1 md:gap-2 overflow-hidden flex-1 pointer-events-auto cursor-pointer ${isUnicoDoctor ? 'mr-4' : 'mb-0.5 md:mb-1 w-full'}`} onClick={() => iniciarReprogramacion(cita)}>
+                                      <div className={`w-4 h-4 md:w-6 md:h-6 rounded-full bg-white/90 flex items-center justify-center text-[8px] md:text-[10px] font-black shadow-sm border border-white/50 shrink-0 ${isSobrecupo ? 'text-rose-600' : estadoStyle.text}`}>
+                                        {iniciales}
                                       </div>
-                                      
+                                      <span className={`text-[10px] md:text-[13px] font-black truncate uppercase transition-colors ${isSobrecupo ? 'text-rose-950' : `text-slate-900 group-hover:${estadoStyle.text}`}`}>
+                                        {isUnicoDoctor ? `${cita.pacientes?.nombre} ${cita.pacientes?.apellido}` : `${cita.pacientes?.nombre?.split(' ')[0]} ${cita.pacientes?.apellido?.split(' ')[0]}`}
+                                      </span>
                                       {/* 🔥 SELLO DE SOBRECUPO 🔥 */}
                                       {isSobrecupo && (
-                                        <div className="shrink-0 bg-rose-600 text-white px-1 md:px-1.5 py-0.5 rounded shadow-sm flex items-center justify-center -rotate-3 border border-rose-500">
-                                          <span className="text-[6px] md:text-[7.5px] font-black uppercase tracking-widest leading-none">SOBRECUPO</span>
+                                        <div className="shrink-0 bg-rose-600 text-white px-1.5 py-0.5 rounded shadow-sm flex items-center justify-center border border-rose-500 ml-1">
+                                          <span className="text-[7px] md:text-[8px] font-black uppercase tracking-widest leading-none">SOBRECUPO</span>
                                         </div>
                                       )}
                                     </div>
                                     
-                                    <div className="flex items-center justify-between mt-0 md:mt-0.5 w-full">
-                                      <div className="flex items-center gap-0.5 md:gap-1 truncate">
-                                        <span className={`${isSobrecupo ? 'text-rose-600' : estadoStyle.text} shrink-0 [&>svg]:w-[8px] [&>svg]:h-[8px] md:[&>svg]:w-[11px] md:[&>svg]:h-[11px]`}>
+                                    {/* Info Estado y Hora */}
+                                    <div className={`flex items-center justify-between pointer-events-auto cursor-pointer ${isUnicoDoctor ? 'w-auto gap-4 mr-6' : 'mt-0 md:mt-0.5 w-full pr-4 md:pr-5'}`} onClick={() => iniciarReprogramacion(cita)}>
+                                      <div className="flex items-center gap-1 md:gap-1.5 truncate">
+                                        <span className={`${isSobrecupo ? 'text-rose-600' : estadoStyle.text} shrink-0 [&>svg]:w-[10px] [&>svg]:h-[10px] md:[&>svg]:w-[14px] md:[&>svg]:h-[14px]`}>
                                           {estadoStyle.icon}
                                         </span>
-                                        <span className={`text-[6px] md:text-[8.5px] font-black uppercase tracking-widest truncate ${textColor}`}>
+                                        <span className={`text-[8px] md:text-[10px] font-black uppercase tracking-widest truncate ${textColor}`}>
                                           {estadoStyle.label}
                                         </span>
                                       </div>
-                                      <span className={`text-[6.5px] md:text-[8px] font-bold uppercase tracking-widest shrink-0 opacity-80 ${textColor}`}>
+                                      <span className={`text-[8px] md:text-[10px] font-bold uppercase tracking-widest shrink-0 opacity-80 ${textColor}`}>
                                         {hFormat}
                                       </span>
                                     </div>
-                                  </motion.div>
-                                );
-                              })}
-                          </div>
+                                  </div>
+
+                                  {/* 🔥 NUEVO MENÚ DESPLEGABLE ELEGANTE 🔥 */}
+                                  <div className="absolute top-2 right-2 z-20 menu-acciones-cita">
+                                     <button 
+                                        onClick={(e) => { e.stopPropagation(); setMenuAbiertoId(menuAbiertoId === cita.id ? null : cita.id); }} 
+                                        className={`p-1.5 rounded-lg backdrop-blur-md transition-all shadow-sm border pointer-events-auto ${isMenuAbierto ? 'bg-[#0A111F] text-[#C9A24B] border-[#0A111F]' : 'bg-white/80 text-slate-400 border-slate-200/50 hover:bg-white hover:text-[#C9A24B]'}`}
+                                     >
+                                          <MoreVertical size={16} />
+                                     </button>
+
+                                     {/* DESPLEGABLE */}
+                                     <AnimatePresence>
+                                     {isMenuAbierto && (
+                                        <>
+                                           {/* Capa invisible para cerrar el menú al hacer clic afuera */}
+                                           <div className="fixed inset-0 z-[40]" onClick={(e) => { e.stopPropagation(); setMenuAbiertoId(null); }} />
+                                           
+                                           <motion.div
+                                              initial={{ opacity: 0, scale: 0.9, transformOrigin: 'top right' }}
+                                              animate={{ opacity: 1, scale: 1 }}
+                                              exit={{ opacity: 0, scale: 0.9 }}
+                                              transition={{ duration: 0.15, ease: "easeOut" }}
+                                              className="absolute top-10 right-0 w-52 md:w-56 bg-white/95 backdrop-blur-xl rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100 z-[50] flex flex-col py-2 overflow-hidden"
+                                              onClick={(e) => e.stopPropagation()}
+                                           >
+                                              {/* SECCIÓN PACIENTE */}
+                                              <div className="px-4 py-2 border-b border-slate-50 mb-1">
+                                                 <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Atajos del Paciente</p>
+                                              </div>
+                                              <Link href={`/pacientes/${cita.pacientes?.id}`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><ClipboardList size={14} className="opacity-70"/> Ficha Clínica</Link>
+                                              <Link href={`/pacientes/${cita.pacientes?.id}/tratamientos`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><Activity size={14} className="opacity-70"/> Tratamientos</Link>
+                                              
+                                              {puedeVerFinanzas && (
+                                                 <Link href={`/pacientes/${cita.pacientes?.id}/pagos`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><Wallet size={14} className="opacity-70"/> Pagos</Link>
+                                              )}
+
+                                              <Link href={`/pacientes/${cita.pacientes?.id}/datos`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><User size={14} className="opacity-70"/> Datos Personales</Link>
+
+                                              <div className="h-px bg-slate-100 my-1 mx-2"></div>
+
+                                              {/* SECCIÓN CITA */}
+                                              <div className="px-4 py-2 border-b border-slate-50 mb-1">
+                                                 <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Gestión de Cita</p>
+                                              </div>
+                                              <button onClick={(e) => { e.stopPropagation(); setMenuAbiertoId(null); iniciarReprogramacion(cita); }} className="w-full px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2 text-left transition-colors"><CalendarClock size={14} className="opacity-70"/> Reagendar / Duración</button>
+                                              <button onClick={(e) => { e.stopPropagation(); setMenuAbiertoId(null); abrirModalComentario(cita); }} className="w-full px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-amber-50 hover:text-amber-600 flex items-center gap-2 text-left transition-colors"><MessageSquare size={14} className="opacity-70"/> Comentario / Motivo</button>
+
+                                              <div className="h-px bg-slate-100 my-1 mx-2"></div>
+
+                                              {/* SELECTOR DE ESTADO */}
+                                              <div className="px-3 py-2 mt-1">
+                                                  <span className="text-[9px] font-black text-slate-700 uppercase tracking-widest flex items-center gap-1.5 mb-2 px-1">
+                                                     <div className={`w-2 h-2 rounded-full ${ESTADOS_CITA[cita.estado]?.dot || 'bg-slate-400'}`}></div>
+                                                     Estado actual
+                                                  </span>
+                                                  <select
+                                                     value={cita.estado}
+                                                     onChange={(e) => {
+                                                         actualizarEstadoCita(cita.id, e.target.value);
+                                                         setMenuAbiertoId(null);
+                                                     }}
+                                                     className="w-full p-2.5 text-[10px] md:text-xs font-bold uppercase rounded-xl bg-slate-50 border border-slate-200 outline-none focus:border-[#C9A24B] cursor-pointer text-slate-700 shadow-sm appearance-none"
+                                                  >
+                                                     {Object.entries(ESTADOS_CITA).map(([k, v]) => (
+                                                         <option key={k} value={k}>{v.label}</option>
+                                                     ))}
+                                                  </select>
+                                              </div>
+                                           </motion.div>
+                                        </>
+                                     )}
+                                     </AnimatePresence>
+                                  </div>
+                                </motion.div>
+                              );
+                            })}
                         </div>
-                      )
-                   })}
+                      </div>
+                    )
+                 })}
+                        
                 </div>
 
-              </div>
+          
             )}
           </div>
         )}
@@ -733,6 +887,46 @@ supabase.from('citas').select('id, inicio, fin, estado, pacientes(id, nombre, ap
       {/* PORTALES GLOBALES PARA MODALES */}
       {portalNode ? createPortal(
         <>
+          {/* MODAL PARA AGREGAR COMENTARIO/MOTIVO */}
+          <AnimatePresence>
+             {modalComentario.abierto && (
+               <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-[#0A111F]/60 backdrop-blur-sm">
+                  <motion.div
+                     initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                     animate={{ opacity: 1, scale: 1, y: 0 }}
+                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                     className="bg-white rounded-2xl md:rounded-[2rem] w-full max-w-sm shadow-2xl overflow-hidden text-left"
+                  >
+                     <div className="p-5 md:p-6 bg-[#FBF8F2] border-b border-slate-100 flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                           <div className="p-2 bg-amber-100 text-amber-600 rounded-xl"><MessageSquare size={20}/></div>
+                           <div>
+                              <h3 className="font-black text-[#0A111F] uppercase italic leading-none tracking-tight">Comentario</h3>
+                              <p className="text-[9px] md:text-[10px] font-bold text-slate-400 tracking-widest uppercase mt-1">Motivo de Atención</p>
+                           </div>
+                        </div>
+                        <button onClick={() => setModalComentario({abierto: false, cita: null, texto: ''})} className="text-slate-400 hover:text-slate-600 hover:bg-slate-200 p-2 rounded-full transition-colors"><X size={18}/></button>
+                     </div>
+                     <div className="p-5 md:p-6 bg-white space-y-4">
+                        <p className="text-xs font-bold text-slate-500">Actualiza el motivo o deja un comentario sobre la cita para el especialista.</p>
+                        <textarea 
+                           className="w-full h-32 p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-[#C9A24B] resize-none uppercase"
+                           placeholder="Ej: Urgencia dolor dental..."
+                           value={modalComentario.texto}
+                           onChange={(e) => setModalComentario({...modalComentario, texto: e.target.value})}
+                        ></textarea>
+                     </div>
+                     <div className="p-5 md:p-6 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+                        <button onClick={() => setModalComentario({abierto: false, cita: null, texto: ''})} className="px-5 py-3 text-xs font-black text-slate-400 uppercase tracking-widest hover:bg-slate-200 rounded-xl transition-colors">Cancelar</button>
+                        <button onClick={guardarComentario} disabled={cargandoAccion} className="px-6 py-3 text-xs font-black text-white uppercase tracking-widest bg-[#0A111F] hover:bg-[#1a2538] rounded-xl flex items-center gap-2 shadow-lg disabled:opacity-50">
+                           {cargandoAccion ? <Loader2 size={16} className="animate-spin"/> : <Save size={16}/>} Guardar
+                        </button>
+                     </div>
+                  </motion.div>
+               </div>
+             )}
+          </AnimatePresence>
+
           {/* MODAL DE CONFLICTOS DE AGENDA Y REAGENDAMIENTO SEMANAL */}
           <AnimatePresence>
             {mostrarModalConflictos && (
@@ -867,8 +1061,9 @@ supabase.from('citas').select('id, inicio, fin, estado, pacientes(id, nombre, ap
                                             })
                                           )}
                                         </div>
-                                        
-                                        <div className="mt-2 flex flex-col md:flex-row items-center justify-between gap-3 md:gap-4 border-t border-slate-200 pt-3 md:pt-4 text-center md:text-left">
+                                      </div>
+                                      
+                                      <div className="mt-2 flex flex-col md:flex-row items-center justify-between gap-3 md:gap-4 border-t border-slate-200 pt-3 md:pt-4 text-center md:text-left">
                                           <div className="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm w-full md:w-auto">
                                             Seleccionado: <span className={reagendaProps.hora ? "text-emerald-600 ml-1" : "text-red-400 ml-1"}>
                                               {reagendaProps.hora ? `${reagendaProps.fecha} a las ${reagendaProps.hora}` : "Ninguno"}
@@ -880,7 +1075,6 @@ supabase.from('citas').select('id, inicio, fin, estado, pacientes(id, nombre, ap
                                               {guardandoConflicto ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />} Confirmar
                                             </button>
                                           </div>
-                                        </div>
                                       </div>
                                     </div>
                                   </motion.div>
@@ -1011,13 +1205,13 @@ supabase.from('citas').select('id, inicio, fin, estado, pacientes(id, nombre, ap
                                               })
                                           )}
                                       </div>
-                                      
-                                      <div className="mt-2 flex flex-col md:flex-row items-center justify-between gap-3 md:gap-4 border-t border-slate-200 pt-3 md:pt-4 text-center md:text-left">
-                                          <div className="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm w-full">
-                                              Seleccionado: <span className={horasSeleccionadas[0]?.hora ? "text-emerald-600 ml-1" : "text-red-400 ml-1"}>
-                                                  {horasSeleccionadas[0]?.hora ? `${horasSeleccionadas[0].fecha} a las ${horasSeleccionadas[0].hora} hrs` : "Selecciona un horario libre arriba"}
-                                              </span>
-                                          </div>
+                                  </div>
+                                  
+                                  <div className="mt-2 flex flex-col md:flex-row items-center justify-between gap-3 md:gap-4 border-t border-slate-200 pt-3 md:pt-4 text-center md:text-left">
+                                      <div className="text-[9px] md:text-[10px] font-black text-slate-500 uppercase tracking-widest bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm w-full">
+                                          Seleccionado: <span className={horasSeleccionadas[0]?.hora ? "text-emerald-600 ml-1" : "text-red-400 ml-1"}>
+                                              {horasSeleccionadas[0]?.hora ? `${horasSeleccionadas[0].fecha} a las ${horasSeleccionadas[0].hora} hrs` : "Selecciona un horario libre arriba"}
+                                          </span>
                                       </div>
                                   </div>
                               </div>
