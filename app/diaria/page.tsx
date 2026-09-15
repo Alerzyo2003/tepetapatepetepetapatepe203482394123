@@ -824,7 +824,7 @@ export default function VistaDiariaPage() {
                                               <div className="px-4 py-2 border-b border-slate-50 mb-1">
                                                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Atajos del Paciente</p>
                                               </div>
-                                              <Link href={`/pacientes/${cita.pacientes?.id}`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><ClipboardList size={14} className="opacity-70"/> Ficha Clínica</Link>
+                                              <Link href={`/pacientes/${cita.pacientes?.id}`} prefetch={false} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><ClipboardList size={14} className="opacity-70"/> Ficha Clínica</Link>
                                               <Link href={`/pacientes/${cita.pacientes?.id}/tratamientos`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><Activity size={14} className="opacity-70"/> Tratamientos</Link>
                                               
                                               {puedeVerFinanzas && (
