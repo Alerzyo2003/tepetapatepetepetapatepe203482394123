@@ -15,15 +15,15 @@ import { toast } from 'sonner'
 import Link from 'next/link'
 
 // 🎨 PALETA DE ESTADOS MODERNA
-const ESTADOS_CITA: Record<string, { label: string, bg: string, text: string, dot: string, icon: any }> = {
-  programada: { label: 'No Confirmado', bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400', icon: <Clock /> },
-  confirmado_tel: { label: 'Confirmado', bg: 'bg-indigo-50', text: 'text-indigo-600', dot: 'bg-indigo-500', icon: <Phone /> },
-  en_espera: { label: 'En Espera', bg: 'bg-amber-50', text: 'text-amber-600', dot: 'bg-amber-500', icon: <Timer /> },
-  atendiendose: { label: 'En Box', bg: 'bg-blue-50', text: 'text-blue-600', dot: 'bg-blue-500', icon: <Activity /> },
-  atendido: { label: 'Atendido', bg: 'bg-emerald-50', text: 'text-emerald-600', dot: 'bg-emerald-500', icon: <CheckCircle2 /> },
-  no_asiste: { label: 'No Asistió', bg: 'bg-red-50', text: 'text-red-600', dot: 'bg-red-500', icon: <Ban /> },
-  cancelada: { label: 'Anulada', bg: 'bg-gray-100', text: 'text-gray-500', dot: 'bg-gray-400', icon: <Trash2 /> },
-  reprogramada: { label: 'Reprogramada', bg: 'bg-purple-50', text: 'text-purple-600', dot: 'bg-purple-500', icon: <RefreshCcw /> }
+const ESTADOS_CITA: Record<string, { label: string, bg: string, border: string, text: string, dot: string, circleText: string, icon: any }> = {
+  programada: { label: 'No Conf.', bg: 'bg-slate-100', border: 'border-slate-300', text: 'text-slate-700', dot: 'bg-slate-400', circleText: 'text-slate-600', icon: <Clock /> },
+  confirmado_tel: { label: 'Confirmado', bg: 'bg-blue-500', border: 'border-blue-600', text: 'text-white', dot: 'bg-white', circleText: 'text-blue-600', icon: <Phone /> },
+  en_espera: { label: 'En Espera', bg: 'bg-amber-400', border: 'border-amber-500', text: 'text-amber-950', dot: 'bg-amber-900', circleText: 'text-amber-600', icon: <Timer /> },
+  atendiendose: { label: 'En Box', bg: 'bg-fuchsia-500', border: 'border-fuchsia-600', text: 'text-white', dot: 'bg-white', circleText: 'text-fuchsia-600', icon: <Activity /> },
+  atendido: { label: 'Atendido', bg: 'bg-emerald-400', border: 'border-emerald-500', text: 'text-emerald-950', dot: 'bg-emerald-900', circleText: 'text-emerald-600', icon: <CheckCircle2 /> },
+  no_asiste: { label: 'No Asistió', bg: 'bg-rose-500', border: 'border-rose-600', text: 'text-white', dot: 'bg-white', circleText: 'text-rose-600', icon: <Ban /> },
+  cancelada: { label: 'Anulada', bg: 'bg-neutral-300', border: 'border-neutral-400', text: 'text-neutral-700', dot: 'bg-neutral-500', circleText: 'text-neutral-600', icon: <Trash2 /> },
+  reprogramada: { label: 'Reprogramada', bg: 'bg-violet-500', border: 'border-violet-600', text: 'text-white', dot: 'bg-white', circleText: 'text-violet-600', icon: <RefreshCcw /> }
 };
 
 const slotsHorarios = [
@@ -597,11 +597,11 @@ export default function VistaDiariaPage() {
               </button>
             </div>
 
-           <div className="flex flex-row gap-2 w-full lg:w-auto">
-              <Link prefetch={false} href="/semana" className="flex-1 lg:flex-none justify-center bg-[#C9A24B] text-white px-3 md:px-4 py-2 md:py-2.5 rounded-lg md:rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest shadow-md hover:bg-[#a7853b] transition-all flex items-center gap-1.5">
+            <div className="flex flex-row gap-2 w-full lg:w-auto">
+              <Link href="/semana" className="flex-1 lg:flex-none justify-center bg-[#C9A24B] text-white px-3 md:px-4 py-2 md:py-2.5 rounded-lg md:rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest shadow-md hover:bg-[#a7853b] transition-all flex items-center gap-1.5">
                 <CalendarDays className="md:w-[14px] md:h-[14px]" size={14} /> <span className="hidden sm:inline">Semanal</span>
               </Link>
-              <Link prefetch={false} href="/agenda" className="flex-1 lg:flex-none justify-center bg-[#0A111F] text-white px-3 md:px-4 py-2 md:py-2.5 rounded-lg md:rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest shadow-md hover:bg-[#1a2538] transition-all flex items-center gap-1.5">
+              <Link href="/agenda" className="flex-1 lg:flex-none justify-center bg-[#0A111F] text-white px-3 md:px-4 py-2 md:py-2.5 rounded-lg md:rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest shadow-md hover:bg-[#1a2538] transition-all flex items-center gap-1.5">
                 <LayoutGrid className="md:w-[14px] md:h-[14px]" size={14} /> Agenda
               </Link>
             </div>
@@ -736,9 +736,8 @@ export default function VistaDiariaPage() {
                               const isMenuAbierto = menuAbiertoId === cita.id;
 
                               const boxBg = isSobrecupo ? 'bg-rose-100' : estadoStyle.bg;
-                              const boxBorder = isSobrecupo ? 'border-rose-400 border-dashed border-2 shadow-[0_0_15px_rgba(244,63,94,0.4)]' : `border ${estadoStyle.bg.replace('bg-', 'border-').replace('50', '200')}`;
-                              const textColor = isSobrecupo ? 'text-rose-900' : estadoStyle.text;
-
+const boxBorder = isSobrecupo ? 'border-rose-400 border-dashed border-2 shadow-[0_0_15px_rgba(244,63,94,0.4)]' : `border-b-[3px] border-r-[3px] border-t border-l ${estadoStyle.border} shadow-sm`;
+const textColor = isSobrecupo ? 'text-rose-900' : estadoStyle.text;
                               // Si el menú está abierto, le damos z-[50] para que pase por encima de TODAS las demás tarjetas
                               const baseZ = isSobrecupo ? 'z-[20]' : 'z-10';
                               const zIndexClass = isMenuAbierto ? 'z-[50] shadow-xl ring-2 ring-[#C9A24B]/30' : `${baseZ} hover:z-30`;
@@ -766,12 +765,13 @@ export default function VistaDiariaPage() {
                                     
                                     {/* Info Paciente */}
                                     <div className={`flex items-center gap-1 md:gap-2 overflow-hidden flex-1 pointer-events-auto cursor-pointer ${isUnicoDoctor ? 'mr-4' : 'mb-0.5 md:mb-1 w-full'}`} onClick={() => iniciarReprogramacion(cita)}>
-                                      <div className={`w-4 h-4 md:w-6 md:h-6 rounded-full bg-white/90 flex items-center justify-center text-[8px] md:text-[10px] font-black shadow-sm border border-white/50 shrink-0 ${isSobrecupo ? 'text-rose-600' : estadoStyle.text}`}>
+                                      <div className={`w-4 h-4 md:w-6 md:h-6 rounded-full bg-white flex items-center justify-center text-[8px] md:text-[10px] font-black shadow-md shrink-0 ${isSobrecupo ? 'text-rose-600' : estadoStyle.circleText}`}>
                                         {iniciales}
                                       </div>
-                                      <span className={`text-[10px] md:text-[13px] font-black truncate uppercase transition-colors ${isSobrecupo ? 'text-rose-950' : `text-slate-900 group-hover:${estadoStyle.text}`}`}>
+                                      <span className={`text-[10px] md:text-[13px] font-black truncate uppercase transition-colors ${textColor}`}>
                                         {isUnicoDoctor ? `${cita.pacientes?.nombre} ${cita.pacientes?.apellido}` : `${cita.pacientes?.nombre?.split(' ')[0]} ${cita.pacientes?.apellido?.split(' ')[0]}`}
                                       </span>
+                                      {/* 🔥 SELLO DE SOBRECUPO 🔥 */}
                                       {/* 🔥 SELLO DE SOBRECUPO 🔥 */}
                                       {isSobrecupo && (
                                         <div className="shrink-0 bg-rose-600 text-white px-1.5 py-0.5 rounded shadow-sm flex items-center justify-center border border-rose-500 ml-1">
@@ -820,18 +820,18 @@ export default function VistaDiariaPage() {
                                               className="absolute top-10 right-0 w-52 md:w-56 bg-white/95 backdrop-blur-xl rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-100 z-[50] flex flex-col py-2 overflow-hidden"
                                               onClick={(e) => e.stopPropagation()}
                                            >
-                                             {/* SECCIÓN PACIENTE */}
+                                              {/* SECCIÓN PACIENTE */}
                                               <div className="px-4 py-2 border-b border-slate-50 mb-1">
                                                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Atajos del Paciente</p>
                                               </div>
-                                              <Link prefetch={false} href={`/pacientes/${cita.pacientes?.id}`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><ClipboardList size={14} className="opacity-70"/> Ficha Clínica</Link>
-                                              <Link prefetch={false} href={`/pacientes/${cita.pacientes?.id}/tratamientos`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><Activity size={14} className="opacity-70"/> Tratamientos</Link>
+                                              <Link href={`/pacientes/${cita.pacientes?.id}`} prefetch={false} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><ClipboardList size={14} className="opacity-70"/> Ficha Clínica</Link>
+                                              <Link href={`/pacientes/${cita.pacientes?.id}/tratamientos`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><Activity size={14} className="opacity-70"/> Tratamientos</Link>
                                               
                                               {puedeVerFinanzas && (
-                                                 <Link prefetch={false} href={`/pacientes/${cita.pacientes?.id}/pagos`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><Wallet size={14} className="opacity-70"/> Pagos</Link>
+                                                 <Link href={`/pacientes/${cita.pacientes?.id}/pagos`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><Wallet size={14} className="opacity-70"/> Pagos</Link>
                                               )}
 
-                                              <Link prefetch={false} href={`/pacientes/${cita.pacientes?.id}/datos`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><User size={14} className="opacity-70"/> Datos Personales</Link>
+                                              <Link href={`/pacientes/${cita.pacientes?.id}/datos`} className="px-4 py-2 text-[11px] font-bold text-slate-600 hover:bg-slate-50 hover:text-[#C9A24B] flex items-center gap-2 transition-colors"><User size={14} className="opacity-70"/> Datos Personales</Link>
 
                                               <div className="h-px bg-slate-100 my-1 mx-2"></div>
 
