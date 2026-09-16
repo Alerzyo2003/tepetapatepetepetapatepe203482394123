@@ -15,15 +15,15 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner' 
 import Link from 'next/link'
 
-const ESTADOS_CITA: Record<string, { label: string, bg: string, text: string, dot: string, icon: any }> = {
-  programada: { label: 'No Confirmado', bg: 'bg-slate-100', text: 'text-slate-600', dot: 'bg-slate-400', icon: <Clock size={14}/> },
-  confirmado_tel: { label: 'Confirmado', bg: 'bg-indigo-50', text: 'text-indigo-600', dot: 'bg-indigo-500', icon: <Phone size={14}/> },
-  en_espera: { label: 'En Espera', bg: 'bg-amber-50', text: 'text-amber-600', dot: 'bg-amber-500', icon: <Timer size={14}/> },
-  atendiendose: { label: 'En Box', bg: 'bg-blue-50', text: 'text-blue-600', dot: 'bg-blue-500', icon: <Activity size={14}/> },
-  atendido: { label: 'Atendido', bg: 'bg-emerald-50', text: 'text-emerald-600', dot: 'bg-emerald-500', icon: <CheckCircle2 size={14}/> },
-  no_asiste: { label: 'No Asistió', bg: 'bg-red-50', text: 'text-red-600', dot: 'bg-red-500', icon: <Ban size={14}/> },
-  cancelada: { label: 'Anulada', bg: 'bg-gray-100', text: 'text-gray-500', dot: 'bg-gray-400', icon: <Trash2 size={14}/> },
-  reprogramada: { label: 'Reprogramada', bg: 'bg-purple-50', text: 'text-purple-600', dot: 'bg-purple-500', icon: <RefreshCcw size={14}/> }
+const ESTADOS_CITA: Record<string, { label: string, bg: string, border: string, text: string, dot: string, circleText: string, icon: any }> = {
+  programada: { label: 'No Conf.', bg: 'bg-slate-100', border: 'border-slate-300', text: 'text-slate-700', dot: 'bg-slate-400', circleText: 'text-slate-600', icon: <Clock size={14}/> },
+  confirmado_tel: { label: 'Confirmado', bg: 'bg-blue-500', border: 'border-blue-600', text: 'text-white', dot: 'bg-white', circleText: 'text-blue-600', icon: <Phone size={14}/> },
+  en_espera: { label: 'En Espera', bg: 'bg-amber-400', border: 'border-amber-500', text: 'text-amber-950', dot: 'bg-amber-900', circleText: 'text-amber-600', icon: <Timer size={14}/> },
+  atendiendose: { label: 'En Box', bg: 'bg-fuchsia-500', border: 'border-fuchsia-600', text: 'text-white', dot: 'bg-white', circleText: 'text-fuchsia-600', icon: <Activity size={14}/> },
+  atendido: { label: 'Atendido', bg: 'bg-emerald-400', border: 'border-emerald-500', text: 'text-emerald-950', dot: 'bg-emerald-900', circleText: 'text-emerald-600', icon: <CheckCircle2 size={14}/> },
+  no_asiste: { label: 'No Asistió', bg: 'bg-rose-500', border: 'border-rose-600', text: 'text-white', dot: 'bg-white', circleText: 'text-rose-600', icon: <Ban size={14}/> },
+  cancelada: { label: 'Anulada', bg: 'bg-neutral-300', border: 'border-neutral-400', text: 'text-neutral-700', dot: 'bg-neutral-500', circleText: 'text-neutral-600', icon: <Trash2 size={14}/> },
+  reprogramada: { label: 'Reprogramada', bg: 'bg-violet-500', border: 'border-violet-600', text: 'text-white', dot: 'bg-white', circleText: 'text-violet-600', icon: <RefreshCcw size={14}/> }
 };
 
 const slotsHorarios = [
@@ -1235,7 +1235,7 @@ let detalleText = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, t
                             </div>
                         </div>
 
-                        <div className={`relative ${estadoConfig.bg} border border-transparent px-3 py-2 md:px-3 md:py-1.5 rounded-full flex items-center gap-2 text-xs md:text-[10px] font-black uppercase ${estadoConfig.text} transition-colors shrink-0 sm:ml-2 mt-2 sm:mt-0 self-start w-auto`}>
+                        <div className={`relative ${estadoConfig.bg} border ${estadoConfig.border} shadow-sm px-3 py-2 md:px-3 md:py-1.5 rounded-full flex items-center gap-2 text-xs md:text-[10px] font-black uppercase ${estadoConfig.text} transition-colors shrink-0 sm:ml-2 mt-2 sm:mt-0 self-start w-auto`}>
                             <div className={`w-2 h-2 rounded-full ${estadoConfig.dot}`}></div>
                             <select value={c.estado || 'programada'} onChange={(e) => actualizarEstadoCita(c.id, e.target.value)} className={`appearance-none bg-transparent outline-none cursor-pointer pr-5 font-black ${estadoConfig.text} text-base md:text-[10px]`}>
                             {Object.entries(ESTADOS_CITA).map(([key, val]) => {
@@ -1356,7 +1356,7 @@ let detalleText = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, t
                                               <div className="flex flex-col items-start gap-1.5 mt-2">
                                                   <div className="flex items-center justify-between w-full">
                                                       <span className="text-[11px] md:text-[10px] font-black text-[#8A6D2F] bg-[#C9A24B]/10 px-1.5 py-0.5 rounded-md">{hInicio}</span>
-                                                      <span className={`text-[9px] md:text-[8px] font-black uppercase ${configEstado.text}`}>
+                                                      <span className={`text-[9px] md:text-[8px] font-black uppercase ${configEstado.circleText}`}>
                                                           {c.estado === 'en_espera' && c.hora_llegada 
                                                               ? `ESPERA DESDE LAS ${new Date(c.hora_llegada).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Santiago' })}` 
                                                               : configEstado.label}
@@ -2143,7 +2143,7 @@ if(seleccionado) {
                              )}
 <Link prefetch={false} href={`/pacientes/${cita.paciente_id}`} onClick={() => setModalAnuladasAbierto(false)} className="flex-1 sm:flex-none p-3 sm:p-2 bg-slate-50 text-slate-600 hover:text-blue-500 rounded-xl border border-slate-200 transition-colors flex justify-center items-center" title="Ver ficha del paciente">                                <User size={18} />
                              </Link>
-                          </div>
+                          </div>const ESTADOS_CITA
                         </div>
                       );
                     })}
