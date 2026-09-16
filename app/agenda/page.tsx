@@ -1283,8 +1283,14 @@ let detalleText = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, t
                             
                             <button onClick={() => handleEliminarCita(c)} className="p-2.5 md:p-2 border border-slate-200 rounded-lg text-slate-500 hover:text-red-500 hover:bg-red-50 transition-colors" title="Eliminar"><Trash2 className="md:w-[16px] md:h-[16px]" size={18} /></button>
                             
-<Link prefetch={false} href={`/pacientes/${c.paciente_id}`} className="ml-auto sm:ml-2 text-xs md:text-[10px] font-black text-blue-600 px-4 py-2 uppercase tracking-widest hover:bg-blue-50 rounded-lg transition-colors">                            FICHA
-                            </Link>
+<div className="ml-auto sm:ml-2 flex items-center gap-2">
+                                <Link prefetch={false} href={`/pacientes/${c.paciente_id}`} className="text-xs md:text-[10px] font-black text-blue-600 px-3 py-2 uppercase tracking-widest hover:bg-blue-50 border border-blue-100 bg-white rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
+                                    <ClipboardList size={14} /> Ficha
+                                </Link>
+                                <Link prefetch={false} href={`/pacientes/${c.paciente_id}/tratamientos`} className="text-xs md:text-[10px] font-black text-[#C9A24B] px-3 py-2 uppercase tracking-widest hover:bg-[#C9A24B]/10 border border-[#C9A24B]/30 bg-white rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
+                                    <Activity size={14} /> Tratamientos
+                                </Link>
+                            </div>
                         </div>
                         </div>
                     </div>
