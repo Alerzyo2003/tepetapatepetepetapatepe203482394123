@@ -383,7 +383,7 @@ export default function BoxConfigPage() {
       }
 
       await supabase.from('auditoria_clinica').insert([{
-        usuario_id: usuarioLogueado, // Corregido: usar la variable que ya tienes en el estado
+        usuario_id: (await supabase.auth.getSession()).data.session?.user.id,
         accion: 'INSERT / CIERRE GLOBAL',
         tabla: 'bloqueos_agenda',
         detalles: `Bloqueó la clínica completa para el día ${fechaGlobal}. Motivo: ${motivoGlobal}.`
