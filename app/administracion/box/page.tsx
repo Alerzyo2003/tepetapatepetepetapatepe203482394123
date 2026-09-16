@@ -56,6 +56,9 @@ export default function BoxConfigPage() {
   const [fechaInasistencia, setFechaInasistencia] = useState('')
   const [motivoInasistencia, setMotivoInasistencia] = useState('')
 
+  const [fechaGlobal, setFechaGlobal] = useState('')
+  const [motivoGlobal, setMotivoGlobal] = useState('Feriado Legal')
+
   const [citasConflictivas, setCitasConflictivas] = useState<any[]>([])
   const [mostrarModalConflictos, setMostrarModalConflictos] = useState(false)
   const [modoModal, setModoModal] = useState<'bloquear' | 'revisar'>('bloquear')
@@ -342,7 +345,59 @@ export default function BoxConfigPage() {
       setGuardando(false);
     }
   };
-  
+  const bloquearDiaGlobal = async () => {
+    if (!fechaGlobal) return toast.error("Seleccione una fecha para el cierre global");
+    if (!confirm(`¿Estás seguro de bloquear el día ${fechaGlobal} para TODOS los especialistas?`)) return;
+    
+    setGuardando(true);
+    try {
+      const profIds = profesionales.map(p => p.id);
+      
+      // 1. Buscar si algunos ya tienen bloqueo ese día
+      const { data: bloqueosExistentes } = await supabase
+        .from('bloqueos_agenda')
+        .select('id, profesional_id')
+        .eq('fecha', fechaGlobal)
+        .in('profesional_id', profIds);
+        
+      const bloqueadosIds = bloqueosExistentes?.map(b => b.profesional_id) || [];
+      
+      // 2. Si ya tenían un bloqueo (ej: de unas horas), lo actualizamos a día completo
+      if (bloqueosExistentes && bloqueosExistentes.length > 0) {
+        const idsToUpdate = bloqueosExistentes.map(b => b.id);
+        await supabase.from('bloqueos_agenda')
+          .update({ motivo: motivoGlobal, hora_inicio: null, hora_fin: null })
+          .in('id', idsToUpdate);
+      }
+      
+      // 3. Para los doctores que no tenían bloqueo, se lo creamos
+      const aBloquear = profesionales.filter(p => !bloqueadosIds.includes(p.id));
+      if (aBloquear.length > 0) {
+        const payload = aBloquear.map(p => ({
+          profesional_id: p.id,
+          fecha: fechaGlobal,
+          motivo: motivoGlobal
+        }));
+        const { error } = await supabase.from('bloqueos_agenda').insert(payload);
+        if (error) throw error;
+      }
+
+      await supabase.from('auditoria_clinica').insert([{
+        usuario_id: usuarioLogueado, // Corregido: usar la variable que ya tienes en el estado
+        accion: 'INSERT / CIERRE GLOBAL',
+        tabla: 'bloqueos_agenda',
+        detalles: `Bloqueó la clínica completa para el día ${fechaGlobal}. Motivo: ${motivoGlobal}.`
+      }]);
+      
+      toast.success("Cierre global aplicado a todos los especialistas");
+      setFechaGlobal('');
+      fetchBloqueos();
+    } catch(e) {
+      toast.error("Error al aplicar cierre global");
+    } finally {
+      setGuardando(false);
+    }
+  };
   const ejecutarBloqueoFinal = async () => {
     setGuardando(true);
     try {
@@ -629,15 +684,17 @@ export default function BoxConfigPage() {
             </motion.div>
 
             <div className="bg-red-50/50 p-8 md:p-10 rounded-[2.5rem] border border-red-100 shadow-sm space-y-8">
+              
+              {/* --- BLOQUEO INDIVIDUAL --- */}
               <div className="flex items-center gap-4 text-left">
                 <div className="bg-red-500 p-4 rounded-2xl text-white shadow-md shadow-red-500/30 shrink-0"><XCircle size={24} /></div>
                 <div className="text-left">
                   <h2 className="text-xl font-black text-red-900 uppercase italic leading-none tracking-tight">Inasistencia</h2>
-                  <p className="text-red-400 text-[9px] font-black uppercase tracking-widest mt-1.5">Bloqueo de Jornada Completa</p>
+                  <p className="text-red-400 text-[9px] font-black uppercase tracking-widest mt-1.5">Bloqueo de Jornada Individual</p>
                 </div>
               </div>
 
-              <div className="space-y-5 text-left">
+              <div className="space-y-4 text-left">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-red-400 uppercase tracking-widest ml-2">Día a Cancelar</label>
                   <input type="date" className="w-full p-4 bg-white border border-red-200 shadow-sm rounded-2xl font-bold text-xs text-red-900 outline-none focus:border-red-400 transition-colors" value={fechaInasistencia} onChange={(e) => setFechaInasistencia(e.target.value)} />
@@ -647,9 +704,33 @@ export default function BoxConfigPage() {
                   <input type="text" placeholder="Ej: Licencia médica..." className="w-full p-4 bg-white border border-red-200 shadow-sm rounded-2xl font-bold text-xs text-red-900 outline-none focus:border-red-400 transition-colors placeholder:text-red-200" value={motivoInasistencia} onChange={(e) => setMotivoInasistencia(e.target.value)} />
                 </div>
                 <button onClick={validarInasistencia} disabled={guardando} className="w-full py-5 bg-red-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-lg shadow-red-600/20 hover:bg-red-700 transition-all flex items-center justify-center gap-3 mt-2 disabled:opacity-50">
-                  Validar y Bloquear
+                  Validar y Bloquear Doctor
                 </button>
               </div>
+
+              {/* --- BLOQUEO GLOBAL (FERIADOS) --- */}
+              <div className="pt-8 border-t border-red-200/60">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="bg-red-100 p-2.5 rounded-xl text-red-600"><Users size={20} /></div>
+                  <div>
+                    <h3 className="font-black text-red-900 uppercase leading-none">Cierre General</h3>
+                    <p className="text-[9px] font-bold text-red-500 uppercase tracking-widest mt-1">Feriados para toda la clínica</p>
+                  </div>
+                </div>
+                
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <input type="date" className="w-full p-4 bg-white border border-red-200 shadow-sm rounded-2xl font-bold text-xs text-red-900 outline-none focus:border-red-400 transition-colors" value={fechaGlobal} onChange={(e) => setFechaGlobal(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <input type="text" placeholder="Ej: Feriado Irrenunciable..." className="w-full p-4 bg-white border border-red-200 shadow-sm rounded-2xl font-bold text-xs text-red-900 outline-none focus:border-red-400 transition-colors placeholder:text-red-200" value={motivoGlobal} onChange={(e) => setMotivoGlobal(e.target.value)} />
+                  </div>
+                  <button onClick={bloquearDiaGlobal} disabled={guardando} className="w-full py-4 bg-red-950 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-red-900 transition-all flex items-center justify-center gap-2 disabled:opacity-50">
+                    Bloquear Clínica Completa
+                  </button>
+                </div>
+              </div>
+
             </div>
           </div>
 
