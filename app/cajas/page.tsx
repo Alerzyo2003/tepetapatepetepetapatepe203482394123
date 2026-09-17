@@ -64,7 +64,7 @@ export default function GestionCajasPage() {
         .from('sesiones_caja')
         .select(`*, pagos(monto, estado, metodo_pago)`)
         .eq('estado', 'cerrada')
-        .limit(15)
+        .limit(34)
         .order('fecha_cierre', { ascending: false })
       
       if (errCe) throw errCe
