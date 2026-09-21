@@ -329,7 +329,11 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
 }
 function TabLink({ href, active, icon, label }: any) {
   return (
-    <Link href={href} className={`flex items-center gap-1 px-1.5 py-1 rounded-xl font-black text-[9px] uppercase tracking-wide transition-all shrink-0 ${active ? 'bg-white text-blue-600 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>
+    <Link
+      href={href}
+      prefetch={false}
+      className={`flex items-center gap-1 px-1.5 py-1 rounded-xl font-black text-[9px] uppercase tracking-wide transition-all shrink-0 ${active ? 'bg-white text-blue-600 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-800'}`}
+    >
       {icon} <span className="whitespace-nowrap">{label}</span>
     </Link>
   )
@@ -337,7 +341,11 @@ function TabLink({ href, active, icon, label }: any) {
 
 function SubTabLink({ href, active, label }: any) {
   return (
-    <Link href={href} className={`px-3 py-1.5 rounded-lg font-bold text-[9px] uppercase transition-all whitespace-nowrap shrink-0 ${active ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+    <Link
+      href={href}
+      prefetch={false}
+      className={`px-3 py-1.5 rounded-lg font-bold text-[9px] uppercase transition-all whitespace-nowrap shrink-0 ${active ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+    >
       {label}
     </Link>
   )
