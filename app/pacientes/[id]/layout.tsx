@@ -37,23 +37,26 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
   const [modalEdicionAntecedentes, setModalEdicionAntecedentes] = useState(false)
   const [categoriaActiva, setCategoriaActiva] = useState<'alerta' | 'enfermedad' | 'medicamento'>('alerta')
   const actualizarMotivoCita = async (citaId: string, nuevoMotivo: string) => {
-  try {
-    const { error } = await supabase
-      .from('citas')
-      .update({ motivo: nuevoMotivo })
-      .eq('id', citaId);
+    try {
+      // 1. Actualiza el dato en la base de datos (Supabase)
+      const { error } = await supabase
+        .from('citas')
+        .update({ motivo: nuevoMotivo })
+        .eq('id', citaId);
 
-    if (error) throw error;
+      if (error) throw error;
 
-    // Actualiza el estado local optimísticamente
-    setCitasAnteriores(prev => 
-      prev.map(cita => cita.id === citaId ? { ...cita, motivo: nuevoMotivo } : cita)
-    );
-  } catch (error) {
-    console.error("Error al actualizar el comentario:", error);
-    alert("Hubo un error al actualizar el comentario.");
-  }
-};
+      // 2. Actualiza el estado local para que el cambio se vea reflejado al instante sin recargar
+      setCitasAnteriores((citasPrevias) =>
+        citasPrevias.map((cita) =>
+          cita.id === citaId ? { ...cita, motivo: nuevoMotivo } : cita
+        )
+      );
+    } catch (error) {
+      console.error('Error al actualizar el motivo de la cita:', error);
+      alert('No se pudo actualizar el motivo. Inténtalo de nuevo.');
+    }
+  };
   const calcularEdad = (fechaNac: string) => {
     if (!fechaNac) return 'N/A';
     const hoy = new Date();
@@ -228,12 +231,11 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
              
              <div className="flex gap-2">
                <ModalHistorialCitas 
-                 abierto={modalHistorialAbierto} 
-                 setAbierto={setModalHistorialAbierto} 
-                 cerrarOtro={setModalCitasAbierto}
-                 citas={citasAnteriores}
-                 onUpdateMotivo={actualizarMotivoCita}
-               />
+  isOpen={modalHistorialAbierto} 
+  onClose={() => setModalHistorialAbierto(false)} 
+  citas={citasAnteriores}
+  onUpdateMotivo={actualizarMotivoCita}
+/>
                
                <ModalProximasCitas 
                  abierto={modalCitasAbierto} 
