@@ -79,7 +79,7 @@ export default function AgendaPage() {
   const [notificacion, setNotificacion] = useState<{ nombre: string } | null>(null)
   const [usuarioLogueado, setUsuarioLogueado] = useState<string | null>(null)
   const [userRol, setUserRol] = useState<string>('') 
-  
+  const [usuariosMap, setUsuariosMap] = useState<Record<string, string>>({});
   const puedeVerFinanzas = ['ADMIN', 'RECEPCIONISTA'].includes(userRol);
   const puedeVerAgendaCompleta = ['ADMIN', 'RECEPCIONISTA', 'ASISTENTE'].includes(userRol);
 
@@ -230,7 +230,10 @@ export default function AgendaPage() {
 
       const { data: pro } = await supabase.from('profesionales').select('*, especialidades(nombre)').eq('activo', true)
       setProfesionales(pro || [])
-      
+      const { data: perfilesData } = await supabase.from('perfiles').select('id, nombre_completo');
+const mapUsuarios: Record<string, string> = {};
+perfilesData?.forEach(p => { mapUsuarios[p.id] = p.nombre_completo });
+setUsuariosMap(mapUsuarios);
       const { data: cajaActiva } = await supabase.from('sesiones_caja').select('id').eq('estado', 'abierta').maybeSingle();
       setCajaActivaId(cajaActiva?.id || null);
 
@@ -1224,7 +1227,10 @@ let detalleText = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, t
                                   <span className="flex items-center gap-1"><Phone className="text-slate-400 md:w-[12px] md:h-[12px]" size={14} /> {c.pacientes?.telefono || 'Sin teléfono'}</span>
                                   <span className="hidden sm:inline-block w-1 h-1 rounded-full bg-slate-300"></span>
 <span className="flex items-center gap-1"><User className="text-slate-400 md:w-[12px] md:h-[12px]" size={14} /> Dr. {formatNombreDoctor(doctor?.nombre, doctor?.apellido)}</span>                              </div>
-                                    
+                                    <span className="hidden sm:inline-block w-1 h-1 rounded-full bg-slate-300"></span>
+<span className="text-[9px] font-bold text-slate-400 opacity-60 tracking-wider">
+  AGENDA: {c.creado_por && usuariosMap[c.creado_por] ? usuariosMap[c.creado_por].split(' ')[0] : 'WEB'}
+</span>
                                     {c.motivo && !c.motivo.includes('Online') && (
                                         <div className="flex items-center gap-1.5 text-[11px] md:text-[10px] font-black uppercase tracking-widest mt-1 w-fit px-2 py-1 rounded-md bg-slate-50 text-slate-500 border border-slate-200">
                                             <MessageSquareText size={12} />
