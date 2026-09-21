@@ -38,7 +38,6 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
   const [categoriaActiva, setCategoriaActiva] = useState<'alerta' | 'enfermedad' | 'medicamento'>('alerta')
   const actualizarMotivoCita = async (citaId: string, nuevoMotivo: string) => {
     try {
-      // 1. Actualiza el dato en la base de datos (Supabase)
       const { error } = await supabase
         .from('citas')
         .update({ motivo: nuevoMotivo })
@@ -46,8 +45,8 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
 
       if (error) throw error;
 
-      // 2. Actualiza el estado local para que el cambio se vea reflejado al instante sin recargar
-      setCitasAnteriores((citasPrevias) =>
+      // AHORA SE ACTUALIZA PROXIMAS CITAS
+      setProximasCitas((citasPrevias) =>
         citasPrevias.map((cita) =>
           cita.id === citaId ? { ...cita, motivo: nuevoMotivo } : cita
         )
