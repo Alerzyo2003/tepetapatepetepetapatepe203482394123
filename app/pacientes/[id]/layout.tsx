@@ -36,7 +36,24 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
   const [citaConfirmadaData, setCitaConfirmadaData] = useState<any>(null)
   const [modalEdicionAntecedentes, setModalEdicionAntecedentes] = useState(false)
   const [categoriaActiva, setCategoriaActiva] = useState<'alerta' | 'enfermedad' | 'medicamento'>('alerta')
+  const actualizarMotivoCita = async (citaId: string, nuevoMotivo: string) => {
+  try {
+    const { error } = await supabase
+      .from('citas')
+      .update({ motivo: nuevoMotivo })
+      .eq('id', citaId);
 
+    if (error) throw error;
+
+    // Actualiza el estado local optimísticamente
+    setCitasAnteriores(prev => 
+      prev.map(cita => cita.id === citaId ? { ...cita, motivo: nuevoMotivo } : cita)
+    );
+  } catch (error) {
+    console.error("Error al actualizar el comentario:", error);
+    alert("Hubo un error al actualizar el comentario.");
+  }
+};
   const calcularEdad = (fechaNac: string) => {
     if (!fechaNac) return 'N/A';
     const hoy = new Date();
@@ -215,6 +232,7 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
                  setAbierto={setModalHistorialAbierto} 
                  cerrarOtro={setModalCitasAbierto}
                  citas={citasAnteriores}
+                 onUpdateMotivo={actualizarMotivoCita}
                />
                
                <ModalProximasCitas 
