@@ -228,22 +228,20 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
           {/* DERECHA: Botones Funcionales (Siempre visibles sin necesidad de scroll) */}
           <div className="flex items-center justify-between sm:justify-end gap-2 w-full xl:w-auto shrink-0 border-t border-slate-100 xl:border-0 pt-2 xl:pt-0">
              
-             <div className="flex gap-2">
-               <ModalHistorialCitas 
-  isOpen={modalHistorialAbierto} 
-  onClose={() => setModalHistorialAbierto(false)} 
-  citas={citasAnteriores}
-  onUpdateMotivo={actualizarMotivoCita}
-/>
-               
-               <ModalProximasCitas 
-                 abierto={modalCitasAbierto} 
-                 setAbierto={setModalCitasAbierto} 
-                 cerrarOtro={setModalHistorialAbierto}
-                 citas={proximasCitas}
-               />
-             </div>
-             
+            <div className="flex gap-2">
+  <ModalHistorialCitas 
+    isOpen={modalHistorialAbierto} 
+    onClose={() => setModalHistorialAbierto(false)} 
+    citas={citasAnteriores}
+  />
+  
+  <ModalProximasCitas 
+    isOpen={modalCitasAbierto} 
+    onClose={() => setModalCitasAbierto(false)} 
+    citas={proximasCitas}
+    onUpdateMotivo={actualizarMotivoCita}
+  />
+</div>
              <button onClick={() => setModalAgendarAbierto(true)} className="bg-[#C9A24B] flex items-center justify-center gap-1 text-white px-2.5 py-1.5 rounded-md text-[8px] font-black uppercase tracking-wide hover:bg-[#B38D3A] shadow-sm transition-colors flex-1 sm:flex-none max-w-[120px]">
                 <CalendarClock size={10} /> <span className="whitespace-nowrap">Agendar Cita</span>
              </button>
