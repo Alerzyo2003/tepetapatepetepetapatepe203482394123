@@ -11,9 +11,9 @@ import dynamic from 'next/dynamic'
 const ModalAgendarCita = dynamic(() => import('@/components/Modales/ModalAgendarCita'), { ssr: false })
 const ModalTicketCita = dynamic(() => import('@/components/Modales/ModalTicketCita'), { ssr: false })
 const ModalEditarAntecedentes = dynamic(() => import('@/components/Modales/ModalEditarAntecedentes'), { ssr: false })
-// Cambiamos los Dropdowns por Modales para evitar el corte por overflow
 const ModalHistorialCitas = dynamic(() => import('@/components/Modales/DropdownHistorial'), { ssr: false })
 const ModalProximasCitas = dynamic(() => import('@/components/Modales/DropdownProximasCitas'), { ssr: false })
+
 export default function PacienteLayout({ children }: { children: React.ReactNode }) {
   const params = useParams()
   const id = params.id as string
@@ -36,6 +36,7 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
   const [citaConfirmadaData, setCitaConfirmadaData] = useState<any>(null)
   const [modalEdicionAntecedentes, setModalEdicionAntecedentes] = useState(false)
   const [categoriaActiva, setCategoriaActiva] = useState<'alerta' | 'enfermedad' | 'medicamento'>('alerta')
+
   const actualizarMotivoCita = async (citaId: string, nuevoMotivo: string) => {
     try {
       const { error } = await supabase
@@ -45,7 +46,6 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
 
       if (error) throw error;
 
-      // AHORA SE ACTUALIZA PROXIMAS CITAS
       setProximasCitas((citasPrevias) =>
         citasPrevias.map((cita) =>
           cita.id === citaId ? { ...cita, motivo: nuevoMotivo } : cita
@@ -56,6 +56,7 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
       alert('No se pudo actualizar el motivo. Inténtalo de nuevo.');
     }
   };
+
   const calcularEdad = (fechaNac: string) => {
     if (!fechaNac) return 'N/A';
     const hoy = new Date();
@@ -190,7 +191,7 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
             </div>
           </div>
 
-          {/* Alertas Médicas (Scroll horizontal interno en móvil sin barra visible) */}
+          {/* Alertas Médicas */}
           <div className="flex gap-1.5 overflow-x-auto w-full xl:w-auto pb-1 xl:pb-0 scroll-smooth [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <div onClick={() => abrirEdicionRapida('alerta')} className="w-32 shrink-0 bg-red-50 p-1.5 rounded-lg cursor-pointer">
               <span className="text-[9px] font-bold text-red-600 uppercase">Alertas</span>
@@ -211,7 +212,7 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
         {/* SECCIÓN INFERIOR: Tabs y Botones de Acción */}
         <div className="bg-slate-50 border-t border-slate-100 px-4 py-2 flex flex-col xl:flex-row items-center justify-between gap-3 w-full">
           
-          {/* IZQUIERDA: Menú de Navegación (Deslizable horizontalmente en móvil) */}
+          {/* IZQUIERDA: Menú de Navegación */}
           <div className="flex items-center gap-1 w-full xl:w-auto overflow-x-auto scroll-smooth [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <a href="/agenda" className="p-1.5 bg-white border border-slate-200 text-slate-400 rounded-lg hover:text-blue-600 transition-all shadow-sm mr-1 shrink-0" title="Volver a la Agenda">
                <ArrowLeft size={12} strokeWidth={2.5}/>
@@ -225,30 +226,44 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
             <TabLink href={`/pacientes/${id}/odontograma`} active={pathname.includes('/odontograma')} icon={<Spline size={11}/>} label="Odontograma" />
           </div>
 
-          {/* DERECHA: Botones Funcionales (Siempre visibles sin necesidad de scroll) */}
+          {/* DERECHA: Botones Funcionales */}
           <div className="flex items-center justify-between sm:justify-end gap-2 w-full xl:w-auto shrink-0 border-t border-slate-100 xl:border-0 pt-2 xl:pt-0">
-             
-            <div className="flex gap-2">
-  <ModalHistorialCitas 
-    isOpen={modalHistorialAbierto} 
-    onClose={() => setModalHistorialAbierto(false)} 
-    citas={citasAnteriores}
-  />
-  
-  <ModalProximasCitas 
-    isOpen={modalCitasAbierto} 
-    onClose={() => setModalCitasAbierto(false)} 
-    citas={proximasCitas}
-    onUpdateMotivo={actualizarMotivoCita}
-  />
-</div>
+              
+             <div className="flex gap-2">
+               {/* BOTÓN PARA ABRIR HISTORIAL */}
+               <button 
+                 onClick={() => setModalHistorialAbierto(true)} 
+                 className="bg-white border border-slate-200 flex items-center justify-center gap-1 text-slate-600 px-2.5 py-1.5 rounded-md text-[8px] font-black uppercase tracking-wide hover:bg-slate-50 shadow-sm transition-colors"
+               >
+                 <History size={10} /> 
+                 <span className="whitespace-nowrap">Historial</span>
+                 {/* Indicador de cantidad */}
+                 <span className="bg-slate-100 px-1 rounded-sm text-[8px] text-slate-500 border border-slate-200/50">
+                   {citasAnteriores.length}
+                 </span>
+               </button>
+
+               {/* BOTÓN PARA ABRIR PRÓXIMAS CITAS */}
+               <button 
+                 onClick={() => setModalCitasAbierto(true)} 
+                 className="bg-blue-50 border border-blue-100 flex items-center justify-center gap-1 text-blue-600 px-2.5 py-1.5 rounded-md text-[8px] font-black uppercase tracking-wide hover:bg-blue-100 shadow-sm transition-colors"
+               >
+                 <CalendarDays size={10} /> 
+                 <span className="whitespace-nowrap">Próximas</span>
+                 {/* Indicador de cantidad */}
+                 <span className="bg-blue-200/50 px-1 rounded-sm text-[8px] text-blue-700 border border-blue-200/50">
+                   {proximasCitas.length}
+                 </span>
+               </button>
+             </div>
+              
              <button onClick={() => setModalAgendarAbierto(true)} className="bg-[#C9A24B] flex items-center justify-center gap-1 text-white px-2.5 py-1.5 rounded-md text-[8px] font-black uppercase tracking-wide hover:bg-[#B38D3A] shadow-sm transition-colors flex-1 sm:flex-none max-w-[120px]">
                 <CalendarClock size={10} /> <span className="whitespace-nowrap">Agendar Cita</span>
              </button>
-             
+              
           </div>
-          
         </div>
+
       </header>
 
       <main className={`w-full mx-auto flex-1 overflow-hidden ${esTratamientos ? '' : 'p-4 lg:p-6 max-w-6xl'}`}>
@@ -293,7 +308,19 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
             onClose={() => setModalEdicionAntecedentes(false)}
             onUpdate={fetchAntecedentes}
           />
-          {/* LOS DOS COMPONENTES QUE ESTABAN AQUÍ SE BORRARON */}
+          
+          {/* MODALES DE CITAS */}
+          <ModalHistorialCitas 
+            isOpen={modalHistorialAbierto} 
+            onClose={() => setModalHistorialAbierto(false)} 
+            citas={citasAnteriores}
+          />
+          <ModalProximasCitas 
+            isOpen={modalCitasAbierto} 
+            onClose={() => setModalCitasAbierto(false)} 
+            citas={proximasCitas}
+            onUpdateMotivo={actualizarMotivoCita}
+          />
         </>
       )}
         
