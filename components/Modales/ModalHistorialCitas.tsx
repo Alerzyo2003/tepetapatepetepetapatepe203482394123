@@ -1,14 +1,8 @@
 'use client'
-import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, History, CalendarDays, Clock, User, CheckCircle2, Edit2, Check } from 'lucide-react'
+import { X, History, CalendarDays, Clock, User, CheckCircle2 } from 'lucide-react'
 
-// Se agregó onUpdateMotivo a las props
-export default function ModalHistorialCitas({ isOpen, onClose, citas, onUpdateMotivo }: { isOpen: boolean, onClose: () => void, citas: any[], onUpdateMotivo?: (id: string, motivo: string) => void }) {
-  // Estados para manejar la edición en línea
-  const [editandoId, setEditandoId] = useState<string | null>(null);
-  const [motivoTemporal, setMotivoTemporal] = useState("");
-
+export default function ModalHistorialCitas({ isOpen, onClose, citas }: { isOpen: boolean, onClose: () => void, citas: any[] }) {
   if (!isOpen) return null;
 
   const formatearFecha = (iso: string) => {
@@ -18,24 +12,6 @@ export default function ModalHistorialCitas({ isOpen, onClose, citas, onUpdateMo
   const formatearHora = (iso: string) => {
     return new Date(iso).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
   }
-
-  // Funciones para manejar la edición
-  const iniciarEdicion = (cita: any) => {
-    setEditandoId(cita.id);
-    setMotivoTemporal(cita.motivo || "");
-  };
-
-  const guardarEdicion = (citaId: string) => {
-    if (onUpdateMotivo) {
-      onUpdateMotivo(citaId, motivoTemporal);
-    }
-    setEditandoId(null);
-  };
-
-  const cancelarEdicion = () => {
-    setEditandoId(null);
-    setMotivoTemporal("");
-  };
 
   return (
     <AnimatePresence>
@@ -90,43 +66,6 @@ export default function ModalHistorialCitas({ isOpen, onClose, citas, onUpdateMo
                         <User size={12} />
                         <span className="text-xs font-semibold">{cita.profesional_nombre}</span>
                       </div>
-                    </div>
-
-                    {/* NUEVO: Sección de Motivo / Comentario editable */}
-                    <div className="mt-3 pt-3 border-t border-slate-50">
-                      {editandoId === cita.id ? (
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            autoFocus
-                            value={motivoTemporal}
-                            onChange={(e) => setMotivoTemporal(e.target.value)}
-                            className="flex-1 text-xs px-2 py-1.5 border border-blue-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 bg-blue-50/30"
-                            placeholder="Ingresar motivo..."
-                            onKeyDown={(e) => e.key === 'Enter' && guardarEdicion(cita.id)}
-                          />
-                          <button onClick={() => guardarEdicion(cita.id)} className="text-green-600 hover:bg-green-100 p-1.5 rounded transition-colors">
-                            <Check size={14} strokeWidth={2.5} />
-                          </button>
-                          <button onClick={cancelarEdicion} className="text-red-500 hover:bg-red-100 p-1.5 rounded transition-colors">
-                            <X size={14} strokeWidth={2.5} />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-start justify-between group gap-2">
-                          <p className="text-xs text-slate-600">
-                            <span className="font-bold text-slate-700">Motivo: </span> 
-                            {cita.motivo || 'Sin registro'}
-                          </p>
-                          <button 
-                            onClick={() => iniciarEdicion(cita)}
-                            className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-blue-600 p-1 bg-slate-50 hover:bg-blue-50 rounded shrink-0"
-                            title="Editar motivo"
-                          >
-                            <Edit2 size={12} />
-                          </button>
-                        </div>
-                      )}
                     </div>
 
                   </div>
