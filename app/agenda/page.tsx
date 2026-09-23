@@ -612,7 +612,7 @@ const mensaje = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, tu 
       }).replace(',', '');
       fechaCita = fechaCita.charAt(0).toUpperCase() + fechaCita.slice(1);
       
-      const link = `https://confirmar-cita-dignidad.vercel.app/confirmar/${cita.id}`;
+      const link = `https://agendar.clinicadignidad.cl/confirmar/${cita.id}`;
       
 const mensaje = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, te escribimos de Clínica Dignidad para recordar tu cita con el/la ${nombreDoctor} el día ${fechaCita} a las ${hora} hrs.\n\n📍 Dirección: Av. Venancia Leiva 1871, La Pintana.\n\n⚠️ Importante: Debido a la alta demanda de horas, si tu cita no es confirmada el bloque será asignado a otro paciente.\n\nPor favor confirma tu asistencia en el siguiente enlace:\n${link}`;      
       window.open(`https://wa.me/${num}?text=${encodeURIComponent(mensaje)}`, '_blank');
@@ -634,7 +634,7 @@ let detalleText = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, t
         detalleText += `\n💰 *Total Plan:* $${total.toLocaleString('es-CL')}`;
         if (abonado > 0) detalleText += `\n✅ *Abonado:* $${abonado.toLocaleString('es-CL')}`;
         if (total - abonado > 0) detalleText += `\n🔴 *Saldo Pendiente:* ${(total - abonado).toLocaleString('es-CL')}`;
-        detalleText += `\n\n🗓️ *Agenda tus próximas sesiones online aquí:*\nhttps://confirmar-cita-dignidad.vercel.app/agendar`;
+        detalleText += `\n\n🗓️ *Agenda tus próximas sesiones online aquí:*\nhttps://agendar.clinicadignidad.cl/agendar`;
         detalleText += `\n\nCualquier consulta, estamos a tu disposición. ¡Saludos! 🦷`;
         setModalEnvioPresupuesto({ abierto: true, cita, texto: detalleText });
         toast.success("Resumen generado", { id: toastId });
@@ -2066,7 +2066,7 @@ if(seleccionado) {
                             mensaje += `📍 Dirección: Av. Venancia Leiva 1871, La Pintana.\n\n`;
                             if (citaId) {
                               mensaje += `⚠️ Importante: Debido a la alta demanda de horas, si tu cita no es confirmada el bloque será asignado a otro paciente.\n\n`;
-                              mensaje += `Por favor confirma tu asistencia en el siguiente enlace:\nhttps://confirmar-cita-dignidad.vercel.app/confirmar/${citaId}\n\n`;
+                              mensaje += `Por favor confirma tu asistencia en el siguiente enlace:\nhttps://agendar.clinicadignidad.cl/confirmar/${citaId}\n\n`;
                             }
                             mensaje += `¡Te esperamos en Clínica Dignidad!`;
                           } else {
