@@ -222,8 +222,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
                   <div className="h-4 border-b border-white/5 mx-2 my-2"></div>
 
-                  {/* Acordeón: Mi Menú */}
-                  {['RECEPCIONISTA', 'DENTISTA'].includes(perfil?.rol) && (
+                 {/* Acordeón: Mi Menú (Dentistas, Recepcionistas y Admin) */}
+                  {['DENTISTA', 'RECEPCIONISTA', 'ADMIN'].includes(perfil?.rol) && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="flex flex-col">
                       <button onClick={() => setShowMiMenu(!showMiMenu)} className={`flex items-center justify-between px-4 py-3 rounded-xl transition-all group ${showMiMenu ? 'text-white bg-white/5' : 'text-[#8A96A8] hover:text-white hover:bg-white/5'}`}>
                         <div className="flex items-center gap-3.5">
@@ -236,8 +236,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                         {showMiMenu && (
                           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                             <div className="flex flex-col border-l border-white/10 ml-[26px] mt-1 mb-2 space-y-1">
-                              <SidebarSubLink href="/mi-menu/plantillas" label="Plantillas" onClick={() => setMobileMenuOpen(false)} />
-                              <SidebarSubLink href="/mi-menu/liquidacion" label="Liquidaciones" onClick={() => setMobileMenuOpen(false)} />
+                              
+                              {/* Solo Dentistas y Admins ven estas opciones */}
+                              {['DENTISTA', 'ADMIN'].includes(perfil?.rol) && (
+                                <>
+                                  <SidebarSubLink href="/mi-menu/plantillas" label="Plantillas" onClick={() => setMobileMenuOpen(false)} />
+                                  <SidebarSubLink href="/mi-menu/liquidacion" label="Liquidaciones" onClick={() => setMobileMenuOpen(false)} />
+                                </>
+                              )}
+
+                              {/* Recepcionistas, Dentistas y Admins ven los Aranceles */}
+                              {['RECEPCIONISTA', 'DENTISTA', 'ADMIN'].includes(perfil?.rol) && (
+                                <SidebarSubLink href="/mi-menu/aranceles" label="Ver Aranceles" onClick={() => setMobileMenuOpen(false)} />
+                              )}
+                              
                             </div>
                           </motion.div>
                         )}
