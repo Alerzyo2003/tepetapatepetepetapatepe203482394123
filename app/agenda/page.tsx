@@ -9,7 +9,7 @@ import {
   CheckCircle2, Plus, Calendar as CalendarIcon, Briefcase, 
   AlertTriangle, Phone, Mail, MessageCircle, Ban, RefreshCcw, ChevronDown, CalendarClock,
   Coins, ReceiptText, Stethoscope,Users, User, ChevronRight as ChevronRightIcon, LayoutGrid, List, Lock, FileText, Send, ArrowDown, Save, File, Link as LinkIcon,
-  MessageSquareText, Globe
+  MessageSquareText, Globe, Star
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner' 
@@ -408,7 +408,7 @@ setUsuariosMap(mapUsuarios);
             const numFinal = numLimpio.length === 9 ? `56${numLimpio}` : numLimpio;
             const fechaFormat = new Date(cita.inicio.replace(' ', 'T')).toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
             const horaFormat = new Date(cita.inicio.replace(' ', 'T')).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Santiago' });
-            const link = `https://agendar.clinicadignidad.cl/confirmar/${cita.id}`;
+            const link = `https://confirmar-cita-dignidad.vercel.app/confirmar/${cita.id}`;
 const mensaje = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, tu solicitud de hora para el día ${fechaFormat} a las ${horaFormat} hrs ha sido validada y agendada con éxito.\n\nPor favor confirma tu asistencia haciendo clic en el siguiente enlace:\n${link}\n\n¡Te esperamos en Clínica Dignidad!`;            window.open(`https://wa.me/${numFinal}?text=${encodeURIComponent(mensaje)}`, '_blank');
         } else {
             toast.warning('La cita fue aprobada, pero el paciente no tiene teléfono registrado.');
@@ -585,7 +585,18 @@ const mensaje = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, tu 
     toast.success("Estado actualizado"); await fetchCitasAgenda();
   }
 
+const enviarLinkSatisfaccion = (cita: any) => {
+      const telefono = cita.pacientes?.telefono;
+      if (!telefono) return toast.error("Paciente sin teléfono");
+      
+      const numLimpio = telefono.replace(/\D/g, '');
+      const numFinal = numLimpio.length === 9 ? `56${numLimpio}` : numLimpio;
 
+      const link = "https://g.page/r/CTmbdo9C4oVGEBM/review";
+      const mensaje = `Hola ${cita.pacientes?.nombre}, esperamos que hayas tenido una excelente experiencia en tu atención en Clínica Dignidad.\n\nNos ayudaría muchísimo si pudieras dejarnos tu opinión o solo dejándonos las estrellas, es solo 1 clic:\n${link}\n\n¡Muchas gracias por confiar en nosotros! 💙🦷`;
+      
+      window.open(`https://wa.me/${numFinal}?text=${encodeURIComponent(mensaje)}`, '_blank');
+  }
   const enviarRecordatorioConLink = (cita: any) => {
       const telefono = cita.pacientes?.telefono;
       if (!telefono) return toast.error("Paciente sin teléfono");
@@ -612,7 +623,7 @@ const mensaje = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, tu 
       }).replace(',', '');
       fechaCita = fechaCita.charAt(0).toUpperCase() + fechaCita.slice(1);
       
-      const link = `https://agendar.clinicadignidad.cl/confirmar/${cita.id}`;
+      const link = `https://confirmar-cita-dignidad.vercel.app/confirmar/${cita.id}`;
       
 const mensaje = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, te escribimos de Clínica Dignidad para recordar tu cita con el/la ${nombreDoctor} el día ${fechaCita} a las ${hora} hrs.\n\n📍 Dirección: Av. Venancia Leiva 1871, La Pintana.\n\n⚠️ Importante: Debido a la alta demanda de horas, si tu cita no es confirmada el bloque será asignado a otro paciente.\n\nPor favor confirma tu asistencia en el siguiente enlace:\n${link}`;      
       window.open(`https://wa.me/${num}?text=${encodeURIComponent(mensaje)}`, '_blank');
@@ -634,7 +645,7 @@ let detalleText = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, t
         detalleText += `\n💰 *Total Plan:* $${total.toLocaleString('es-CL')}`;
         if (abonado > 0) detalleText += `\n✅ *Abonado:* $${abonado.toLocaleString('es-CL')}`;
         if (total - abonado > 0) detalleText += `\n🔴 *Saldo Pendiente:* ${(total - abonado).toLocaleString('es-CL')}`;
-        detalleText += `\n\n🗓️ *Agenda tus próximas sesiones online aquí:*\nhttps://agendar.clinicadignidad.cl/agendar`;
+        detalleText += `\n\n🗓️ *Agenda tus próximas sesiones online aquí:*\nhttps://confirmar-cita-dignidad.vercel.app/agendar`;
         detalleText += `\n\nCualquier consulta, estamos a tu disposición. ¡Saludos! 🦷`;
         setModalEnvioPresupuesto({ abierto: true, cita, texto: detalleText });
         toast.success("Resumen generado", { id: toastId });
@@ -1282,7 +1293,8 @@ let detalleText = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, t
                             <button onClick={() => iniciarReprogramacion(c)} className="p-2.5 md:p-2 border border-slate-200 rounded-lg text-slate-500 hover:text-[#C9A24B] hover:bg-slate-50 transition-colors" title="Reprogramar"><CalendarClock className="md:w-[16px] md:h-[16px]" size={18} /></button>
                             <button onClick={() => abrirEnvioPresupuesto(c)} className="p-2.5 md:p-2 border border-slate-200 rounded-lg text-slate-500 hover:text-blue-500 hover:bg-slate-50 transition-colors" title="Enviar Presupuesto"><FileText className="md:w-[16px] md:h-[16px]" size={18} /></button>
                             <button onClick={() => enviarRecordatorioConLink(c)} className="p-2.5 md:p-2 border border-slate-200 rounded-lg text-slate-500 hover:text-[#C9A24B] hover:bg-slate-50 transition-colors" title="Enviar link de confirmación"><LinkIcon className="md:w-[16px] md:h-[16px]" size={18} /></button>
-                          
+                            <button onClick={() => enviarLinkSatisfaccion(c)} className="p-2.5 md:p-2 border border-slate-200 rounded-lg text-slate-500 hover:text-amber-500 hover:bg-amber-50 transition-colors" title="Pedir reseña en Google Maps"><Star className="md:w-[16px] md:h-[16px]" size={18} /></button>
+
                             {puedeVerFinanzas && (
                             <button onClick={() => abrirCaja(c)} className="p-2.5 md:p-2 border border-slate-200 rounded-lg text-slate-500 hover:text-amber-500 hover:bg-slate-50 transition-colors" title="Caja/Cobrar"><Coins className="md:w-[16px] md:h-[16px]" size={18} /></button>
                             )}
@@ -1381,6 +1393,7 @@ let detalleText = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, t
                                               <button onClick={(e) => { e.stopPropagation(); iniciarReprogramacion(c); }} className="p-2 md:p-1.5 text-slate-500 hover:bg-[#C9A24B]/10 hover:text-[#C9A24B] rounded-md transition-all"><CalendarClock className="md:w-[14px] md:h-[14px]" size={16} /></button>
                                               <button onClick={() => abrirEnvioPresupuesto(c)} className="p-2 md:p-1.5 text-slate-500 hover:bg-[#C9A24B]/10 hover:text-[#C9A24B] rounded-md transition-all"><FileText className="md:w-[14px] md:h-[14px]" size={16} /></button>
                                               <button onClick={() => enviarRecordatorioConLink(c)} className="p-2 md:p-1.5 text-slate-500 hover:bg-[#C9A24B]/10 hover:text-[#C9A24B] rounded-md transition-all"><LinkIcon className="md:w-[14px] md:h-[14px]" size={16} /></button>
+                                              <button onClick={() => enviarLinkSatisfaccion(c)} className="p-2 md:p-1.5 text-slate-500 hover:bg-amber-100 hover:text-amber-500 rounded-md transition-all" title="Pedir reseña en Google Maps"><Star className="md:w-[14px] md:h-[14px]" size={16} /></button>
                                               {puedeVerFinanzas && (
                                                   <button onClick={(e) => { e.stopPropagation(); abrirCaja(c); }} className="p-2 md:p-1.5 text-slate-500 hover:bg-amber-50 hover:text-amber-600 rounded-md transition-all"><Coins className="md:w-[14px] md:h-[14px]" size={16} /></button>
                                               )}
@@ -2066,7 +2079,7 @@ if(seleccionado) {
                             mensaje += `📍 Dirección: Av. Venancia Leiva 1871, La Pintana.\n\n`;
                             if (citaId) {
                               mensaje += `⚠️ Importante: Debido a la alta demanda de horas, si tu cita no es confirmada el bloque será asignado a otro paciente.\n\n`;
-                              mensaje += `Por favor confirma tu asistencia en el siguiente enlace:\nhttps://agendar.clinicadignidad.cl/confirmar/${citaId}\n\n`;
+                              mensaje += `Por favor confirma tu asistencia en el siguiente enlace:\nhttps://confirmar-cita-dignidad.vercel.app/confirmar/${citaId}\n\n`;
                             }
                             mensaje += `¡Te esperamos en Clínica Dignidad!`;
                           } else {
