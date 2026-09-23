@@ -16,15 +16,18 @@ export default function ArancelesPage() {
     const fetchPrestaciones = async (term: string) => {
       if (prestaciones.length > 0) setBuscando(true)
       
-      let query = supabase.from('prestaciones').select('*')
+      // Agregamos el filtro .in() para traer SOLO las que están habilitadas
+      let query = supabase
+        .from('prestaciones')
+        .select('*')
+        .in('Habilitado', ['si', 'sí', 'Si', 'Sí', 'SI', 'SÍ']) 
       
       if (term.trim()) {
         const cleanTerm = term.trim()
-        // Filtrado en el servidor (Supabase). Usamos comillas dobles para columnas con espacios.
         query = query.or(`"Nombre Accion".ilike.%${cleanTerm}%,"Nombre".ilike.%${cleanTerm}%,"Nombre Categoria".ilike.%${cleanTerm}%,"Codigo Accion".ilike.%${cleanTerm}%`)
-        query = query.limit(30) // Límite de 30 cuando está buscando activamente
+        query = query.limit(30)
       } else {
-        query = query.limit(20) // Límite de 20 para la vista inicial
+        query = query.limit(20)
       }
 
       const { data, error } = await query.order('Nombre Accion', { ascending: true })
