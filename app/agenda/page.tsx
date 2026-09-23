@@ -408,7 +408,7 @@ setUsuariosMap(mapUsuarios);
             const numFinal = numLimpio.length === 9 ? `56${numLimpio}` : numLimpio;
             const fechaFormat = new Date(cita.inicio.replace(' ', 'T')).toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
             const horaFormat = new Date(cita.inicio.replace(' ', 'T')).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Santiago' });
-            const link = `https://confirmar-cita-dignidad.vercel.app/confirmar/${cita.id}`;
+            const link = `https://agendar.clinicadignidad.cl/confirmar/${cita.id}`;
 const mensaje = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, tu solicitud de hora para el día ${fechaFormat} a las ${horaFormat} hrs ha sido validada y agendada con éxito.\n\nPor favor confirma tu asistencia haciendo clic en el siguiente enlace:\n${link}\n\n¡Te esperamos en Clínica Dignidad!`;            window.open(`https://wa.me/${numFinal}?text=${encodeURIComponent(mensaje)}`, '_blank');
         } else {
             toast.warning('La cita fue aprobada, pero el paciente no tiene teléfono registrado.');
