@@ -415,7 +415,7 @@ export default function DetalleTratamientoPage() {
       
       let caraMatch = item.cara ? String(item.cara).toUpperCase().trim() : null; 
       let zonaMatch = item.zona || null; 
-let iconoMatch = null, dctoMatch = 0, faseMatch = 'Plan General', evoDocMatch = null, evoFecMatch = null, pptoDocMatch = null;      let dienteParseado = null;
+  let iconoMatch = null, dctoMatch = 0, faseMatch = 'Plan General', evoDocMatch = null, evoFecMatch = null, pptoDocMatch = null, pptoFecMatch = null;      let dienteParseado = null;
       if (item.diente_id !== null && item.diente_id !== undefined) {
           const strDiente = String(item.diente_id).toLowerCase().trim();
           if (!strDiente.includes('arcada') && !strDiente.includes('general')) {
@@ -433,6 +433,7 @@ let iconoMatch = null, dctoMatch = 0, faseMatch = 'Plan General', evoDocMatch = 
           if (p.startsWith('EvoDoc:')) evoDocMatch = p.replace('EvoDoc:', '').trim();
           if (p.startsWith('EvoFec:')) evoFecMatch = p.replace('EvoFec:', '').trim();
           if (p.startsWith('PptoDoc:')) pptoDocMatch = p.replace('PptoDoc:', '').trim();
+          if (p.startsWith('PptoFec:')) pptoFecMatch = p.replace('PptoFec:', '').trim();
       });
 
       let nombreDisplay = item.prestaciones?.["Nombre Accion"] || item.prestaciones?.["Nombre"] || partes[0] || "Tratamiento Genérico";
@@ -497,7 +498,8 @@ let iconoMatch = null, dctoMatch = 0, faseMatch = 'Plan General', evoDocMatch = 
           lab_pagado_por_dr: Boolean(item.lab_pagado_por_dr),
           evo_doc: evoDocMatch,
           evo_fecha: evoFecMatch,
-          ppto_doc: pptoDocMatch || item.profesional_id
+            ppto_doc: pptoDocMatch || item.profesional_id,
+            ppto_fecha: pptoFecMatch
       };
   }
 
@@ -986,7 +988,8 @@ let iconoMatch = null, dctoMatch = 0, faseMatch = 'Plan General', evoDocMatch = 
     }
 
     const dIds = dienteInput.split(',').map(d => parseInt(d.trim())).filter(d => !isNaN(d));
-    const observacionFinal = `${prestacion.display_nombre} | Fase: ${seccionInput.trim()}` + (caraInput ? ` | Cara: ${caraInput}` : '') + (zonaInput ? ` | Zona: ${zonaInput}` : '') + (prestacion.icono_tipo ? ` | Icono: ${prestacion.icono_tipo}` : '');
+    const fechaPresupuestada = new Date().toISOString();
+    const observacionFinal = `${prestacion.display_nombre} | Fase: ${seccionInput.trim()}` + (caraInput ? ` | Cara: ${caraInput}` : '') + (zonaInput ? ` | Zona: ${zonaInput}` : '') + (prestacion.icono_tipo ? ` | Icono: ${prestacion.icono_tipo}` : '') + ` | PptoFec: ${fechaPresupuestada}`;
 
     const dispName = prestacion.display_nombre?.toUpperCase().trim();
     const labsRequeridos = labPrests.filter(l => l.nombre_prestacion?.toUpperCase().trim() === dispName);
@@ -1034,7 +1037,8 @@ let iconoMatch = null, dctoMatch = 0, faseMatch = 'Plan General', evoDocMatch = 
             texto_db: observacionFinal,
             costo_laboratorio: costoLabAuto,
             lab_pagado_por_dr: false,
-            ppto_doc: d.profesional_id
+            ppto_doc: d.profesional_id,
+            ppto_fecha: fechaPresupuestada
         }));
         setAcciones(prev => [...prev, ...nuevosItems]);
         toast.success(`Prestación agregada exitosamente ${inserts.length > 1 ? `(${inserts.length} piezas)` : ''}`);
@@ -1095,6 +1099,7 @@ let iconoMatch = null, dctoMatch = 0, faseMatch = 'Plan General', evoDocMatch = 
     const { pack, configuraciones } = modalPack;
     
     const seccionesAInsertar = new Set<string>();
+    const fechaPresupuestada = new Date().toISOString();
     pack.items.forEach((pi: any) => {
         const nombreFase = (pi.seccion && pi.seccion.trim() !== '') ? pi.seccion.trim() : pack.nombre.trim();
         seccionesAInsertar.add(nombreFase);
@@ -1127,7 +1132,8 @@ let iconoMatch = null, dctoMatch = 0, faseMatch = 'Plan General', evoDocMatch = 
                 (caraInput ? ` | Cara: ${caraInput}` : '') + 
                 (zonaInput ? ` | Zona: ${zonaInput}` : '') + 
                 (iconoFinal ? ` | Icono: ${iconoFinal}` : '') +
-                (config.descuento > 0 ? ` | Dcto: ${config.descuento}` : '');
+                (config.descuento > 0 ? ` | Dcto: ${config.descuento}` : '') +
+                ` | PptoFec: ${fechaPresupuestada}`;
 
             const baseItem = {
                 presupuesto_id: idURL, 
@@ -1174,7 +1180,8 @@ let iconoMatch = null, dctoMatch = 0, faseMatch = 'Plan General', evoDocMatch = 
                 texto_db: d.observacion,
                 costo_laboratorio: d.costo_laboratorio || 0,
                 lab_pagado_por_dr: false,
-                ppto_doc: d.profesional_id
+                ppto_doc: d.profesional_id,
+                ppto_fecha: fechaPresupuestada
             }
         });
         setAcciones(prev => [...prev, ...nuevosItems]);
@@ -1704,37 +1711,37 @@ if (profesionalRowId) {
         <div className="hidden mostrar-en-impresion w-full bg-white" style={{ fontFamily: 'Arial, sans-serif', color: '#1e293b' }}>
             
             {/* ENCABEZADO CON LOGO */}
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
               <img 
                 src="https://yqdpmaopnvrgdqbfaiok.supabase.co/storage/v1/object/public/documentos_imagenes/440749454_122171956712064634_7168698893214813270_n.jpg" 
                 alt="Logo Clínica" 
-                style={{ width: '80px', height: '80px', objectFit: 'contain' }} 
+                style={{ width: '50px', height: '50px', objectFit: 'contain' }} 
               />
-              <div style={{ flex: 1, textAlign: 'center', paddingRight: '80px' }}>
-                <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 8px 0', textTransform: 'uppercase' }}>
+              <div style={{ flex: 1, textAlign: 'center', paddingRight: '50px' }}>
+                <h1 style={{ fontSize: 14, fontWeight: 800, margin: '0 0 4px 0', textTransform: 'uppercase' }}>
                   Centro Médico y Dental Dignidad SpA
                 </h1>
-                <h2 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>
+                <h2 style={{ fontSize: 11, fontWeight: 700, margin: 0 }}>
                   Presupuesto N° {idURL.substring(0, 8).toUpperCase()}: {presupuestoData?.nombre_tratamiento || 'Tratamiento Integral'}
                 </h2>
               </div>
             </div>
 
             {/* DATOS DENTISTA Y PACIENTE */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', fontSize: 12, marginBottom: 24 }}>
-              <div style={{ border: '1px solid #cbd5e1', padding: '12px', borderRadius: '8px' }}>
-                <p style={{ fontWeight: 700, borderBottom: '1px solid #cbd5e1', paddingBottom: '4px', marginBottom: '8px' }}>DENTISTA A CARGO</p>
-                <p style={{ marginBottom: '4px' }}><strong>Nombre:</strong> Dr(a). {presupuestoData?.profesionales?.nombre || ''} {presupuestoData?.profesionales?.apellido || ''}</p>
-                <p style={{ marginBottom: '4px' }}><strong>RUT:</strong> {presupuestoData?.profesionales?.rut || 'No registrado'}</p>
-                <p style={{ marginBottom: '4px' }}><strong>Especialidad:</strong> {presupuestoData?.profesionales?.especialidad || 'Odontología General'}</p>
-                <p style={{ marginBottom: '4px' }}><strong>Fecha de impresión:</strong> {new Date().toLocaleDateString('es-CL')}</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', fontSize: 10, marginBottom: 20 }}>
+              <div style={{ border: '1px solid #cbd5e1', padding: '8px', borderRadius: '6px' }}>
+                <p style={{ fontWeight: 700, borderBottom: '1px solid #cbd5e1', paddingBottom: '2px', marginBottom: '6px' }}>DENTISTA A CARGO</p>
+                <p style={{ marginBottom: '2px' }}><strong>Nombre:</strong> Dr(a). {presupuestoData?.profesionales?.nombre || ''} {presupuestoData?.profesionales?.apellido || ''}</p>
+                <p style={{ marginBottom: '2px' }}><strong>RUT:</strong> {presupuestoData?.profesionales?.rut || 'No registrado'}</p>
+                <p style={{ marginBottom: '2px' }}><strong>Especialidad:</strong> {presupuestoData?.profesionales?.especialidad || 'Odontología General'}</p>
+                <p style={{ marginBottom: '2px' }}><strong>Fecha de impresión:</strong> {new Date().toLocaleDateString('es-CL')}</p>
               </div>
-              <div style={{ border: '1px solid #cbd5e1', padding: '12px', borderRadius: '8px' }}>
-                <p style={{ fontWeight: 700, borderBottom: '1px solid #cbd5e1', paddingBottom: '4px', marginBottom: '8px' }}>INFORMACIÓN DEL PACIENTE</p>
-                <p style={{ marginBottom: '4px' }}><strong>Nombre:</strong> {pacienteInfo?.nombre} {pacienteInfo?.apellido}</p>
-                <p style={{ marginBottom: '4px' }}><strong>RUT:</strong> {pacienteInfo?.rut || 'No registrado'}</p>
-                <p style={{ marginBottom: '4px' }}><strong>Fecha de Nacimiento:</strong> {pacienteInfo?.fecha_nacimiento ? new Date(pacienteInfo.fecha_nacimiento).toLocaleDateString('es-CL', { timeZone: 'UTC' }) : 'No registrada'}</p>
-                <p style={{ marginBottom: '4px' }}><strong>Convenio:</strong> {pacienteInfo?.prevision && pacienteInfo?.prevision !== 'Sin convenio' ? pacienteInfo.prevision : 'Sin convenio'}</p>
+              <div style={{ border: '1px solid #cbd5e1', padding: '8px', borderRadius: '6px' }}>
+                <p style={{ fontWeight: 700, borderBottom: '1px solid #cbd5e1', paddingBottom: '2px', marginBottom: '6px' }}>INFORMACIÓN DEL PACIENTE</p>
+                <p style={{ marginBottom: '2px' }}><strong>Nombre:</strong> {pacienteInfo?.nombre} {pacienteInfo?.apellido}</p>
+                <p style={{ marginBottom: '2px' }}><strong>RUT:</strong> {pacienteInfo?.rut || 'No registrado'}</p>
+                <p style={{ marginBottom: '2px' }}><strong>Fecha de Nacimiento:</strong> {pacienteInfo?.fecha_nacimiento ? new Date(pacienteInfo.fecha_nacimiento).toLocaleDateString('es-CL', { timeZone: 'UTC' }) : 'No registrada'}</p>
+                <p style={{ marginBottom: '2px' }}><strong>Convenio:</strong> {pacienteInfo?.prevision && pacienteInfo?.prevision !== 'Sin convenio' ? pacienteInfo.prevision : 'Sin convenio'}</p>
               </div>
             </div>
 
@@ -1778,7 +1785,7 @@ if (profesionalRowId) {
   {item.display_nombre}
   <br/>
   <span style={{fontSize: 9, color: '#64748b', fontWeight: 'normal'}}>
-Presupuestado: Dr. {profesionales.find(p => p.user_id === item.ppto_doc)?.apellido || 'Sin asignar'}  </span>
+Presupuestado: Dr. {profesionales.find(p => p.user_id === item.ppto_doc)?.apellido || 'Sin asignar'}{item.ppto_fecha ? ` el ${new Date(item.ppto_fecha).toLocaleDateString('es-CL')}` : ''}  </span>
   {item.evo_doc && (
       <>
         <br/>
@@ -1800,33 +1807,38 @@ Presupuestado: Dr. {profesionales.find(p => p.user_id === item.ppto_doc)?.apelli
               </table>
             </div> 
 
-            {/* RESUMEN */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 40, pageBreakInside: 'avoid' }}>
-              <div style={{ width: '320px', border: '1px solid #cbd5e1', padding: '12px', borderRadius: '8px', fontSize: 12 }}>
-                <p style={{ fontWeight: 700, borderBottom: '1px solid #cbd5e1', paddingBottom: '4px', marginBottom: '8px' }}>RESUMEN DEL PRESUPUESTO</p>
-                <p style={{ marginBottom: '8px', fontWeight: 600 }}>Nombre presupuesto: <span style={{fontWeight: 'normal'}}>{presupuestoData?.nombre_tratamiento || 'Tratamiento Integral'}</span></p>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+           {/* SECCIÓN FINAL: RESUMEN Y PIE DE PÁGINA UNIFICADOS */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: '16px', marginBottom: '10px', pageBreakInside: 'avoid' }}>
+              
+              {/* PIE DE PÁGINA (A la izquierda) */}
+              <div style={{ flex: 1, paddingRight: '40px', fontSize: 9, color: '#64748b' }}>
+                <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '10px' }}>
+                  <p style={{ fontWeight: 700, color: '#1e293b', fontSize: 10, margin: '0 0 2px 0' }}>Centro Médico y Dental Dignidad SpA</p>
+                  <p style={{ margin: '0 0 4px 0' }}>Ubicación: Av. Observatorio 1500, La Pintana | Teléfono: +56 9 1234 5678</p>
+                  <p style={{ fontStyle: 'italic', fontWeight: 600, margin: 0 }}>
+                    Al iniciar este tratamiento declaro que acepto la política de privacidad de la clínica y la plataforma establecida.
+                  </p>
+                </div>
+              </div>
+
+              {/* RESUMEN (A la derecha) */}
+              <div style={{ width: '280px', border: '1px solid #cbd5e1', padding: '8px', borderRadius: '6px', fontSize: 10, flexShrink: 0 }}>
+                <p style={{ fontWeight: 700, borderBottom: '1px solid #cbd5e1', paddingBottom: '2px', marginBottom: '6px' }}>RESUMEN DEL PRESUPUESTO</p>
+                <p style={{ marginBottom: '6px', fontWeight: 600 }}>Nombre presupuesto: <span style={{fontWeight: 'normal'}}>{presupuestoData?.nombre_tratamiento || 'Tratamiento Integral'}</span></p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
                   <span>Total presupuesto:</span>
                   <span>${totalBasePlan.toLocaleString('es-CL')}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
                   <span>Descuento total:</span>
                   <span>${(totalBasePlan - totalPlan).toLocaleString('es-CL')}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 14, marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #cbd5e1' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 12, marginTop: '6px', paddingTop: '6px', borderTop: '1px solid #cbd5e1' }}>
                   <span>Total del presupuesto:</span>
                   <span>${totalPlan.toLocaleString('es-CL')}</span>
                 </div>
               </div>
-            </div>
 
-            {/* PIE DE PÁGINA */}
-            <div style={{ textAlign: 'center', fontSize: 10, color: '#64748b', marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid #e2e8f0', pageBreakInside: 'avoid' }}>
-              <p style={{ fontWeight: 700, color: '#1e293b', fontSize: 12 }}>Centro Médico y Dental Dignidad SpA</p>
-              <p>Ubicación: Av. Observatorio 1500, La Pintana | Teléfono: +56 9 1234 5678</p>
-              <p style={{ marginTop: '12px', fontStyle: 'italic', fontWeight: 600 }}>
-                Al iniciar este tratamiento declaro que acepto la política de privacidad de la clínica y la plataforma establecida.
-              </p>
             </div>
         </div>
 
@@ -2150,7 +2162,7 @@ Presupuestado: Dr. {profesionales.find(p => p.user_id === item.ppto_doc)?.apelli
   <div className="flex flex-col gap-0.5 mt-1">
     <div className="text-[9px] font-bold text-slate-400 flex items-center gap-1 normal-case tracking-normal">
        <User size={10} />
-Presupuestado: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr. ${profesionales.find(p => p.user_id === item.ppto_doc)?.apellido}` : 'Sin asignar'}    </div>
+Presupuestado: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr. ${profesionales.find(p => p.user_id === item.ppto_doc)?.apellido}` : 'Sin asignar'}{item.ppto_fecha ? ` el ${new Date(item.ppto_fecha).toLocaleDateString('es-CL')}` : ''}    </div>
     {item.evo_doc && (
        <div className="text-[9px] font-bold text-blue-500 flex items-center gap-1 normal-case tracking-normal">
           <CheckCircle2 size={10} />
