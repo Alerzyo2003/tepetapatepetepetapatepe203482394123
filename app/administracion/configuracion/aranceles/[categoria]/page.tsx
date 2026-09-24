@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { createPortal } from 'react-dom'
 import { 
   ArrowLeft, Loader2, CheckCircle2, 
-  XCircle, RefreshCw, Plus, X, Save, Trash2, Search, Tag, BookMarked
+  XCircle, RefreshCw, Plus, X, Save, Pencil, Search, Tag, BookMarked
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -40,9 +40,11 @@ export default function DetalleArancelPage() {
   // Estado para las pestañas
   const [tabActiva, setTabActiva] = useState<'habilitados' | 'deshabilitados'>('habilitados');
   
-  // Estados para el Modal de Nueva Prestación
+  // Estados para el Modal de Nueva/Editar Prestación
   const [modalAbierto, setModalAbierto] = useState(false)
   const [guardando, setGuardando] = useState(false)
+  const [modoEdicion, setModoEdicion] = useState(false)
+  const [itemEditandoId, setItemEditandoId] = useState<string | null>(null)
   
   // Estado para los Portals
   const [isMounted, setIsMounted] = useState(false)
@@ -167,6 +169,63 @@ export default function DetalleArancelPage() {
     }
   }
 
+  // FUNCIÓN PARA EDITAR PRESTACIÓN
+  async function handleGuardarEdicion() {
+    if (!form.nombre_accion || !form.precio) return toast.error("Nombre y Precio son obligatorios")
+    if (!itemEditandoId) return;
+
+    setGuardando(true)
+    try {
+      const { error } = await supabase
+        .from('prestaciones')
+        .update({
+          "Nombre": form.nombre_accion, 
+          "Nombre Accion": form.nombre_accion,
+          "Codigo Accion": form.codigo_accion,
+          "UCO": parseFloat(form.uco) || 0,
+          "Precio": parseInt(form.precio) || 0,
+          "Nombre Arancel": form.nombre_arancel,
+          "ID Acción": form.id_accion_ext,
+          "icono_tipo": form.icono_tipo
+        })
+        .eq('id', itemEditandoId)
+
+      if (error) throw error
+
+      const { data: { user } } = await supabase.auth.getUser()
+      await supabase.from('auditoria_clinica').insert([{
+          usuario_id: user?.id,
+          accion: 'UPDATE / PRESTACION (COMPLETA)',
+          tabla: 'prestaciones',
+          detalles: `Editó los datos de la prestación "${form.nombre_accion}" en la categoría "${decodedCat}".`
+      }])
+
+      toast.success("Prestación actualizada con éxito.")
+      setModalAbierto(false)
+      fetchItems()
+    } catch (err: any) {
+      toast.error("Error al actualizar la prestación")
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  // PREPARAR MODAL PARA EDICIÓN
+  function abrirModalEdicion(item: any) {
+    setForm({
+      nombre_accion: item["Nombre Accion"] || '',
+      codigo_accion: item["Codigo Accion"] || '',
+      uco: item.UCO ? String(item.UCO) : '',
+      precio: item.Precio ? String(item.Precio) : '',
+      nombre_arancel: item["Nombre Arancel"] || 'Arancel Base',
+      id_accion_ext: item["ID Acción"] || '', 
+      icono_tipo: item.icono_tipo || 'default'
+    });
+    setItemEditandoId(item.id);
+    setModoEdicion(true);
+    setModalAbierto(true);
+  }
+
   // FUNCIÓN PARA CAMBIAR ESTADO
   async function toggleEstado(id: string, estadoActual: string) {
     setActualizandoId(id)
@@ -200,62 +259,6 @@ export default function DetalleArancelPage() {
     }
   }
 
-  // FUNCIÓN PARA ELIMINAR PRESTACIÓN
-  async function handleEliminarPrestacion(id: string, nombre: string) {
-    // 1. Verificamos si esta prestación ya ha sido utilizada en presupuestos o pagos
-    try {
-      const { count, error: countError } = await supabase
-        .from('presupuesto_items')
-        .select('*', { count: 'exact', head: true })
-        .eq('prestacion_id', id);
-
-      if (countError) throw countError;
-
-      // 2. Si tiene registros asociados, solo la deshabilitamos para proteger las liquidaciones
-      if (count && count > 0) {
-        const confirmarDesactivacion = window.confirm(
-          `⚠️ La prestación "${nombre}" ya está siendo utilizada en ${count} presupuesto(s) o liquidación(es).\n\n` +
-          `Para proteger tus cierres de caja e historial financiero, NO se puede eliminar por completo. ¿Deseas DESHABILITARLA en su lugar? (Dejará de aparecer en los aranceles nuevos pero mantendrá el historial intacto).`
-        );
-
-        if (!confirmarDesactivacion) return;
-
-        setActualizandoId(id);
-        const { error: updateError } = await supabase
-          .from('prestaciones')
-          .update({ "Habilitado": "no" })
-          .eq('id', id);
-
-        if (updateError) throw updateError;
-
-        toast.success("Prestación deshabilitada con éxito para proteger los registros financieros.");
-        fetchItems(); // Recarga la lista
-        return;
-      }
-
-      // 3. Si NUNCA ha sido usada en ningún lado, se puede eliminar sin peligro
-      if (!window.confirm(`¿Estás seguro de que quieres eliminar "${nombre}" de forma permanente? Esta acción no se puede deshacer.`)) {
-        return;
-      }
-
-      setActualizandoId(id);
-      const { error: deleteError } = await supabase
-        .from('prestaciones')
-        .delete()
-        .eq('id', id);
-
-      if (deleteError) throw deleteError;
-
-      toast.success("Prestación eliminada correctamente.");
-      setItems(prev => prev.filter(item => item.id !== id));
-
-    } catch (err: any) {
-      toast.error("Error al procesar la solicitud: " + err.message);
-    } finally {
-      setActualizandoId(null);
-    }
-  }
-
   async function handleActualizarPrecio(id: string) {
     const itemOriginal = items.find(i => i.id === id);
     if (!itemOriginal) return;
@@ -284,7 +287,7 @@ export default function DetalleArancelPage() {
           usuario_id: user?.id,
           accion: 'UPDATE / PRECIO PRESTACION',
           tabla: 'prestaciones',
-          detalles: `Cambió el precio de "${itemOriginal?.['Nombre Accion'] || 'N/A'}" de $${Number(itemOriginal?.Precio || 0).toLocaleString('es-CL')} a $${precioFinal.toLocaleString('es-CL')}.`
+          detalles: `Cambió el precio rápido de "${itemOriginal?.['Nombre Accion'] || 'N/A'}" de $${Number(itemOriginal?.Precio || 0).toLocaleString('es-CL')} a $${precioFinal.toLocaleString('es-CL')}.`
       }]);
   
       toast.success("Precio actualizado.");
@@ -357,7 +360,12 @@ export default function DetalleArancelPage() {
           </div>
           
           <button 
-            onClick={() => setModalAbierto(true)}
+            onClick={() => {
+              setForm(formInicial);
+              setModoEdicion(false);
+              setItemEditandoId(null);
+              setModalAbierto(true);
+            }}
             className="bg-[#0A111F] text-white px-6 py-4 rounded-full font-bold text-[11px] uppercase tracking-wider hover:bg-[#1a2538] transition-all shadow-md flex items-center justify-center gap-2 shrink-0 w-full md:w-auto text-left"
           >
             <Plus size={16} /> Nueva Acción
@@ -475,7 +483,7 @@ export default function DetalleArancelPage() {
                           <span 
                             onClick={() => { setEditandoPrecioId(item.id); setNuevoPrecio(String(item.Precio || 0)); }}
                             className="cursor-pointer hover:bg-slate-100 px-3 py-1.5 rounded-lg transition-all inline-block"
-                            title="Haz clic para editar el precio"
+                            title="Haz clic para editar el precio rápido"
                           >
                             ${Number(item.Precio || 0).toLocaleString('es-CL')}
                           </span>
@@ -485,12 +493,12 @@ export default function DetalleArancelPage() {
 
                       <td className="px-8 py-5 text-center">
                         <button 
-                          onClick={() => handleEliminarPrestacion(item.id, item["Nombre Accion"])}
+                          onClick={() => abrirModalEdicion(item)}
                           disabled={actualizandoId === item.id}
-                          className="w-9 h-9 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 hover:border-red-200 transition-all mx-auto shadow-sm disabled:opacity-50"
-                          title="Eliminar Prestación Permanentemente"
+                          className="w-9 h-9 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 hover:text-blue-500 hover:bg-blue-50 hover:border-blue-200 transition-all mx-auto shadow-sm disabled:opacity-50"
+                          title="Editar Prestación"
                         >
-                          <Trash2 size={14} />
+                          <Pencil size={14} />
                         </button>
                       </td>
                     </tr>
@@ -502,7 +510,7 @@ export default function DetalleArancelPage() {
         </div>
       </div>
 
-      {/* MODAL NUEVA PRESTACIÓN ENVOLVIDO EN CREATEPORTAL */}
+      {/* MODAL NUEVA / EDITAR PRESTACIÓN ENVOLVIDO EN CREATEPORTAL */}
       {isMounted && typeof document !== 'undefined' ? createPortal(
         <AnimatePresence>
           {modalAbierto && (
@@ -517,7 +525,9 @@ export default function DetalleArancelPage() {
                   <X size={20}/>
                 </button>
                 
-                <h2 className="text-xl font-black text-[#0A111F] tracking-tight uppercase italic leading-none mb-1">Añadir Acción</h2>
+                <h2 className="text-xl font-black text-[#0A111F] tracking-tight uppercase italic leading-none mb-1">
+                  {modoEdicion ? 'Editar Acción' : 'Añadir Acción'}
+                </h2>
                 <p className="text-[#C9A24B] text-[10px] font-bold uppercase tracking-widest mb-6">Categoría: {decodedCat}</p>
 
                 <div className="space-y-5 text-left">
@@ -579,12 +589,12 @@ export default function DetalleArancelPage() {
                   </div>
 
                   <button 
-                    onClick={handleCrearPrestacion}
+                    onClick={modoEdicion ? handleGuardarEdicion : handleCrearPrestacion}
                     disabled={guardando}
                     className="w-full mt-6 bg-[#0A111F] text-white py-5 rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-lg hover:bg-[#1a2538] transition-all flex items-center justify-center gap-3 disabled:bg-slate-300"
                   >
                     {guardando ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} 
-                    {guardando ? 'Guardando...' : 'Guardar Prestación'}
+                    {guardando ? 'Guardando...' : modoEdicion ? 'Guardar Cambios' : 'Guardar Prestación'}
                   </button>
                 </div>
               </motion.div>
