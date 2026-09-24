@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { createPortal } from 'react-dom'
 import { 
-  BookOpen, Plus, Loader2, X, Layers, FolderPlus, Search, Tag, Edit3, Save, Trash2, BookMarked
+  BookOpen, Plus, Loader2, X, Layers, FolderPlus, Search, Tag, Edit3, Save, BookMarked
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
@@ -27,16 +27,15 @@ export default function ArancelesCategoriasPage() {
   const [modalEditarAbierto, setModalEditarAbierto] = useState(false)
   const [itemAEditar, setItemAEditar] = useState<any | null>(null)
   const [editando, setEditando] = useState(false)
-  const [eliminandoId, setEliminandoId] = useState<string | null>(null)
   
   // Estados para el reparto de categorías
   const [tipoRepartoNuevaCat, setTipoRepartoNuevaCat] = useState<'general'|'doctor'|'clinica'|'forzado'>('general')
   const [profesionalRepartoNuevaCat, setProfesionalRepartoNuevaCat] = useState('')
-  const [porcentajeForzadoNuevaCat, setPorcentajeForzadoNuevaCat] = useState<number | ''>('') // 👈 NUEVO ESTADO
+  const [porcentajeForzadoNuevaCat, setPorcentajeForzadoNuevaCat] = useState<number | ''>('')
   
   const [modalEditarCatAbierto, setModalEditarCatAbierto] = useState(false)
-  // 👇 MODIFICADO PARA INCLUIR porcentaje_forzado
   const [catAEditar, setCatAEditar] = useState<{nombre: string, tipo_reparto: string, profesional_id?: string | null, porcentaje_forzado?: number | null} | null>(null)
+  
   // Estado para los Portals
   const [isMounted, setIsMounted] = useState(false)
 
@@ -60,10 +59,10 @@ export default function ArancelesCategoriasPage() {
       setProfesionales(profsData || [])
 
       // 3. Obtener el tipo de reparto y doctor vinculado (reglas de categoría)
-      const { data: catsData } = await supabase.from('categorias_prestaciones').select('nombre, tipo_reparto, profesional_id, porcentaje_forzado') // 👈 AGREGAMOS porcentaje_forzado
+      const { data: catsData } = await supabase.from('categorias_prestaciones').select('nombre, tipo_reparto, profesional_id, porcentaje_forzado')
       const map: Record<string, any> = {}
       catsData?.forEach(c => { 
-        map[c.nombre] = { tipo: c.tipo_reparto, profesional_id: c.profesional_id, porcentaje_forzado: c.porcentaje_forzado } // 👈 LO MAPEAMOS AQUÍ
+        map[c.nombre] = { tipo: c.tipo_reparto, profesional_id: c.profesional_id, porcentaje_forzado: c.porcentaje_forzado }
       })
 
       // 4. Unir categorías de prestaciones y categorías con reglas para no omitir ninguna
@@ -76,7 +75,7 @@ export default function ArancelesCategoriasPage() {
         nombre: c,
         tipo_reparto: map[c]?.tipo || 'general',
         profesional_id: map[c]?.profesional_id || null,
-        porcentaje_forzado: map[c]?.porcentaje_forzado || null // 👈 AGREGAMOS ESTA LÍNEA
+        porcentaje_forzado: map[c]?.porcentaje_forzado || null
       })).sort((a, b) => a.nombre.localeCompare(b.nombre));
 
       setCategorias(categoriasFinal)
@@ -91,7 +90,6 @@ export default function ArancelesCategoriasPage() {
   const handleCrearCategoria = async () => {
     if (!nombreNuevaCat.trim()) return toast.error("Escribe un nombre para la categoría")
     if (tipoRepartoNuevaCat === 'doctor' && !profesionalRepartoNuevaCat) return toast.error("Debes seleccionar un doctor")
-    // 👇 Agregamos esta seguridad para que no envíe porcentajes vacíos
     if (tipoRepartoNuevaCat === 'forzado' && (!porcentajeForzadoNuevaCat || Number(porcentajeForzadoNuevaCat) <= 0)) return toast.error("Debes ingresar un porcentaje válido")
     
     setCreando(true)
@@ -112,7 +110,6 @@ export default function ArancelesCategoriasPage() {
         porcentaje_forzado: tipoRepartoNuevaCat === 'forzado' ? Number(porcentajeForzadoNuevaCat) : null 
       }, { onConflict: 'nombre' })
 
-      // 👇 ¡AQUÍ ESTABA EL SECRETO! Antes, si fallaba, el sistema se quedaba callado. Ahora lanzará el error.
       if (reglaError) throw reglaError
 
       toast.success("Categoría creada con éxito.")
@@ -120,7 +117,7 @@ export default function ArancelesCategoriasPage() {
       setNombreNuevaCat('')
       setTipoRepartoNuevaCat('general')
       setProfesionalRepartoNuevaCat('')
-      setPorcentajeForzadoNuevaCat('') // 👈 Limpiamos el estado
+      setPorcentajeForzadoNuevaCat('') 
       fetchData() 
     } catch (err: any) {
       toast.error("Error al crear la categoría: " + err.message)
@@ -138,7 +135,7 @@ export default function ArancelesCategoriasPage() {
         nombre: catAEditar.nombre,
         tipo_reparto: catAEditar.tipo_reparto,
         profesional_id: catAEditar.tipo_reparto === 'doctor' ? catAEditar.profesional_id : null,
-        porcentaje_forzado: catAEditar.tipo_reparto === 'forzado' ? Number(catAEditar.porcentaje_forzado) : null // 👈 NUEVO
+        porcentaje_forzado: catAEditar.tipo_reparto === 'forzado' ? Number(catAEditar.porcentaje_forzado) : null
       }, { onConflict: 'nombre' });
       
       if (error) throw error;
@@ -149,37 +146,6 @@ export default function ArancelesCategoriasPage() {
     } catch (error: any) {
       toast.error("Error al actualizar: " + error.message);
     }
-  }
-
-  const handleEliminarCategoria = async (nombreCategoria: string) => {
-    const totalPrestaciones = allPrestaciones.filter(p => p['Nombre Categoria'] === nombreCategoria).length;
-    const confirmMessage = `¿Estás seguro de eliminar la carpeta "${nombreCategoria}"? Se eliminarán permanentemente ${totalPrestaciones} prestaciones asociadas. Esta acción no se puede deshacer.`;
-
-    if (!window.confirm(confirmMessage)) {
-      return;
-    }
-
-    setEliminandoId(nombreCategoria);
-    try {
-      const { error: prestError } = await supabase
-        .from('prestaciones')
-        .delete()
-        .eq('Nombre Categoria', nombreCategoria);
-      if (prestError) throw prestError;
-
-      await supabase.from('categorias_prestaciones').delete().eq('nombre', nombreCategoria);
-
-      const { data: { user } } = await supabase.auth.getUser();
-      await supabase.from('auditoria_clinica').insert([{
-          usuario_id: user?.id,
-          accion: 'DELETE / CATEGORIA ARANCEL',
-          tabla: 'prestaciones, categorias_prestaciones',
-          detalles: `Eliminó la categoría "${nombreCategoria}" y todas sus ${totalPrestaciones} prestaciones.`
-      }]);
-
-      toast.success(`Categoría "${nombreCategoria}" y sus prestaciones han sido eliminadas.`);
-      fetchData();
-    } catch (err: any) { toast.error("Error al eliminar la categoría: " + err.message); } finally { setEliminandoId(null); }
   }
 
   const handleGuardarCambios = async () => {
@@ -238,34 +204,6 @@ export default function ArancelesCategoriasPage() {
         toast.error("Error al guardar los cambios: " + err.message);
     } finally {
         setEditando(false);
-    }
-  }
-
-  const handleEliminarPrestacion = async (prestacion: any) => {
-    if (!prestacion || !prestacion.id) return;
-    if (!window.confirm(`¿Estás seguro de que quieres eliminar "${prestacion['Nombre Accion']}" de forma permanente? Esta acción no se puede deshacer.`)) {
-      return;
-    }
-
-    setEliminandoId(prestacion.id);
-    try {
-      const { error } = await supabase.from('prestaciones').delete().eq('id', prestacion.id);
-      if (error) throw error;
-
-      const { data: { user } } = await supabase.auth.getUser();
-      await supabase.from('auditoria_clinica').insert([{
-          usuario_id: user?.id,
-          accion: 'DELETE / PRESTACION',
-          tabla: 'prestaciones',
-          detalles: `Eliminó permanentemente la prestación "${prestacion['Nombre Accion']}" (ID: ${prestacion.id}).`
-      }]);
-
-      toast.success("Prestación eliminada correctamente.");
-      setAllPrestaciones(prev => prev.filter(p => p.id !== prestacion.id));
-    } catch (err: any) {
-      toast.error("Error al eliminar la prestación. Puede que esté en uso.");
-    } finally {
-      setEliminandoId(null);
     }
   }
 
@@ -348,11 +286,6 @@ export default function ArancelesCategoriasPage() {
                   
                   return (
                     <div key={cat.nombre} className="relative group text-left">
-                      {eliminandoId === cat.nombre && (
-                          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm rounded-[2rem] flex items-center justify-center z-10">
-                              <Loader2 className="animate-spin text-red-500" size={32} />
-                          </div>
-                      )}
                       <div className="relative h-full text-left">
                         <Link href={`/administracion/configuracion/aranceles/${encodeURIComponent(cat.nombre)}`} className="block h-full text-left">
                           <motion.div whileHover={{ y: -4 }} className="bg-white/95 backdrop-blur-sm p-8 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer h-full flex flex-col justify-between text-left">
@@ -371,12 +304,12 @@ export default function ArancelesCategoriasPage() {
                               <span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-md tracking-wider ${
                                 cat.tipo_reparto === 'doctor' ? 'bg-blue-50 text-blue-700 border border-blue-100' :
                                 cat.tipo_reparto === 'clinica' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                                cat.tipo_reparto === 'forzado' ? 'bg-amber-50 text-amber-700 border border-amber-100' : // 👈 NUEVO COLOR
+                                cat.tipo_reparto === 'forzado' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
                                 'bg-slate-50 text-slate-600 border border-slate-200'
                               }`}>
                                 {cat.tipo_reparto === 'doctor' ? `100% Dr. ${profVinculado ? profVinculado.apellido : ''}` : 
                                  cat.tipo_reparto === 'clinica' ? '100% Clínica' : 
-                                 cat.tipo_reparto === 'forzado' ? `${cat.porcentaje_forzado}% Fijo Doctor` : // 👈 EL TEXTO QUE VERÁS
+                                 cat.tipo_reparto === 'forzado' ? `${cat.porcentaje_forzado}% Fijo Doctor` :
                                  'General (%)'}
                               </span>
                             </div>
@@ -384,8 +317,9 @@ export default function ArancelesCategoriasPage() {
                         </Link>
 
                         <div className="absolute top-4 right-4 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCatAEditar(cat); setModalEditarCatAbierto(true); }} className="p-2.5 bg-white rounded-full shadow-sm text-slate-400 hover:text-[#C9A24B] border border-slate-200 transition-colors" title="Editar Regla de Pago"><Edit3 size={14} /></button>
-                          <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleEliminarCategoria(cat.nombre); }} className="p-2.5 bg-white rounded-full shadow-sm text-slate-400 hover:text-red-600 border border-slate-200 transition-colors" title="Eliminar Carpeta y Prestaciones"><Trash2 size={14} /></button>
+                          <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setCatAEditar(cat); setModalEditarCatAbierto(true); }} className="p-2.5 bg-white rounded-full shadow-sm text-slate-400 hover:text-[#C9A24B] border border-slate-200 transition-colors" title="Editar Regla de Pago">
+                            <Edit3 size={14} />
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -409,11 +343,6 @@ export default function ArancelesCategoriasPage() {
                       onClick={() => router.push(`/administracion/configuracion/aranceles/${encodeURIComponent(prest['Nombre Categoria'])}`)}
                       className="bg-white/95 backdrop-blur-sm p-6 rounded-[2rem] border border-slate-100 shadow-sm hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between h-full relative text-left"
                     >
-                        {eliminandoId === prest.id && (
-                            <div className="absolute inset-0 bg-white/80 backdrop-blur-sm rounded-[2rem] flex items-center justify-center z-10">
-                                <Loader2 className="animate-spin text-red-500" size={24} />
-                            </div>
-                        )}
                         <div>
                             <div className="flex items-start justify-between">
                                 <div className="w-12 h-12 bg-[#C9A24B]/10 rounded-2xl flex items-center justify-center text-[#C9A24B]"><Tag size={20}/></div>
@@ -430,13 +359,6 @@ export default function ArancelesCategoriasPage() {
                                 title="Editar Prestación"
                             >
                                 <Edit3 size={14} />
-                            </button>
-                            <button 
-                                onClick={(e) => { e.stopPropagation(); handleEliminarPrestacion(prest); }} 
-                                className="p-2.5 bg-white rounded-full shadow-sm text-slate-400 hover:text-red-600 border border-slate-200 transition-colors"
-                                title="Eliminar Prestación"
-                            >
-                                <Trash2 size={14} />
                             </button>
                         </div>
                     </motion.div>
