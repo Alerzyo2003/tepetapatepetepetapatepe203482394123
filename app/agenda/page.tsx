@@ -194,13 +194,21 @@ export default function AgendaPage() {
   }, []);
 
   useEffect(() => { cargarBasicos() }, [])
-  useEffect(() => { 
-    setCambioFecha(true);
-    fetchCitasAgenda().then(() => {
-       setTimeout(() => setCambioFecha(false), 300);
-    });
-  }, [selectedDate, filtroEspecialista, vistaAgenda, realtimeTrigger])
-  
+  useEffect(() => {
+  setCambioFecha(true);
+  fetchCitasAgenda().then(() => {
+     setTimeout(() => setCambioFecha(false), 300);
+  });
+}, [selectedDate, filtroEspecialista, vistaAgenda]);
+
+// 2. Efecto SILENCIOSO: Cuando Supabase Realtime detecta un cambio (ej. otra secretaria agendó o cambiaste un estado).
+useEffect(() => {
+  if (realtimeTrigger > 0) {
+    // Actualizamos los datos de la agenda pero SIN usar setCambioFecha(true)
+    // Así los datos se refrescan mágicamente sin destruir los dropdowns ni la UI.
+    fetchCitasAgenda();
+  }
+}, [realtimeTrigger]);
   useEffect(() => {
     if (modalAbierto && filtro.profesional_id) {
         fetchCitasOcupadas();
@@ -559,6 +567,7 @@ const mensaje = `Hola ${cita.pacientes?.nombre} ${cita.pacientes?.apellido}, tu 
   };
   
   async function actualizarEstadoCita(citaId: string, nuevoEstado: string) {
+    setCitasDia(prev => prev.map(c => c.id === citaId ? { ...c, estado: nuevoEstado } : c));
     const ahora = new Date(); const offset = ahora.getTimezoneOffset() * 60000; const horaLocalISO = new Date(ahora.getTime() - offset).toISOString();
     const updateData: any = { estado: nuevoEstado, modificado_por: usuarioLogueado };
     if (nuevoEstado === 'cancelada') updateData.cancelado_por = usuarioLogueado;
