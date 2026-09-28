@@ -2633,7 +2633,10 @@ Presupuestado: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr. ${pr
                                                    if (!profesionalSeleccionado) return toast.error("Seleccione un dentista responsable primero.");
                                                    setModalConfirmarPrestacion({abierto: true, prestacion: p});
                                                 }} className="flex-1 text-left py-3 px-3 flex justify-between items-center h-full">
-                                                   <span className="text-sm font-bold text-slate-800 group-hover:text-blue-700 leading-snug capitalize">{p.display_nombre.toLowerCase()}</span>
+                                                   <span className="flex-1 text-sm font-bold text-slate-800 group-hover:text-blue-700 leading-snug capitalize">
+                                                     {p.display_nombre.toLowerCase()}
+                                                     <span className="block mt-1 text-[10px] font-bold text-slate-500">${Number(p["Precio"] || 0).toLocaleString('es-CL')}</span>
+                                                   </span>
                                                    <Plus className="shrink-0 text-slate-300 group-hover:text-blue-600" size={20}/>
                                                 </button>
                                             </div>
