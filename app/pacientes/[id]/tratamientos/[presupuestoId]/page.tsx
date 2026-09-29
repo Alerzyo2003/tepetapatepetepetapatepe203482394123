@@ -1654,6 +1654,16 @@ if (profesionalRowId) {
                 {abonadoPlan === 0 && (
                   <p className="text-[10px] font-bold text-slate-400 mt-2">No hay abonos ($0)</p>
                 )}
+                {Number(pacienteInfo?.saldo_a_favor) > 0 && (
+                   <div className="mt-4 p-2.5 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-between shadow-sm">
+                      <div className="flex items-center gap-2">
+                         <Wallet className="text-emerald-500" size={14}/>
+                         <span className="text-[10px] font-black uppercase text-emerald-700 tracking-wide">Billetera a Favor</span>
+                      </div>
+                      <span className="text-xs font-black text-emerald-600">${Number(pacienteInfo.saldo_a_favor).toLocaleString('es-CL')}</span>
+                   </div>
+                )}
+                {/* 👆 FIN DEL BLOQUE 👆 */}
              </div>
            )}
 
