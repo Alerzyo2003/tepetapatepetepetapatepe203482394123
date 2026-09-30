@@ -588,7 +588,7 @@ export default function PanelDesempenoNegocio() {
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
           <VitalCard icon={Wallet} label="Ingreso Cajas (Mes)" value={money(data.finanzas.totalIngresosCaja)} delta={deltaCaja} history={data.charts.history} dataKey="Recaudacion" accent="#0d9488" />
           <VitalCard icon={Stethoscope} label="Ventas Doctor" value={money(data.finanzas.produccionDoctores)} plain accent="#38bdf8" />
-          <VitalCard icon={PieIcon} label="Margen Clínica (Bruto)" value={money(data.finanzas.totalMargenClinica)} plain accent="#1e293b" />
+          <VitalCard icon={PieIcon} label="ingreso por Clinica" value={money(data.finanzas.totalMargenClinica)} plain accent="#1e293b" />
           <VitalCard icon={TrendingUp} label="Venta Laboratorio (Paciente)" value={money(data.finanzas.ventaLaboratorio)} plain accent="#b45309" />
           <VitalCard icon={Package} label="Costo Laboratorio (Clínica)" value={money(data.finanzas.totalLab)} plain accent="#7c3aed" />
         </div>
