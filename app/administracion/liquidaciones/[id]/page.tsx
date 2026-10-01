@@ -335,57 +335,177 @@ export default function DetalleLiquidacionPage() {
       window.print();
     }, 100);
   }
-  
-  const descargarExcel = () => {
-    if (itemsPendientes.length === 0) {
-      toast.error("No hay producción pendiente para descargar");
-      return;
-    }
 
-    const encabezados = [
-      'Estado',
-      'Fecha',
-      'Paciente',
-      'Prestacion',
-      'Pago Recibido',
-      'Costo Lab',
-      'Base Imponible',
-      'A Pagar al Dr'
-    ];
+  const liquidables = itemsPendientes.filter(i => i.paymentStatus === 'paid');
+  const parciales = itemsPendientes.filter(i => i.paymentStatus === 'partially-paid');
+  const deudas = itemsPendientes.filter(i => i.paymentStatus !== 'paid' && i.paymentStatus !== 'partially-paid');
 
-    const filas = itemsPendientes.map(item => {
-      const fecha = item.fecha ? new Date(item.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F';
-      const estado = item.paymentStatus === 'paid' ? 'Pagado 100%' : item.paymentStatus === 'partially-paid' ? 'Parcial' : 'Deuda';
-      
-      return [
-        estado,
-        fecha,
-        `"${item.paciente}"`,
-        `"${item.prestacion}"`,
-        Math.round(item.montoPago || 0),
-        Math.round(item.descuentoLab || 0),
-        Math.round(item.imponible || 0),
-        Math.round(item.honorario || 0)
-      ].join(';'); 
+  const handleExportExcel = () => {
+    // Función para evitar que caracteres especiales rompan el formato del Excel
+    const escapeXml = (unsafe: any) => (unsafe || '').toString().replace(/[<>&'"]/g, (c: string) => {
+        switch (c) {
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '&': return '&amp;';
+            case '\'': return '&apos;';
+            case '"': return '&quot;';
+            default: return c;
+        }
     });
 
-    filas.push(['', '', '', 'TOTAL PENDIENTE A PAGAR', '', '', '', Math.round(resumenMes.saldoPendiente)].join(';'));
+    const xmlTemplate = `<?xml version="1.0"?>
+    <?mso-application progid="Excel.Sheet"?>
+    <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+     xmlns:o="urn:schemas-microsoft-com:office:office"
+     xmlns:x="urn:schemas-microsoft-com:office:excel"
+     xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+     xmlns:html="http://www.w3.org/TR/REC-html40">
+     <Styles>
+      <Style ss:ID="Header">
+       <Font ss:Bold="1" ss:Color="#FFFFFF"/>
+       <Interior ss:Color="#0A111F" ss:Pattern="Solid"/>
+      </Style>
+      <Style ss:ID="Money">
+       <NumberFormat ss:Format="&quot;$&quot;#,##0"/>
+      </Style>
+      <Style ss:ID="Title">
+       <Font ss:Bold="1" ss:Size="14"/>
+      </Style>
+      <Style ss:ID="BoldRight">
+       <Font ss:Bold="1"/>
+       <Alignment ss:Horizontal="Right"/>
+      </Style>
+      <Style ss:ID="BoldMoney">
+       <Font ss:Bold="1"/>
+       <NumberFormat ss:Format="&quot;$&quot;#,##0"/>
+      </Style>
+     </Styles>
 
-    const csvContent = "\uFEFF" + encabezados.join(';') + "\n" + filas.join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+     <!-- ================= HOJA 1 ================= -->
+     <Worksheet ss:Name="1. Pagados (A Liquidar)">
+      <Table>
+       <Column ss:Width="80"/>
+       <Column ss:Width="180"/>
+       <Column ss:Width="250"/>
+       <Column ss:Width="100"/>
+       <Column ss:Width="90"/>
+       <Column ss:Width="90"/>
+       <Column ss:Width="100"/>
+       <Row><Cell ss:StyleID="Title"><Data ss:Type="String">TRATAMIENTOS PAGADOS AL 100%</Data></Cell></Row>
+       <Row>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Fecha</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Paciente</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Prestación</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Pieza</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Total Prest.</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Total Pagado</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Honorario Dr.</Data></Cell>
+       </Row>
+       ${liquidables.map(i => `
+       <Row>
+        <Cell><Data ss:Type="String">${escapeXml(i.fecha ? new Date(i.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F')}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml(i.paciente)}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml(i.prestacion)}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml((i.diente ? i.diente : 'General') + (i.cara ? ' ('+i.cara+')' : ''))}</Data></Cell>
+        <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.costoTotalPrestacion)}</Data></Cell>
+        <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.pagadoTotalPrestacion)}</Data></Cell>
+        <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.honorario)}</Data></Cell>
+       </Row>
+       `).join('')}
+       <Row>
+        <Cell ss:Index="6" ss:StyleID="BoldRight"><Data ss:Type="String">TOTAL HONORARIOS:</Data></Cell>
+        <Cell ss:StyleID="BoldMoney"><Data ss:Type="Number">${Math.round(liquidables.reduce((acc, i) => acc + (i.honorario || 0), 0))}</Data></Cell>
+       </Row>
+      </Table>
+     </Worksheet>
+
+     <!-- ================= HOJA 2 ================= -->
+     <Worksheet ss:Name="2. Parciales (Aun No)">
+      <Table>
+       <Column ss:Width="80"/>
+       <Column ss:Width="180"/>
+       <Column ss:Width="250"/>
+       <Column ss:Width="100"/>
+       <Column ss:Width="90"/>
+       <Column ss:Width="90"/>
+       <Column ss:Width="100"/>
+       <Row><Cell ss:StyleID="Title"><Data ss:Type="String">PACIENTES CON PAGOS PARCIALES</Data></Cell></Row>
+       <Row>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Fecha</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Paciente</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Prestación</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Pieza</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Total Prest.</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Total Pagado</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Falta Pagar</Data></Cell>
+       </Row>
+       ${parciales.map(i => `
+       <Row>
+        <Cell><Data ss:Type="String">${escapeXml(i.fecha ? new Date(i.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F')}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml(i.paciente)}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml(i.prestacion)}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml((i.diente ? i.diente : 'General') + (i.cara ? ' ('+i.cara+')' : ''))}</Data></Cell>
+        <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.costoTotalPrestacion)}</Data></Cell>
+        <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.pagadoTotalPrestacion)}</Data></Cell>
+        <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round((i.costoTotalPrestacion || 0) - (i.pagadoTotalPrestacion || 0))}</Data></Cell>
+       </Row>
+       `).join('')}
+       <Row>
+        <Cell ss:Index="6" ss:StyleID="BoldRight"><Data ss:Type="String">TOTAL POR PAGAR:</Data></Cell>
+        <Cell ss:StyleID="BoldMoney"><Data ss:Type="Number">${Math.round(parciales.reduce((acc, i) => acc + ((i.costoTotalPrestacion || 0) - (i.pagadoTotalPrestacion || 0)), 0))}</Data></Cell>
+       </Row>
+      </Table>
+     </Worksheet>
+
+     <!-- ================= HOJA 3 ================= -->
+     <Worksheet ss:Name="3. Deudas (Sin Pago)">
+      <Table>
+       <Column ss:Width="80"/>
+       <Column ss:Width="180"/>
+       <Column ss:Width="250"/>
+       <Column ss:Width="100"/>
+       <Column ss:Width="90"/>
+       <Column ss:Width="90"/>
+       <Column ss:Width="100"/>
+       <Row><Cell ss:StyleID="Title"><Data ss:Type="String">PACIENTES CON DEUDA (SIN PAGOS)</Data></Cell></Row>
+       <Row>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Fecha</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Paciente</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Prestación</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Pieza</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Total Prest.</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Total Pagado</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Deuda Total</Data></Cell>
+       </Row>
+       ${deudas.map(i => `
+       <Row>
+        <Cell><Data ss:Type="String">${escapeXml(i.fecha ? new Date(i.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F')}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml(i.paciente)}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml(i.prestacion)}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml((i.diente ? i.diente : 'General') + (i.cara ? ' ('+i.cara+')' : ''))}</Data></Cell>
+        <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.costoTotalPrestacion)}</Data></Cell>
+        <Cell ss:StyleID="Money"><Data ss:Type="Number">0</Data></Cell>
+        <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.costoTotalPrestacion)}</Data></Cell>
+       </Row>
+       `).join('')}
+       <Row>
+        <Cell ss:Index="6" ss:StyleID="BoldRight"><Data ss:Type="String">TOTAL DEUDAS:</Data></Cell>
+        <Cell ss:StyleID="BoldMoney"><Data ss:Type="Number">${Math.round(deudas.reduce((acc, i) => acc + (i.costoTotalPrestacion || 0), 0))}</Data></Cell>
+       </Row>
+      </Table>
+     </Worksheet>
+    </Workbook>`;
+
+    const blob = new Blob([xmlTemplate], { type: 'application/vnd.ms-excel' });
     const url = URL.createObjectURL(blob);
-    
-    const link = document.createElement('a');
-    link.href = url;
-    const nombreSaneado = `${profesional?.nombre}_${profesional?.apellido}`.replace(/\s+/g, '_');
-    link.setAttribute('download', `Liquidacion_Pendiente_${nombreSaneado}_${mesSeleccionado}.csv`);
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Liquidacion_${profesional?.nombre}_${profesional?.apellido}_${mesSeleccionado}.xls`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     toast.success("Excel descargado correctamente");
-  }
+  };
 
   const obtenerFechaFinalizacion = () => {
     const [year, month] = mesSeleccionado.split('-');
@@ -457,7 +577,7 @@ export default function DetalleLiquidacionPage() {
             
             <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0 w-full md:w-auto mt-4 md:mt-0">
               <button 
-                onClick={descargarExcel} 
+                onClick={handleExportExcel} 
                 className="bg-emerald-600 text-white px-6 py-4 rounded-2xl hover:bg-emerald-700 transition-all shadow-md font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 w-full sm:w-auto"
               >
                 <Download size={18}/> Descargar Excel
