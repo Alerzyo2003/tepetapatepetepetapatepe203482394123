@@ -9,6 +9,18 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 
+// Función para evitar que caracteres especiales rompan el formato del Excel
+const escapeXml = (unsafe: any) => (unsafe || '').toString().replace(/[<>&'"]/g, (c: string) => {
+  switch (c) {
+    case '<': return '&lt;';
+    case '>': return '&gt;';
+    case '&': return '&amp;';
+    case '\'': return '&apos;';
+    case '"': return '&quot;';
+    default: return c;
+  }
+});
+
 export default function DetalleLiquidacionPage() {
   const { id } = useParams()
   const searchParams = useSearchParams()
@@ -36,10 +48,10 @@ export default function DetalleLiquidacionPage() {
       const [year, month] = mesSeleccionado.split('-');
       const ultimoDiaNum = new Date(Number(year), Number(month), 0).getDate();
       const ultimoDia = String(ultimoDiaNum).padStart(2, '0');
-      
+
       const finMes = `${year}-${month}-${ultimoDia} 23:59:59`
       const fechaCortaFin = `${year}-${month}-${ultimoDia}`;
-      
+
       // 1. Obtener datos del profesional (usando el ID de la URL)
       const { data: prof, error: errProf } = await supabase.from('profesionales').select('*').eq('user_id', id).single()
       if (errProf) throw errProf;
@@ -47,7 +59,7 @@ export default function DetalleLiquidacionPage() {
 
       const { data: perfil } = await supabase.from('perfiles').select('rut').eq('id', prof.user_id).single();
       setProfesional({ ...prof, rut: perfil?.rut || 'Sin registrar' });
-      
+
       const porcentajeDr = Number(prof.porcentaje_comision || 40) / 100;
 
       // 2. Obtener Atenciones Directas del doctor
@@ -127,24 +139,24 @@ export default function DetalleLiquidacionPage() {
       }));
 
       const abonosFormateados = todosLosPagos.filter((pago: any) => {
-         const pItem = Array.isArray(pago.presupuesto_items) ? pago.presupuesto_items[0] : (pago.presupuesto_items || {});
-         const docId = pItem.profesional_id || pago.profesional_id || null; 
-         if (docId !== prof.user_id) return false;
+        const pItem = Array.isArray(pago.presupuesto_items) ? pago.presupuesto_items[0] : (pago.presupuesto_items || {});
+        const docId = pItem.profesional_id || pago.profesional_id || null;
+        if (docId !== prof.user_id) return false;
 
-         const precioPactado = Number(pItem.precio_pactado || 0);
-         const abonadoTotal = Number(pItem.abonado || 0);
+        const precioPactado = Number(pItem.precio_pactado || 0);
+        const abonadoTotal = Number(pItem.abonado || 0);
 
-         // REGLA INQUEBRANTABLE (Liquidables solo si 100% pagado)
-         return precioPactado > 0 && abonadoTotal >= precioPactado;
+        // REGLA INQUEBRANTABLE (Liquidables solo si 100% pagado)
+        return precioPactado > 0 && abonadoTotal >= precioPactado;
       }).map((pago: any) => {
         const pItem = Array.isArray(pago.presupuesto_items) ? pago.presupuesto_items[0] : (pago.presupuesto_items || {});
-        
-        const montoPago = Number(pago.monto || 0); 
+
+        const montoPago = Number(pago.monto || 0);
         const costoLab = Number(pItem.costo_laboratorio || 0);
         const precioPactado = Number(pItem.precio_pactado || montoPago || 1);
         const pagadoPorDr = Boolean(pItem.lab_pagado_por_dr);
         const totalAbonado = Number(pItem.abonado || 0);
-        
+
         const itemEstado = pItem.estado?.toLowerCase() || '';
         const estaTerminado = ['realizado', 'atendido', 'terminado', 'finalizado', 'completado'].includes(itemEstado);
 
@@ -158,7 +170,7 @@ export default function DetalleLiquidacionPage() {
         const tipoReparto = pItem.tipo_reparto || 'general';
         const valorForzado = Number(pItem.porcentaje_forzado || 0) / 100;
 
-        let pctDrItem = porcentajeDr; 
+        let pctDrItem = porcentajeDr;
         if (tipoReparto === 'doctor') pctDrItem = 1;
         else if (tipoReparto === 'clinica') pctDrItem = 0;
         else if (tipoReparto === 'forzado') pctDrItem = valorForzado;
@@ -205,34 +217,36 @@ export default function DetalleLiquidacionPage() {
       liqsCerradas.forEach((liq, index) => {
         let montoARepartir = Number(liq.monto_total);
         let itemsDeEstaLiq = [];
-        
+
         let fechaLimite = new Date((liq.fecha_pago || liq.periodo_hasta).replace(' ', 'T'));
         fechaLimite.setHours(23, 59, 59, 999);
 
-        for(let i = 0; i < poolProduccion.length; i++) {
-            let item = poolProduccion[i];
-            
-            if (item.honorario_restante <= 0) continue;
-            if (montoARepartir <= 0) break;
+        for (let i = 0; i < poolProduccion.length; i++) {
+          let item = poolProduccion[i];
 
-            let fechaItem = new Date(item.fecha ? item.fecha.replace(' ', 'T') : 0);
-            if (fechaItem > fechaLimite) continue;
+          if (item.honorario_restante <= 0) continue;
+          if (montoARepartir <= 0) break;
 
-            let aDescontar = Math.min(item.honorario_restante, montoARepartir);
-            
-            itemsDeEstaLiq.push({
-                ...item,
-                honorario: aDescontar
-            });
+          let fechaItem = new Date(item.fecha ? item.fecha.replace(' ', 'T') : 0);
+          if (fechaItem > fechaLimite) continue;
 
-            item.honorario_restante -= aDescontar;
-            montoARepartir -= aDescontar;
+          let aDescontar = Math.min(item.honorario_restante, montoARepartir);
+
+          itemsDeEstaLiq.push({
+            ...item,
+            honorario: aDescontar
+          });
+
+          item.honorario_restante -= aDescontar;
+          montoARepartir -= aDescontar;
         }
 
         let fLiq = new Date((liq.fecha_pago || liq.periodo_hasta).replace(' ', 'T'));
         if (fLiq.getFullYear() === Number(year) && fLiq.getMonth() === (Number(month) - 1)) {
           cierresList.push({
             id: liq.id,
+            numero: index + 1,
+            fechaPago: fLiq.toLocaleDateString('es-CL'),
             titulo: `Cierre #${index + 1} • Pagado el ${fLiq.toLocaleDateString('es-CL')}`,
             items: itemsDeEstaLiq,
             montoTotal: liq.monto_total
@@ -244,8 +258,8 @@ export default function DetalleLiquidacionPage() {
       const pendientesFinal = poolProduccion
         .filter(p => p.honorario_restante > 0)
         .map(p => ({
-            ...p,
-            honorario: p.honorario_restante
+          ...p,
+          honorario: p.honorario_restante
         }));
 
       // 8. Resumen de contabilidad estrictamente del mes consultado
@@ -261,63 +275,73 @@ export default function DetalleLiquidacionPage() {
       });
       const totalPagado = liqsDelMes.reduce((acc, curr) => acc + Number(curr.monto_total), 0);
       const saldoPendiente = pendientesFinal.reduce((acc, curr) => acc + curr.honorario, 0);
-      
+
       setResumenMes({ totalMes, totalPagado, saldoPendiente });
 
       // 9. Obtener TODOS los items pendientes (no pagados 100%, pero sí evolucionados/abonados)
       const { data: itemsEnSeguimientoData } = await supabase
-        .from('presupuesto_items')
-        .select('*, presupuestos(paciente_id, pacientes(id, nombre, apellido))')
-        .eq('profesional_id', prof.user_id)
-        .or('progreso.gt.0,abonado.gt.0,estado.eq.realizado,estado.eq.atendido,estado.eq.terminado,estado.eq.finalizado,estado.eq.completado');
+  .from('presupuesto_items')
+  .select('*, presupuestos(paciente_id, fecha_creacion, pacientes(id, nombre, apellido))')
+  .eq('profesional_id', prof.user_id)
+  .or('progreso.gt.0,abonado.gt.0,estado.eq.realizado,estado.eq.atendido,estado.eq.terminado,estado.eq.finalizado,estado.eq.completado');
 
-      const itemsDeSeguimiento = (itemsEnSeguimientoData || [])
-        .map((item: any) => {
-            const precioPactado = Number(item.precio_pactado || 0);
-            const totalAbonado = Number(item.abonado || 0);
+// Última fecha de pago por ítem (ya tenemos todos los pagos cargados arriba)
+const ultimaFechaPagoPorItem: Record<string, string> = {};
+todosLosPagos.forEach((pago: any) => {
+  const pItem = Array.isArray(pago.presupuesto_items) ? pago.presupuesto_items[0] : pago.presupuesto_items;
+  if (!pItem?.id || !pago.fecha_pago) return;
+  const actual = ultimaFechaPagoPorItem[pItem.id];
+  if (!actual || pago.fecha_pago > actual) ultimaFechaPagoPorItem[pItem.id] = pago.fecha_pago;
+});
 
-            // Ignorar si ya está en los pendientes 100% liquidados
-            if (pendientesFinal.some(p => p.tratamiento_id === item.id)) return null;
-            // Ignorar si ya está liquidado en algún cierre del mes
-            if (cierresList.some(c => c.items.some((i: any) => i.tratamiento_id === item.id))) return null;
+const itemsDeSeguimiento = (itemsEnSeguimientoData || [])
+  .map((item: any) => {
+    const precioPactado = Number(item.precio_pactado || 0);
+    const totalAbonado = Number(item.abonado || 0);
 
-            const estaTerminado = ['realizado', 'atendido', 'terminado', 'finalizado', 'completado'].includes(item.estado?.toLowerCase() || '');
-            const progreso = Number(item.progreso || 0);
-            const estaEvolucionado = estaTerminado || progreso > 0 || totalAbonado > 0;
+    // Ignorar si ya está en los pendientes 100% liquidados
+    if (pendientesFinal.some(p => p.tratamiento_id === item.id)) return null;
+    // Ignorar si ya está liquidado en algún cierre del mes
+    if (cierresList.some(c => c.items.some((i: any) => i.tratamiento_id === item.id))) return null;
 
-            if (!estaEvolucionado && totalAbonado === 0) return null;
+    const estaTerminado = ['realizado', 'atendido', 'terminado', 'finalizado', 'completado'].includes(item.estado?.toLowerCase() || '');
+    const progreso = Number(item.progreso || 0);
+    const estaEvolucionado = estaTerminado || progreso > 0 || totalAbonado > 0;
 
-            let paymentStatus = 'unpaid';
-            if (totalAbonado >= precioPactado && precioPactado > 0) {
-                paymentStatus = 'paid';
-            } else if (totalAbonado > 0) {
-                paymentStatus = 'partially-paid';
-            }
+    if (!estaEvolucionado && totalAbonado === 0) return null;
 
-            const pacienteData = item.presupuestos?.pacientes;
-            return {
-              id_origen: item.id,
-              fecha: item.updated_at,
-              paciente: pacienteData ? `${pacienteData.nombre} ${pacienteData.apellido}` : 'Paciente',
-              prestacion: item.nombre_prestacion || 'Prestación sin nombre',
-              montoPago: totalAbonado,
-              descuentoLab: 0,
-              imponible: 0,
-              honorario: 0, // No genera honorario a la bolsa liquida hasta el 100%
-              tipo: 'Seguimiento',
-              paciente_id: item.presupuestos?.paciente_id,
-              presupuesto_id: item.presupuesto_id,
-              tratamiento_id: item.id,
-              estaEvolucionado: estaEvolucionado,
-              paymentStatus: paymentStatus,
-              costoTotalPrestacion: precioPactado,
-              pagadoTotalPrestacion: totalAbonado,
-              diente: item.diente_id,
-              cara: item.cara,
-              observacion: item.observacion
-            };
-        })
-        .filter(Boolean);
+    let paymentStatus = 'unpaid';
+    if (totalAbonado >= precioPactado && precioPactado > 0) {
+      paymentStatus = 'paid';
+    } else if (totalAbonado > 0) {
+      paymentStatus = 'partially-paid';
+    }
+
+    const pacienteData = item.presupuestos?.pacientes;
+    return {
+      id_origen: item.id,
+      // ✅ Antes: item.updated_at (no existe en la tabla)
+      fecha: ultimaFechaPagoPorItem[item.id] || item.presupuestos?.fecha_creacion || null,
+      paciente: pacienteData ? `${pacienteData.nombre} ${pacienteData.apellido}` : 'Paciente',
+      prestacion: item.nombre_prestacion || 'Prestación sin nombre',
+      montoPago: totalAbonado,
+      descuentoLab: 0,
+      imponible: 0,
+      honorario: 0,
+      tipo: 'Seguimiento',
+      paciente_id: item.presupuestos?.paciente_id,
+      presupuesto_id: item.presupuesto_id,
+      tratamiento_id: item.id,
+      estaEvolucionado: estaEvolucionado,
+      paymentStatus: paymentStatus,
+      costoTotalPrestacion: precioPactado,
+      pagadoTotalPrestacion: totalAbonado,
+      diente: item.diente_id,
+      cara: item.cara,
+      observacion: item.observacion
+    };
+  })
+  .filter(Boolean);
 
       setItemsPendientes([...pendientesFinal, ...itemsDeSeguimiento]);
       setCierresCompletados(cierresList.reverse());
@@ -341,18 +365,6 @@ export default function DetalleLiquidacionPage() {
   const deudas = itemsPendientes.filter(i => i.paymentStatus !== 'paid' && i.paymentStatus !== 'partially-paid');
 
   const handleExportExcel = () => {
-    // Función para evitar que caracteres especiales rompan el formato del Excel
-    const escapeXml = (unsafe: any) => (unsafe || '').toString().replace(/[<>&'"]/g, (c: string) => {
-        switch (c) {
-            case '<': return '&lt;';
-            case '>': return '&gt;';
-            case '&': return '&amp;';
-            case '\'': return '&apos;';
-            case '"': return '&quot;';
-            default: return c;
-        }
-    });
-
     const xmlTemplate = `<?xml version="1.0"?>
     <?mso-application progid="Excel.Sheet"?>
     <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
@@ -406,7 +418,7 @@ export default function DetalleLiquidacionPage() {
         <Cell><Data ss:Type="String">${escapeXml(i.fecha ? new Date(i.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F')}</Data></Cell>
         <Cell><Data ss:Type="String">${escapeXml(i.paciente)}</Data></Cell>
         <Cell><Data ss:Type="String">${escapeXml(i.prestacion)}</Data></Cell>
-        <Cell><Data ss:Type="String">${escapeXml((i.diente ? i.diente : 'General') + (i.cara ? ' ('+i.cara+')' : ''))}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml((i.diente ? i.diente : 'General') + (i.cara ? ' (' + i.cara + ')' : ''))}</Data></Cell>
         <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.costoTotalPrestacion)}</Data></Cell>
         <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.pagadoTotalPrestacion)}</Data></Cell>
         <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.honorario)}</Data></Cell>
@@ -444,7 +456,7 @@ export default function DetalleLiquidacionPage() {
         <Cell><Data ss:Type="String">${escapeXml(i.fecha ? new Date(i.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F')}</Data></Cell>
         <Cell><Data ss:Type="String">${escapeXml(i.paciente)}</Data></Cell>
         <Cell><Data ss:Type="String">${escapeXml(i.prestacion)}</Data></Cell>
-        <Cell><Data ss:Type="String">${escapeXml((i.diente ? i.diente : 'General') + (i.cara ? ' ('+i.cara+')' : ''))}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml((i.diente ? i.diente : 'General') + (i.cara ? ' (' + i.cara + ')' : ''))}</Data></Cell>
         <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.costoTotalPrestacion)}</Data></Cell>
         <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.pagadoTotalPrestacion)}</Data></Cell>
         <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round((i.costoTotalPrestacion || 0) - (i.pagadoTotalPrestacion || 0))}</Data></Cell>
@@ -482,7 +494,7 @@ export default function DetalleLiquidacionPage() {
         <Cell><Data ss:Type="String">${escapeXml(i.fecha ? new Date(i.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F')}</Data></Cell>
         <Cell><Data ss:Type="String">${escapeXml(i.paciente)}</Data></Cell>
         <Cell><Data ss:Type="String">${escapeXml(i.prestacion)}</Data></Cell>
-        <Cell><Data ss:Type="String">${escapeXml((i.diente ? i.diente : 'General') + (i.cara ? ' ('+i.cara+')' : ''))}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml((i.diente ? i.diente : 'General') + (i.cara ? ' (' + i.cara + ')' : ''))}</Data></Cell>
         <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.costoTotalPrestacion)}</Data></Cell>
         <Cell ss:StyleID="Money"><Data ss:Type="Number">0</Data></Cell>
         <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.costoTotalPrestacion)}</Data></Cell>
@@ -504,7 +516,75 @@ export default function DetalleLiquidacionPage() {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+    URL.revokeObjectURL(url);
     toast.success("Excel descargado correctamente");
+  };
+
+  // ✅ NUEVO: Descargar el detalle de un cierre ya pagado
+  const handleExportCierreExcel = (cierre: any) => {
+    const filas = cierre.items.map((i: any) => `
+    <Row>
+      <Cell><Data ss:Type="String">${escapeXml(i.fecha ? new Date(i.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F')}</Data></Cell>
+      <Cell><Data ss:Type="String">${escapeXml(i.paciente)}</Data></Cell>
+      <Cell><Data ss:Type="String">${escapeXml(i.prestacion)}</Data></Cell>
+      <Cell><Data ss:Type="String">${escapeXml((i.diente ? i.diente : 'General') + (i.cara ? ' (' + i.cara + ')' : ''))}</Data></Cell>
+      <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.montoPago || 0)}</Data></Cell>
+      <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.descuentoLab || 0)}</Data></Cell>
+      <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.imponible || 0)}</Data></Cell>
+      <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.honorario || 0)}</Data></Cell>
+    </Row>`).join('');
+
+    const totalItems = cierre.items.reduce((acc: number, i: any) => acc + (i.honorario || 0), 0);
+
+    const xml = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <Styles>
+  <Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#0A111F" ss:Pattern="Solid"/></Style>
+  <Style ss:ID="Money"><NumberFormat ss:Format="&quot;$&quot;#,##0"/></Style>
+  <Style ss:ID="Title"><Font ss:Bold="1" ss:Size="14"/></Style>
+  <Style ss:ID="BoldRight"><Font ss:Bold="1"/><Alignment ss:Horizontal="Right"/></Style>
+  <Style ss:ID="BoldMoney"><Font ss:Bold="1"/><NumberFormat ss:Format="&quot;$&quot;#,##0"/></Style>
+ </Styles>
+ <Worksheet ss:Name="Cierre ${cierre.numero}">
+  <Table>
+   <Column ss:Width="80"/><Column ss:Width="180"/><Column ss:Width="250"/><Column ss:Width="100"/>
+   <Column ss:Width="90"/><Column ss:Width="90"/><Column ss:Width="100"/><Column ss:Width="100"/>
+   <Row><Cell ss:StyleID="Title"><Data ss:Type="String">${escapeXml(`LIQUIDACIÓN CERRADA #${cierre.numero} - Pagada el ${cierre.fechaPago}`)}</Data></Cell></Row>
+   <Row><Cell><Data ss:Type="String">${escapeXml(`Dr. ${profesional?.nombre} ${profesional?.apellido} - RUT: ${profesional?.rut || ''} - Periodo: ${mesSeleccionado}`)}</Data></Cell></Row>
+   <Row>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Fecha</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Paciente</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Prestación</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Pieza</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Pago Recibido</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Costo Lab</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Base Imponible</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">Pagado al Dr.</Data></Cell>
+   </Row>
+   ${filas}
+   <Row>
+    <Cell ss:Index="7" ss:StyleID="BoldRight"><Data ss:Type="String">TOTAL PAGADO:</Data></Cell>
+    <Cell ss:StyleID="BoldMoney"><Data ss:Type="Number">${Math.round(totalItems)}</Data></Cell>
+   </Row>
+  </Table>
+ </Worksheet>
+</Workbook>`;
+
+    const blob = new Blob([xml], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Cierre_${cierre.numero}_${profesional?.nombre}_${profesional?.apellido}_${mesSeleccionado}.xls`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success(`Cierre #${cierre.numero} descargado`);
   };
 
   const obtenerFechaFinalizacion = () => {
@@ -515,22 +595,22 @@ export default function DetalleLiquidacionPage() {
 
   if (cargando) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#FBF8F2] gap-4">
-      <Loader2 className="animate-spin text-[#C9A24B]" size={40}/>
+      <Loader2 className="animate-spin text-[#C9A24B]" size={40} />
       <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest italic">Cargando reporte de liquidación...</p>
     </div>
   )
 
   return (
     <main className="min-h-screen bg-[#FBF8F2] p-6 md:p-10 font-sans text-slate-900 relative overflow-hidden z-0">
-      
-      <div 
+
+      <div
         className="absolute top-0 right-0 w-[700px] h-[800px] bg-[url('/fondo-profesionales.png')] bg-contain bg-right-top bg-no-repeat -z-10 pointer-events-none opacity-40 mix-blend-multiply"
       ></div>
 
       <div className="max-w-7xl mx-auto space-y-8 relative z-10 print:hidden text-left">
-        
+
         <Link href="/administracion/liquidaciones" className="flex items-center gap-2 text-slate-400 hover:text-[#0A111F] font-black text-[10px] uppercase tracking-widest transition-all w-fit">
-          <ChevronLeft size={16}/> Volver a liquidaciones
+          <ChevronLeft size={16} /> Volver a liquidaciones
         </Link>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -555,7 +635,7 @@ export default function DetalleLiquidacionPage() {
         </div>
 
         <div className="bg-white/95 backdrop-blur-sm p-8 md:p-10 rounded-[3rem] shadow-sm border border-slate-100 text-left">
-          
+
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-slate-100 pb-8 mb-8">
             <div className="text-left">
               <p className="text-[10px] font-black text-[#C9A24B] uppercase tracking-[0.2em] mb-2 text-left">Desglose de Periodo</p>
@@ -574,25 +654,25 @@ export default function DetalleLiquidacionPage() {
                 </div>
               </div>
             </div>
-            
+
             <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0 w-full md:w-auto mt-4 md:mt-0">
-              <button 
-                onClick={handleExportExcel} 
+              <button
+                onClick={handleExportExcel}
                 className="bg-emerald-600 text-white px-6 py-4 rounded-2xl hover:bg-emerald-700 transition-all shadow-md font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 w-full sm:w-auto"
               >
-                <Download size={18}/> Descargar Excel
+                <Download size={18} /> Descargar Excel
               </button>
-              <button 
-                onClick={handlePrint} 
+              <button
+                onClick={handlePrint}
                 className="bg-[#0A111F] text-white px-6 py-4 rounded-2xl hover:bg-[#1a2538] transition-all shadow-md font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 w-full sm:w-auto"
               >
-                <Printer size={18}/> Imprimir Reporte
+                <Printer size={18} /> Imprimir Reporte
               </button>
             </div>
           </div>
 
           <div className="space-y-12">
-            
+
             <div>
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-3 bg-amber-100 text-amber-600 rounded-xl"><AlertCircle size={22} /></div>
@@ -641,7 +721,7 @@ export default function DetalleLiquidacionPage() {
                                     item.paymentStatus === 'partially-paid' ? 'text-amber-600' :
                                     'text-red-600'
                                   }`}>
-                                    { item.paymentStatus === 'paid' ? 'Pagado' : item.paymentStatus === 'partially-paid' ? 'Parcial' : 'Deuda' }
+                                    {item.paymentStatus === 'paid' ? 'Pagado' : item.paymentStatus === 'partially-paid' ? 'Parcial' : 'Deuda'}
                                   </span>
                                 </div>
                               )}
@@ -653,12 +733,12 @@ export default function DetalleLiquidacionPage() {
                             <td className="px-5 py-4 text-right">
                               {item.descuentoLab > 0 ? (
                                 <div className="flex flex-col items-end">
-                                   <span className={`font-black flex items-center gap-1 ${item.esReembolso ? 'text-amber-600' : 'text-red-500'}`}>
-                                     <FlaskConical size={12}/> ${Math.round(item.descuentoLab).toLocaleString('es-CL')}
-                                   </span>
-                                   <span className="text-[8px] font-bold uppercase opacity-60">
-                                     {item.esReembolso ? 'Por Reembolsar' : 'Deducido'}
-                                   </span>
+                                  <span className={`font-black flex items-center gap-1 ${item.esReembolso ? 'text-amber-600' : 'text-red-500'}`}>
+                                    <FlaskConical size={12} /> ${Math.round(item.descuentoLab).toLocaleString('es-CL')}
+                                  </span>
+                                  <span className="text-[8px] font-bold uppercase opacity-60">
+                                    {item.esReembolso ? 'Por Reembolsar' : 'Deducido'}
+                                  </span>
                                 </div>
                               ) : <span className="text-slate-300">-</span>}
                             </td>
@@ -710,8 +790,19 @@ export default function DetalleLiquidacionPage() {
                             <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mt-1">Cierre bloqueado e inmodificable</p>
                           </div>
                         </div>
-                        <div className="px-5 py-2.5 rounded-2xl text-xs font-black tracking-widest uppercase flex items-center gap-2 bg-emerald-100 text-emerald-800 shadow-sm">
-                          Pagado: ${(cierre.montoTotal || 0).toLocaleString('es-CL')}
+
+                        {/* ✅ NUEVO: botón de descarga + monto pagado */}
+                        <div className="flex flex-wrap items-center gap-3">
+                          <button
+                            onClick={() => handleExportCierreExcel(cierre)}
+                            className="bg-emerald-600 text-white px-4 py-2.5 rounded-2xl hover:bg-emerald-700 transition-all shadow-sm font-black text-[10px] uppercase tracking-widest flex items-center gap-2"
+                            title="Descargar detalle de este cierre"
+                          >
+                            <Download size={14} /> Descargar Excel
+                          </button>
+                          <div className="px-5 py-2.5 rounded-2xl text-xs font-black tracking-widest uppercase flex items-center gap-2 bg-emerald-100 text-emerald-800 shadow-sm">
+                            Pagado: ${(cierre.montoTotal || 0).toLocaleString('es-CL')}
+                          </div>
                         </div>
                       </div>
 
@@ -745,7 +836,7 @@ export default function DetalleLiquidacionPage() {
                                         item.paymentStatus === 'partially-paid' ? 'text-amber-600' :
                                         'text-red-600'
                                       }`}>
-                                        { item.paymentStatus === 'paid' ? 'Pagado' : item.paymentStatus === 'partially-paid' ? 'Parcial' : 'Deuda' }
+                                        {item.paymentStatus === 'paid' ? 'Pagado' : item.paymentStatus === 'partially-paid' ? 'Parcial' : 'Deuda'}
                                       </span>
                                     </div>
                                   )}
@@ -758,7 +849,7 @@ export default function DetalleLiquidacionPage() {
                                   {item.descuentoLab > 0 ? (
                                     <div className="flex flex-col items-end">
                                       <span className="font-black flex items-center gap-1 text-slate-400">
-                                        <FlaskConical size={12}/> ${Math.round(item.descuentoLab).toLocaleString('es-CL')}
+                                        <FlaskConical size={12} /> ${Math.round(item.descuentoLab).toLocaleString('es-CL')}
                                       </span>
                                     </div>
                                   ) : <span className="text-slate-300">-</span>}
@@ -907,12 +998,12 @@ export default function DetalleLiquidacionPage() {
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Prestación</p>
                     <p className="text-[13px] font-bold text-[#0A111F]">{detalleItem.prestacion}</p>
                   </div>
-                  
+
                   {(detalleItem.diente || detalleItem.cara) && (
                     <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
                       <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Ubicación Clínica</p>
                       <p className="text-[13px] font-bold text-[#0A111F]">
-                        {detalleItem.diente ? `Diente: ${detalleItem.diente} ` : ''} 
+                        {detalleItem.diente ? `Diente: ${detalleItem.diente} ` : ''}
                         {detalleItem.cara ? `- Cara: ${detalleItem.cara}` : ''}
                       </p>
                     </div>
@@ -935,7 +1026,7 @@ export default function DetalleLiquidacionPage() {
                       <p className="text-[13px] font-bold text-[#0A111F]">${(detalleItem.pagadoTotalPrestacion || 0).toLocaleString('es-CL')}</p>
                     </div>
                   </div>
-                  
+
                   <div className={`${detalleItem.paymentStatus === 'paid' ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'} p-5 rounded-2xl border`}>
                     <p className={`text-[9px] font-black uppercase tracking-widest mb-1 ${detalleItem.paymentStatus === 'paid' ? 'text-emerald-500' : 'text-red-500'}`}>
                       Saldo por Pagar a la Clínica
@@ -944,7 +1035,7 @@ export default function DetalleLiquidacionPage() {
                       ${((detalleItem.costoTotalPrestacion || 0) - (detalleItem.pagadoTotalPrestacion || 0)).toLocaleString('es-CL')}
                     </p>
                   </div>
-                  
+
                   {detalleItem.presupuesto_id && detalleItem.paciente_id && (
                     <Link href={`/pacientes/${detalleItem.paciente_id}/tratamientos/${detalleItem.presupuesto_id}`} className="flex w-full justify-center items-center gap-2 bg-[#0A111F] text-[#C9A24B] py-4 rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-lg hover:bg-[#1a2538] transition-all mt-8 active:scale-95">
                       Ir al Plan de Tratamiento
