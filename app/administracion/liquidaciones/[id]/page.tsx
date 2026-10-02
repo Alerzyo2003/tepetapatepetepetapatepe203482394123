@@ -75,7 +75,7 @@ export default function DetalleLiquidacionPage() {
         if (data?.length) { todasLasAtenciones.push(...data); fromAt += 1000; } else { fetchMoreAt = false; }
       }
 
-      // 3. Obtener Pagos Históricos de Presupuestos
+      // 3. Obtener Pagos Históricos de Presupuestos (ahora incluye convenio)
       let todosLosPagos: any[] = [];
       let fetchMorePagos = true;
       let fromPagos = 0;
@@ -84,7 +84,7 @@ export default function DetalleLiquidacionPage() {
         const { data: pagosChunk, error: errPagos } = await supabase
           .from('pagos')
           .select(`
-            id, monto, fecha_pago, profesional_id, paciente_id,
+            id, monto, fecha_pago, profesional_id, paciente_id, convenio,
             pacientes ( id, nombre, apellido ),
             presupuesto_items ( 
               id, presupuesto_id, profesional_id, nombre_prestacion, precio_pactado, 
@@ -278,70 +278,98 @@ export default function DetalleLiquidacionPage() {
 
       setResumenMes({ totalMes, totalPagado, saldoPendiente });
 
-      // 9. Obtener TODOS los items pendientes (no pagados 100%, pero sí evolucionados/abonados)
+      // 9. Items en seguimiento (no pagados 100%, o pagados pero aún sin liquidar)
       const { data: itemsEnSeguimientoData } = await supabase
-  .from('presupuesto_items')
-  .select('*, presupuestos(paciente_id, fecha_creacion, pacientes(id, nombre, apellido))')
-  .eq('profesional_id', prof.user_id)
-  .or('progreso.gt.0,abonado.gt.0,estado.eq.realizado,estado.eq.atendido,estado.eq.terminado,estado.eq.finalizado,estado.eq.completado');
+        .from('presupuesto_items')
+        .select('*, presupuestos(paciente_id, fecha_creacion, pacientes(id, nombre, apellido))')
+        .eq('profesional_id', prof.user_id)
+        .or('progreso.gt.0,abonado.gt.0,estado.eq.realizado,estado.eq.atendido,estado.eq.terminado,estado.eq.finalizado,estado.eq.completado');
 
-// Última fecha de pago por ítem (ya tenemos todos los pagos cargados arriba)
-const ultimaFechaPagoPorItem: Record<string, string> = {};
-todosLosPagos.forEach((pago: any) => {
-  const pItem = Array.isArray(pago.presupuesto_items) ? pago.presupuesto_items[0] : pago.presupuesto_items;
-  if (!pItem?.id || !pago.fecha_pago) return;
-  const actual = ultimaFechaPagoPorItem[pItem.id];
-  if (!actual || pago.fecha_pago > actual) ultimaFechaPagoPorItem[pItem.id] = pago.fecha_pago;
-});
+      // Última fecha de pago por ítem
+      const ultimaFechaPagoPorItem: Record<string, string> = {};
+      todosLosPagos.forEach((pago: any) => {
+        const pItem = Array.isArray(pago.presupuesto_items) ? pago.presupuesto_items[0] : pago.presupuesto_items;
+        if (!pItem?.id || !pago.fecha_pago) return;
+        const actual = ultimaFechaPagoPorItem[pItem.id];
+        if (!actual || pago.fecha_pago > actual) ultimaFechaPagoPorItem[pItem.id] = pago.fecha_pago;
+      });
 
-const itemsDeSeguimiento = (itemsEnSeguimientoData || [])
-  .map((item: any) => {
-    const precioPactado = Number(item.precio_pactado || 0);
-    const totalAbonado = Number(item.abonado || 0);
+      // Convenio del último pago por ítem
+      const convenioPorItem: Record<string, string> = {};
+      [...todosLosPagos]
+        .sort((a, b) => String(a.fecha_pago).localeCompare(String(b.fecha_pago)))
+        .forEach((pago: any) => {
+          const pItem = Array.isArray(pago.presupuesto_items) ? pago.presupuesto_items[0] : pago.presupuesto_items;
+          if (pItem?.id && pago.convenio) convenioPorItem[pItem.id] = pago.convenio;
+        });
 
-    // Ignorar si ya está en los pendientes 100% liquidados
-    if (pendientesFinal.some(p => p.tratamiento_id === item.id)) return null;
-    // Ignorar si ya está liquidado en algún cierre del mes
-    if (cierresList.some(c => c.items.some((i: any) => i.tratamiento_id === item.id))) return null;
+      // Ids ya liquidados 100% en CUALQUIER cierre (no solo los del mes consultado)
+      const idsLiquidados = new Set(
+        poolProduccion
+          .filter(p => p.honorario > 0 && p.honorario_restante <= 0)
+          .map(p => p.tratamiento_id)
+      );
 
-    const estaTerminado = ['realizado', 'atendido', 'terminado', 'finalizado', 'completado'].includes(item.estado?.toLowerCase() || '');
-    const progreso = Number(item.progreso || 0);
-    const estaEvolucionado = estaTerminado || progreso > 0 || totalAbonado > 0;
+      const estadosTerminados = ['realizado', 'atendido', 'terminado', 'finalizado', 'completado'];
 
-    if (!estaEvolucionado && totalAbonado === 0) return null;
+      const itemsDeSeguimiento = (itemsEnSeguimientoData || [])
+        .map((item: any) => {
+          const precioPactado = Number(item.precio_pactado || 0);
+          const totalAbonado = Number(item.abonado || 0);
 
-    let paymentStatus = 'unpaid';
-    if (totalAbonado >= precioPactado && precioPactado > 0) {
-      paymentStatus = 'paid';
-    } else if (totalAbonado > 0) {
-      paymentStatus = 'partially-paid';
-    }
+          // Ya está en pendientes con honorario por pagar
+          if (pendientesFinal.some(p => p.tratamiento_id === item.id)) return null;
+          // Ya fue liquidado completo en algún cierre (cualquier mes)
+          if (idsLiquidados.has(item.id)) return null;
+          // Ya aparece en un cierre del mes consultado
+          if (cierresList.some(c => c.items.some((i: any) => i.tratamiento_id === item.id))) return null;
 
-    const pacienteData = item.presupuestos?.pacientes;
-    return {
-      id_origen: item.id,
-      // ✅ Antes: item.updated_at (no existe en la tabla)
-      fecha: ultimaFechaPagoPorItem[item.id] || item.presupuestos?.fecha_creacion || null,
-      paciente: pacienteData ? `${pacienteData.nombre} ${pacienteData.apellido}` : 'Paciente',
-      prestacion: item.nombre_prestacion || 'Prestación sin nombre',
-      montoPago: totalAbonado,
-      descuentoLab: 0,
-      imponible: 0,
-      honorario: 0,
-      tipo: 'Seguimiento',
-      paciente_id: item.presupuestos?.paciente_id,
-      presupuesto_id: item.presupuesto_id,
-      tratamiento_id: item.id,
-      estaEvolucionado: estaEvolucionado,
-      paymentStatus: paymentStatus,
-      costoTotalPrestacion: precioPactado,
-      pagadoTotalPrestacion: totalAbonado,
-      diente: item.diente_id,
-      cara: item.cara,
-      observacion: item.observacion
-    };
-  })
-  .filter(Boolean);
+          const estaTerminado = estadosTerminados.includes(item.estado?.toLowerCase() || '');
+          const progreso = Number(item.progreso || 0);
+          const estaEvolucionado = estaTerminado || progreso > 0 || totalAbonado > 0;
+          if (!estaEvolucionado && totalAbonado === 0) return null;
+
+          let paymentStatus = 'unpaid';
+          if (totalAbonado >= precioPactado && precioPactado > 0) paymentStatus = 'paid';
+          else if (totalAbonado > 0) paymentStatus = 'partially-paid';
+
+          const fechaRef = ultimaFechaPagoPorItem[item.id] || item.presupuestos?.fecha_creacion || null;
+
+          if (paymentStatus === 'paid') {
+            // Pagado 100% de la clínica: no genera honorario, no hay nada pendiente
+            if (item.tipo_reparto === 'clinica') return null;
+            // Pagado 100%: solo se muestra en el mes en que se pagó
+            if (fechaRef && !String(fechaRef).startsWith(mesSeleccionado)) return null;
+          }
+          // Parciales y deudas se muestran siempre, aunque sean de meses anteriores
+
+          const pacienteData = item.presupuestos?.pacientes;
+          return {
+            id_origen: item.id,
+            fecha: fechaRef,
+            paciente: pacienteData ? `${pacienteData.nombre} ${pacienteData.apellido}` : 'Paciente',
+            prestacion: item.nombre_prestacion || 'Prestación sin nombre',
+            montoPago: totalAbonado,
+            descuentoLab: 0,
+            imponible: 0,
+            honorario: 0,
+            tipo: 'Seguimiento',
+            paciente_id: item.presupuestos?.paciente_id,
+            presupuesto_id: item.presupuesto_id,
+            tratamiento_id: item.id,
+            estaEvolucionado,
+            paymentStatus,
+            costoTotalPrestacion: precioPactado,
+            pagadoTotalPrestacion: totalAbonado,
+            diente: item.diente_id,
+            cara: item.cara,
+            observacion: item.observacion,
+            convenio: convenioPorItem[item.id] || '',
+            tipoReparto: item.tipo_reparto || 'general',
+            costoLab: Number(item.costo_laboratorio || 0)
+          };
+        })
+        .filter(Boolean);
 
       setItemsPendientes([...pendientesFinal, ...itemsDeSeguimiento]);
       setCierresCompletados(cierresList.reverse());
@@ -360,8 +388,13 @@ const itemsDeSeguimiento = (itemsEnSeguimientoData || [])
     }, 100);
   }
 
+  const esClinicaOLab = (i: any) =>
+    i.tipoReparto === 'clinica' ||
+    (i.costoLab || 0) > 0 ||
+    /laborator/i.test(i.prestacion || '');
+
   const liquidables = itemsPendientes.filter(i => i.paymentStatus === 'paid');
-  const parciales = itemsPendientes.filter(i => i.paymentStatus === 'partially-paid');
+  const parciales = itemsPendientes.filter(i => i.paymentStatus === 'partially-paid' && !esClinicaOLab(i));
   const deudas = itemsPendientes.filter(i => i.paymentStatus !== 'paid' && i.paymentStatus !== 'partially-paid');
 
   const handleExportExcel = () => {
@@ -438,6 +471,7 @@ const itemsDeSeguimiento = (itemsEnSeguimientoData || [])
        <Column ss:Width="180"/>
        <Column ss:Width="250"/>
        <Column ss:Width="100"/>
+       <Column ss:Width="140"/>
        <Column ss:Width="90"/>
        <Column ss:Width="90"/>
        <Column ss:Width="100"/>
@@ -447,6 +481,7 @@ const itemsDeSeguimiento = (itemsEnSeguimientoData || [])
         <Cell ss:StyleID="Header"><Data ss:Type="String">Paciente</Data></Cell>
         <Cell ss:StyleID="Header"><Data ss:Type="String">Prestación</Data></Cell>
         <Cell ss:StyleID="Header"><Data ss:Type="String">Pieza</Data></Cell>
+        <Cell ss:StyleID="Header"><Data ss:Type="String">Convenio</Data></Cell>
         <Cell ss:StyleID="Header"><Data ss:Type="String">Total Prest.</Data></Cell>
         <Cell ss:StyleID="Header"><Data ss:Type="String">Total Pagado</Data></Cell>
         <Cell ss:StyleID="Header"><Data ss:Type="String">Falta Pagar</Data></Cell>
@@ -457,13 +492,14 @@ const itemsDeSeguimiento = (itemsEnSeguimientoData || [])
         <Cell><Data ss:Type="String">${escapeXml(i.paciente)}</Data></Cell>
         <Cell><Data ss:Type="String">${escapeXml(i.prestacion)}</Data></Cell>
         <Cell><Data ss:Type="String">${escapeXml((i.diente ? i.diente : 'General') + (i.cara ? ' (' + i.cara + ')' : ''))}</Data></Cell>
+        <Cell><Data ss:Type="String">${escapeXml(i.convenio || 'Sin convenio')}</Data></Cell>
         <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.costoTotalPrestacion)}</Data></Cell>
         <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.pagadoTotalPrestacion)}</Data></Cell>
         <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round((i.costoTotalPrestacion || 0) - (i.pagadoTotalPrestacion || 0))}</Data></Cell>
        </Row>
        `).join('')}
        <Row>
-        <Cell ss:Index="6" ss:StyleID="BoldRight"><Data ss:Type="String">TOTAL POR PAGAR:</Data></Cell>
+        <Cell ss:Index="7" ss:StyleID="BoldRight"><Data ss:Type="String">TOTAL POR PAGAR:</Data></Cell>
         <Cell ss:StyleID="BoldMoney"><Data ss:Type="Number">${Math.round(parciales.reduce((acc, i) => acc + ((i.costoTotalPrestacion || 0) - (i.pagadoTotalPrestacion || 0)), 0))}</Data></Cell>
        </Row>
       </Table>
@@ -520,7 +556,7 @@ const itemsDeSeguimiento = (itemsEnSeguimientoData || [])
     toast.success("Excel descargado correctamente");
   };
 
-  // ✅ NUEVO: Descargar el detalle de un cierre ya pagado
+  // Descargar el detalle de un cierre ya pagado (sin Costo Lab ni Base Imponible)
   const handleExportCierreExcel = (cierre: any) => {
     const filas = cierre.items.map((i: any) => `
     <Row>
@@ -529,8 +565,6 @@ const itemsDeSeguimiento = (itemsEnSeguimientoData || [])
       <Cell><Data ss:Type="String">${escapeXml(i.prestacion)}</Data></Cell>
       <Cell><Data ss:Type="String">${escapeXml((i.diente ? i.diente : 'General') + (i.cara ? ' (' + i.cara + ')' : ''))}</Data></Cell>
       <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.montoPago || 0)}</Data></Cell>
-      <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.descuentoLab || 0)}</Data></Cell>
-      <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.imponible || 0)}</Data></Cell>
       <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.honorario || 0)}</Data></Cell>
     </Row>`).join('');
 
@@ -553,7 +587,7 @@ const itemsDeSeguimiento = (itemsEnSeguimientoData || [])
  <Worksheet ss:Name="Cierre ${cierre.numero}">
   <Table>
    <Column ss:Width="80"/><Column ss:Width="180"/><Column ss:Width="250"/><Column ss:Width="100"/>
-   <Column ss:Width="90"/><Column ss:Width="90"/><Column ss:Width="100"/><Column ss:Width="100"/>
+   <Column ss:Width="90"/><Column ss:Width="100"/>
    <Row><Cell ss:StyleID="Title"><Data ss:Type="String">${escapeXml(`LIQUIDACIÓN CERRADA #${cierre.numero} - Pagada el ${cierre.fechaPago}`)}</Data></Cell></Row>
    <Row><Cell><Data ss:Type="String">${escapeXml(`Dr. ${profesional?.nombre} ${profesional?.apellido} - RUT: ${profesional?.rut || ''} - Periodo: ${mesSeleccionado}`)}</Data></Cell></Row>
    <Row>
@@ -562,13 +596,11 @@ const itemsDeSeguimiento = (itemsEnSeguimientoData || [])
     <Cell ss:StyleID="Header"><Data ss:Type="String">Prestación</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">Pieza</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">Pago Recibido</Data></Cell>
-    <Cell ss:StyleID="Header"><Data ss:Type="String">Costo Lab</Data></Cell>
-    <Cell ss:StyleID="Header"><Data ss:Type="String">Base Imponible</Data></Cell>
     <Cell ss:StyleID="Header"><Data ss:Type="String">Pagado al Dr.</Data></Cell>
    </Row>
    ${filas}
    <Row>
-    <Cell ss:Index="7" ss:StyleID="BoldRight"><Data ss:Type="String">TOTAL PAGADO:</Data></Cell>
+    <Cell ss:Index="5" ss:StyleID="BoldRight"><Data ss:Type="String">TOTAL PAGADO:</Data></Cell>
     <Cell ss:StyleID="BoldMoney"><Data ss:Type="Number">${Math.round(totalItems)}</Data></Cell>
    </Row>
   </Table>
@@ -791,7 +823,6 @@ const itemsDeSeguimiento = (itemsEnSeguimientoData || [])
                           </div>
                         </div>
 
-                        {/* ✅ NUEVO: botón de descarga + monto pagado */}
                         <div className="flex flex-wrap items-center gap-3">
                           <button
                             onClick={() => handleExportCierreExcel(cierre)}
