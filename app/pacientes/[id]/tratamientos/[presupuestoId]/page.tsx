@@ -1824,7 +1824,7 @@ Presupuestado: Dr. {profesionales.find(p => p.user_id === item.ppto_doc)?.apelli
               <div style={{ flex: 1, paddingRight: '40px', fontSize: 9, color: '#64748b' }}>
                 <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '10px' }}>
                   <p style={{ fontWeight: 700, color: '#1e293b', fontSize: 10, margin: '0 0 2px 0' }}>Centro Médico y Dental Dignidad SpA</p>
-                  <p style={{ margin: '0 0 4px 0' }}>Ubicación: Av. Observatorio 1500, La Pintana | Teléfono: +56 9 1234 5678</p>
+                  <p style={{ margin: '0 0 4px 0' }}>Ubicación: Av. Venancia Leiva 1871, La Pintana | Teléfono: +56 9 6646 7641</p>
                   <p style={{ fontStyle: 'italic', fontWeight: 600, margin: 0 }}>
                     Al iniciar este tratamiento declaro que acepto la política de privacidad de la clínica y la plataforma establecida.
                   </p>
