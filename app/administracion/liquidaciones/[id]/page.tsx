@@ -20,7 +20,37 @@ const escapeXml = (unsafe: any) => (unsafe || '').toString().replace(/[<>&'"]/g,
     default: return c;
   }
 });
+const agruparPorPrestacion = (items: any[]) => {
+  const mapa = new Map<string, any>();
 
+  items.forEach((i: any) => {
+    const key = `${i.tipo === 'Atención' ? 'at' : 'tr'}-${i.tratamiento_id || i.id_origen}`;
+    const prev = mapa.get(key);
+
+    if (!prev) {
+      mapa.set(key, {
+        ...i,
+        honorario: Number(i.honorario || 0),
+        montoPago: Number(i.montoPago || 0),
+        descuentoLab: Number(i.descuentoLab || 0),
+        imponible: Number(i.imponible || 0),
+      });
+      return;
+    }
+
+    prev.honorario += Number(i.honorario || 0);
+    prev.montoPago += Number(i.montoPago || 0);
+    prev.descuentoLab += Number(i.descuentoLab || 0);
+    prev.imponible += Number(i.imponible || 0);
+
+    // Se deja la fecha del último pago (cuando quedó pagado al 100%)
+    const fPrev = new Date(String(prev.fecha || 0).replace(' ', 'T')).getTime();
+    const fNueva = new Date(String(i.fecha || 0).replace(' ', 'T')).getTime();
+    if (fNueva > fPrev) prev.fecha = i.fecha;
+  });
+
+  return Array.from(mapa.values());
+};
 export default function DetalleLiquidacionPage() {
   const { id } = useParams()
   const searchParams = useSearchParams()
@@ -396,7 +426,7 @@ export default function DetalleLiquidacionPage() {
   const liquidables = itemsPendientes.filter(i => i.paymentStatus === 'paid');
   const parciales = itemsPendientes.filter(i => i.paymentStatus === 'partially-paid' && !esClinicaOLab(i));
   const deudas = itemsPendientes.filter(i => i.paymentStatus !== 'paid' && i.paymentStatus !== 'partially-paid');
-
+  const liquidablesExcel = agruparPorPrestacion(liquidables);
   const handleExportExcel = () => {
     const xmlTemplate = `<?xml version="1.0"?>
     <?mso-application progid="Excel.Sheet"?>
@@ -446,7 +476,7 @@ export default function DetalleLiquidacionPage() {
         <Cell ss:StyleID="Header"><Data ss:Type="String">Total Pagado</Data></Cell>
         <Cell ss:StyleID="Header"><Data ss:Type="String">Honorario Dr.</Data></Cell>
        </Row>
-       ${liquidables.map(i => `
+       ${liquidablesExcel.map(i => `
        <Row>
         <Cell><Data ss:Type="String">${escapeXml(i.fecha ? new Date(i.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F')}</Data></Cell>
         <Cell><Data ss:Type="String">${escapeXml(i.paciente)}</Data></Cell>
@@ -459,7 +489,7 @@ export default function DetalleLiquidacionPage() {
        `).join('')}
        <Row>
         <Cell ss:Index="6" ss:StyleID="BoldRight"><Data ss:Type="String">TOTAL HONORARIOS:</Data></Cell>
-        <Cell ss:StyleID="BoldMoney"><Data ss:Type="Number">${Math.round(liquidables.reduce((acc, i) => acc + (i.honorario || 0), 0))}</Data></Cell>
+        <Cell ss:StyleID="BoldMoney"><Data ss:Type="Number">${Math.round(liquidablesExcel.reduce((acc, i) => acc + (i.honorario || 0), 0))}</Data></Cell>
        </Row>
       </Table>
      </Worksheet>
@@ -558,7 +588,9 @@ export default function DetalleLiquidacionPage() {
 
   // Descargar el detalle de un cierre ya pagado (sin Costo Lab ni Base Imponible)
   const handleExportCierreExcel = (cierre: any) => {
-    const filas = cierre.items.map((i: any) => `
+    const itemsCierre = agruparPorPrestacion(cierre.items);
+
+    const filas = itemsCierre.map((i: any) => `
     <Row>
       <Cell><Data ss:Type="String">${escapeXml(i.fecha ? new Date(i.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F')}</Data></Cell>
       <Cell><Data ss:Type="String">${escapeXml(i.paciente)}</Data></Cell>
@@ -568,8 +600,8 @@ export default function DetalleLiquidacionPage() {
       <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.honorario || 0)}</Data></Cell>
     </Row>`).join('');
 
-    const totalItems = cierre.items.reduce((acc: number, i: any) => acc + (i.honorario || 0), 0);
-
+    const totalItems = itemsCierre.reduce((acc: number, i: any) => acc + (i.honorario || 0), 0);
+    
     const xml = `<?xml version="1.0"?>
 <?mso-application progid="Excel.Sheet"?>
 <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
