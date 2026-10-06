@@ -20,7 +20,36 @@ const escapeXml = (unsafe: any) => (unsafe || '').toString().replace(/[<>&'"]/g,
     default: return c;
   }
 });
+const agruparPorPrestacion = (items: any[]) => {
+  const mapa = new Map<string, any>();
 
+  items.forEach((i: any) => {
+    const key = `${i.tipo === 'Atención' ? 'at' : 'tr'}-${i.tratamiento_id || i.id_origen}`;
+    const prev = mapa.get(key);
+
+    if (!prev) {
+      mapa.set(key, {
+        ...i,
+        honorario: Number(i.honorario || 0),
+        montoPago: Number(i.montoPago || 0),
+        descuentoLab: Number(i.descuentoLab || 0),
+        imponible: Number(i.imponible || 0),
+      });
+      return;
+    }
+
+    prev.honorario += Number(i.honorario || 0);
+    prev.montoPago += Number(i.montoPago || 0);
+    prev.descuentoLab += Number(i.descuentoLab || 0);
+    prev.imponible += Number(i.imponible || 0);
+
+    const fPrev = new Date(String(prev.fecha || 0).replace(' ', 'T')).getTime();
+    const fNueva = new Date(String(i.fecha || 0).replace(' ', 'T')).getTime();
+    if (fNueva > fPrev) prev.fecha = i.fecha;
+  });
+
+  return Array.from(mapa.values());
+};
 export default function MiDetalleLiquidacionPage() {
   const params = useParams()
   const mesSeleccionado = (params.id as string) || new Date().toISOString().substring(0, 7)
@@ -435,6 +464,7 @@ export default function MiDetalleLiquidacionPage() {
   const deudas = itemsPendientes.filter(i => i.paymentStatus !== 'paid' && i.paymentStatus !== 'partially-paid');
 
   const handleExportExcel = () => {
+    const liquidablesExcel = agruparPorPrestacion(liquidables);
     const xmlTemplate = `<?xml version="1.0"?>
     <?mso-application progid="Excel.Sheet"?>
     <Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
@@ -483,7 +513,7 @@ export default function MiDetalleLiquidacionPage() {
         <Cell ss:StyleID="Header"><Data ss:Type="String">Total Pagado</Data></Cell>
         <Cell ss:StyleID="Header"><Data ss:Type="String">Honorario Dr.</Data></Cell>
        </Row>
-       ${liquidables.map(i => `
+       ${liquidablesExcel.map(i => `
        <Row>
         <Cell><Data ss:Type="String">${escapeXml(i.fecha ? new Date(i.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F')}</Data></Cell>
         <Cell><Data ss:Type="String">${escapeXml(i.paciente)}</Data></Cell>
@@ -496,7 +526,7 @@ export default function MiDetalleLiquidacionPage() {
        `).join('')}
        <Row>
         <Cell ss:Index="6" ss:StyleID="BoldRight"><Data ss:Type="String">TOTAL HONORARIOS:</Data></Cell>
-        <Cell ss:StyleID="BoldMoney"><Data ss:Type="Number">${Math.round(liquidables.reduce((acc, i) => acc + (i.honorario || 0), 0))}</Data></Cell>
+        <Cell ss:StyleID="BoldMoney"><Data ss:Type="Number">${Math.round(liquidablesExcel.reduce((acc, i) => acc + (i.honorario || 0), 0))}</Data></Cell>
        </Row>
       </Table>
      </Worksheet>
@@ -595,7 +625,9 @@ export default function MiDetalleLiquidacionPage() {
 
   // Descargar el detalle de un cierre ya pagado
   const handleExportCierreExcel = (cierre: any) => {
-    const filas = cierre.items.map((i: any) => `
+    const itemsCierre = agruparPorPrestacion(cierre.items);
+
+    const filas = itemsCierre.map((i: any) => `
     <Row>
       <Cell><Data ss:Type="String">${escapeXml(i.fecha ? new Date(i.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F')}</Data></Cell>
       <Cell><Data ss:Type="String">${escapeXml(i.paciente)}</Data></Cell>
@@ -605,7 +637,7 @@ export default function MiDetalleLiquidacionPage() {
       <Cell ss:StyleID="Money"><Data ss:Type="Number">${Math.round(i.honorario || 0)}</Data></Cell>
     </Row>`).join('');
 
-    const totalItems = cierre.items.reduce((acc: number, i: any) => acc + (i.honorario || 0), 0);
+    const totalItems = itemsCierre.reduce((acc: number, i: any) => acc + (i.honorario || 0), 0);
 
     const xml = `<?xml version="1.0"?>
 <?mso-application progid="Excel.Sheet"?>
@@ -849,103 +881,37 @@ export default function MiDetalleLiquidacionPage() {
             </div>
 
             {cierresCompletados.length > 0 && (
-              <div className="pt-8 border-t border-slate-100">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-3 bg-emerald-100 text-emerald-600 rounded-xl"><History size={22} /></div>
-                  <div>
-                    <h2 className="text-xl font-black text-[#0A111F] uppercase tracking-tight">Historial de Liquidaciones</h2>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Cierres completados y pagados en este mes</p>
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  {cierresCompletados.map((cierre) => (
-                    <div key={cierre.id} className="overflow-hidden rounded-[2.5rem] border border-emerald-100 bg-white shadow-sm">
-                      <div className="p-6 md:p-8 flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-emerald-50/40">
-                        <div className="flex items-center gap-4">
-                          <div className="p-3 rounded-2xl bg-emerald-100 text-emerald-600"><CheckCircle2 size={20} /></div>
-                          <div>
-                            <h3 className="font-black uppercase tracking-wider text-sm text-emerald-900">{cierre.titulo}</h3>
-                            <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mt-1">Cierre bloqueado e inmodificable</p>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-3">
-                          <button
-                            onClick={() => handleExportCierreExcel(cierre)}
-                            className="bg-emerald-600 text-white px-4 py-2.5 rounded-2xl hover:bg-emerald-700 transition-all shadow-sm font-black text-[10px] uppercase tracking-widest flex items-center gap-2"
-                            title="Descargar detalle de este cierre"
-                          >
-                            <Download size={14} /> Descargar Excel
-                          </button>
-                          <div className="px-5 py-2.5 rounded-2xl text-xs font-black tracking-widest uppercase flex items-center gap-2 bg-emerald-100 text-emerald-800 shadow-sm">
-                            Pagado: ${(cierre.montoTotal || 0).toLocaleString('es-CL')}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left min-w-[900px]">
-                          <thead className="bg-slate-50/50 border-y border-slate-100">
-                            <tr>
-                              <th className="px-5 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest w-32 text-center">Estado</th>
-                              <th className="px-5 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Fecha</th>
-                              <th className="px-5 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Paciente</th>
-                              <th className="px-5 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest">Prestación</th>
-                              <th className="px-5 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Pago Recibido</th>
-                              <th className="px-5 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Costo Lab</th>
-                              <th className="px-5 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right">Base Imponible</th>
-                              <th className="px-5 py-4 text-[9px] font-black text-slate-400 uppercase tracking-widest text-right bg-emerald-50/50">Pagado al Dr.</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-50">
-                            {cierre.items.map((item: any, idx: number) => (
-                              <tr key={idx} className="text-xs font-bold text-slate-600 hover:bg-slate-50/50 transition-colors opacity-90">
-                                <td className="px-5 py-4">
-                                  {item.estaEvolucionado && (
-                                    <div className="flex items-center justify-center gap-2">
-                                      <div className={`w-2 h-2 rounded-full shrink-0 ${
-                                        item.paymentStatus === 'paid' ? 'bg-emerald-500' :
-                                        item.paymentStatus === 'partially-paid' ? 'bg-amber-500' :
-                                        'bg-red-500'
-                                      }`}></div>
-                                      <span className={`text-[9px] font-black uppercase tracking-widest ${
-                                        item.paymentStatus === 'paid' ? 'text-emerald-600' :
-                                        item.paymentStatus === 'partially-paid' ? 'text-amber-600' :
-                                        'text-red-600'
-                                      }`}>
-                                        {item.paymentStatus === 'paid' ? 'Pagado' : item.paymentStatus === 'partially-paid' ? 'Parcial' : 'Deuda'}
-                                      </span>
-                                    </div>
-                                  )}
-                                </td>
-                                <td className="px-5 py-4">{item.fecha ? new Date(item.fecha.replace(' ', 'T')).toLocaleDateString('es-CL') : 'S/F'}</td>
-                                <td className="px-5 py-4 uppercase font-black">{item.paciente}</td>
-                                <td className="px-5 py-4 uppercase max-w-[200px] truncate" title={item.prestacion}>{item.prestacion}</td>
-                                <td className="px-5 py-4 text-right">${(item.montoPago || 0).toLocaleString('es-CL')}</td>
-                                <td className="px-5 py-4 text-right">
-                                  {item.descuentoLab > 0 ? (
-                                    <div className="flex flex-col items-end">
-                                      <span className="font-black flex items-center gap-1 text-slate-400">
-                                        <FlaskConical size={12} /> ${Math.round(item.descuentoLab).toLocaleString('es-CL')}
-                                      </span>
-                                    </div>
-                                  ) : <span className="text-slate-300">-</span>}
-                                </td>
-                                <td className="px-5 py-4 text-right">${Math.round(item.imponible).toLocaleString('es-CL')}</td>
-                                <td className="px-5 py-4 text-right font-black text-emerald-700 bg-emerald-50/50">
-                                  ${Math.round(item.honorario).toLocaleString('es-CL')}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+          <div className="bg-white/95 backdrop-blur-sm p-6 md:p-8 rounded-[2.5rem] border border-emerald-100 shadow-sm">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="p-2.5 bg-emerald-100 text-emerald-600 rounded-xl"><History size={18} /></div>
+              <div>
+                <p className="text-sm font-black text-[#0A111F] uppercase tracking-tight">Liquidaciones cerradas este mes</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Descarga directa o ve el detalle</p>
               </div>
-            )}
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              {cierresCompletados.map((cierre) => (
+                <div key={`rapido-${cierre.id}`} className="flex items-center gap-3 bg-emerald-50/70 border border-emerald-100 rounded-2xl pl-4 pr-2 py-2">
+                  <div>
+                    <p className="text-[11px] font-black text-emerald-900 uppercase">Cierre #{cierre.numero}</p>
+                    <p className="text-[10px] font-bold text-emerald-600">
+                      {cierre.fechaPago} · ${Number(cierre.montoTotal || 0).toLocaleString('es-CL')}
+                    </p>
+                  </div>
+                  
+                  <button
+                    onClick={() => handleExportCierreExcel(cierre)}
+                    className="p-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all shadow-sm"
+                    title="Descargar Excel"
+                  >
+                    <Download size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
           </div>
         </div>
@@ -1005,8 +971,7 @@ export default function MiDetalleLiquidacionPage() {
           <div className="mb-6">
             <p className="font-bold underline mb-2">Detalle de Historial (Cierres ya pagados este mes):</p>
             {cierresCompletados.map((cierre) => (
-              <div key={cierre.id} className="mb-4">
-                <p className="font-bold italic text-[10px] mb-1">{cierre.titulo} (Total: ${Number(cierre.montoTotal).toLocaleString('es-CL')})</p>
+<div key={cierre.id} id={`cierre-${cierre.id}`} className="scroll-mt-6 overflow-hidden rounded-[2.5rem] border border-emerald-100 bg-white shadow-sm">                <p className="font-bold italic text-[10px] mb-1">{cierre.titulo} (Total: ${Number(cierre.montoTotal).toLocaleString('es-CL')})</p>
                 <table className="w-full text-left text-[9px] mb-2 text-gray-700">
                   <thead>
                     <tr className="border-b border-gray-300">
