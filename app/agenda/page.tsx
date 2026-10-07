@@ -32,6 +32,7 @@ import ModalHojaRuta from './_components/ModalHojaRuta'
 
 const ROLES_AGENDA_COMPLETA = ['ADMIN', 'RECEPCIONISTA', 'ASISTENTE'];
 const ROLES_FINANZAS = ['ADMIN', 'RECEPCIONISTA'];
+const ROLES_RECORDATORIOS = ['ADMIN', 'RECEPCIONISTA', 'ASISTENTE']; // los doctores no envían recordatorios
 
 export default function AgendaPage() {
   const router = useRouter();
@@ -44,6 +45,7 @@ export default function AgendaPage() {
   const [cargandoPagina, setCargandoPagina] = useState(true);
   const puedeVerFinanzas = ROLES_FINANZAS.includes(userRol);
   const puedeVerAgendaCompleta = ROLES_AGENDA_COMPLETA.includes(userRol);
+  const puedeEnviarRecordatorios = ROLES_RECORDATORIOS.includes(userRol);
 
   // ── Agenda ──
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -397,9 +399,11 @@ export default function AgendaPage() {
               <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-black animate-pulse shadow-md">{citasOnlinePendientes.length}</span>
             )}
           </button>
-          <button onClick={() => setModal('recordatorios')} className={`${botonCabecera} border-emerald-200 text-emerald-600 hover:bg-emerald-50`}>
-            <BellRing size={14} /> Recordar Mañana
-          </button>
+          {puedeEnviarRecordatorios && (
+            <button onClick={() => setModal('recordatorios')} className={`${botonCabecera} border-emerald-200 text-emerald-600 hover:bg-emerald-50`}>
+              <BellRing size={14} /> Recordar Mañana
+            </button>
+          )}
           <button onClick={() => setModal('hojaRuta')} className={`${botonCabecera} border-slate-200 text-slate-600 hover:bg-slate-50`}>
             <ClipboardList className="text-[#C9A24B]" size={14} /> Hoja de Ruta
           </button>
@@ -592,7 +596,7 @@ export default function AgendaPage() {
       <ModalHuerfanas abierto={modal === 'huerfanas'} onClose={cerrarModal} onCambio={fetchCitasAgenda} filtroEspecialista={filtroEspecialista} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} />
       <ModalAnuladas abierto={modal === 'anuladas'} onClose={cerrarModal} citas={citasAnuladas} profesionales={profesionales} usuariosMap={usuariosMap} mostrarFecha={vistaAgenda === 'semana'} />
       <ModalCitasWeb abierto={modal === 'web'} onClose={cerrarModal} onCambio={fetchCitasAgenda} citas={citasOnlinePendientes} profesionales={profesionales} usuarioLogueado={usuarioLogueado} />
-      <ModalRecordatorios abierto={modal === 'recordatorios'} onClose={cerrarModal} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} filtroEspecialista={filtroEspecialista} realtimeTrigger={realtimeTrigger} />
+      <ModalRecordatorios abierto={modal === 'recordatorios' && puedeEnviarRecordatorios} onClose={cerrarModal} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} filtroEspecialista={filtroEspecialista} realtimeTrigger={realtimeTrigger} />
       <ModalBuscarHora abierto={modal === 'buscarHora'} onClose={cerrarModal} onElegir={agendarEnHueco} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} especialistaInicial={filtroEspecialista} />
       <ModalHojaRuta abierto={modal === 'hojaRuta'} onClose={cerrarModal} fechaInicial={getLocalDateISO(selectedDate)} especialistaInicial={filtroEspecialista} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} />
     </div>
