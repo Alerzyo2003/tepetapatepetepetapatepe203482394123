@@ -152,6 +152,11 @@ export default function AgendaPage() {
   const [fechaRecordatorio, setFechaRecordatorio] = useState('');
   const [recordatorios, setRecordatorios] = useState<any[]>([]);
   const [cargandoRecordatorios, setCargandoRecordatorios] = useState(false);
+  // Recordatorio abierto en WhatsApp esperando que recepción confirme si realmente se envió
+  const [recordatorioEnCurso, setRecordatorioEnCurso] = useState<string | null>(null);
+  // Pacientes cuyo mensaje no se pudo enviar (número malo, sin WhatsApp, etc.). Se guarda en un ref
+  // para que el refresco en tiempo real no los vuelva a poner como pendientes.
+  const recordatoriosFallidosRef = useRef<Set<string>>(new Set());
 
   // 🔎 Buscar próxima hora libre
   const [modalBuscarHora, setModalBuscarHora] = useState(false);
@@ -820,10 +825,16 @@ export default function AgendaPage() {
       if (error) console.error('No se pudo marcar el recordatorio como enviado', error);
   }
 
+  // Botón individual de la tarjeta: abre WhatsApp y solo marca "enviado" si recepción lo confirma
   const enviarRecordatorioConLink = (cita: any) => {
-      if (abrirWhatsApp(cita.pacientes?.telefono, construirMensajeRecordatorio([cita]))) {
-        marcarRecordatorioEnviado([cita]);
-      }
+      if (!abrirWhatsApp(cita.pacientes?.telefono, construirMensajeRecordatorio([cita]))) return;
+      if (cita.estado_confirmacion !== 'pendiente') return; // ya estaba enviado o confirmado: nada que marcar
+      const nombre = `${cita.pacientes?.nombre || ''} ${cita.pacientes?.apellido || ''}`.trim();
+      toast(`¿Se envió el recordatorio a ${nombre}?`, {
+        description: 'Confírmalo solo si el mensaje salió en WhatsApp.',
+        duration: 30000,
+        action: { label: 'Sí, se envió', onClick: () => { marcarRecordatorioEnviado([cita]); toast.success('Recordatorio marcado como enviado'); } },
+      });
   }
 
   // Próximo día hábil (la clínica atiende de lunes a sábado: si mañana es domingo, salta al lunes)
@@ -863,7 +874,7 @@ export default function AgendaPage() {
             ...g,
             telefono: g.paciente?.telefono,
             tieneTelefono: !!telefonoWA(g.paciente?.telefono),
-            estadoRecordatorio: confirmado ? 'confirmado' : enviado ? 'enviado' : 'pendiente',
+            estadoRecordatorio: confirmado ? 'confirmado' : enviado ? 'enviado' : recordatoriosFallidosRef.current.has(g.key) ? 'fallido' : 'pendiente',
           };
         });
         setRecordatorios(lista);
@@ -879,18 +890,40 @@ export default function AgendaPage() {
       const f = siguienteDiaHabil();
       setFechaRecordatorio(f);
       setRecordatorios([]);
+      setRecordatorioEnCurso(null);
+      recordatoriosFallidosRef.current = new Set();
       setModalRecordatorios(true);
       cargarRecordatorios(f);
   }
 
-  // Abre WhatsApp (debe ir directo en el clic para que el navegador no bloquee la pestaña) y marca como enviado
+  // Paso 1: abre WhatsApp (debe ir directo en el clic para que el navegador no bloquee la pestaña).
+  // NO marca nada todavía: queda "en curso" hasta que recepción confirme si el mensaje salió.
   const enviarRecordatorioGrupo = (g: any) => {
-      if (!abrirWhatsApp(g.telefono, construirMensajeRecordatorio(g.citas))) return;
-      setRecordatorios(prev => prev.map(x => x.key === g.key && x.estadoRecordatorio === 'pendiente' ? { ...x, estadoRecordatorio: 'enviado' } : x));
+      if (!abrirWhatsApp(g.telefono, construirMensajeRecordatorio(g.citas))) {
+        marcarRecordatorioFallido(g);
+        return;
+      }
+      setRecordatorioEnCurso(g.key);
+  }
+
+  // Paso 2a: recepción confirma que el mensaje se envió → recién ahí se marca en la BD
+  const confirmarRecordatorioEnviado = (g: any) => {
+      recordatoriosFallidosRef.current.delete(g.key);
+      setRecordatorios(prev => prev.map(x => x.key === g.key && (x.estadoRecordatorio === 'pendiente' || x.estadoRecordatorio === 'fallido') ? { ...x, estadoRecordatorio: 'enviado' } : x));
       marcarRecordatorioEnviado(g.citas);
+      setRecordatorioEnCurso(null);
+  }
+
+  // Paso 2b: no se pudo enviar → queda aparte para corregir el teléfono o llamar, la cita no se toca
+  const marcarRecordatorioFallido = (g: any) => {
+      recordatoriosFallidosRef.current.add(g.key);
+      setRecordatorios(prev => prev.map(x => x.key === g.key && x.estadoRecordatorio === 'pendiente' ? { ...x, estadoRecordatorio: 'fallido' } : x));
+      setRecordatorioEnCurso(null);
   }
 
   const recordatoriosPendientes = recordatorios.filter(g => g.estadoRecordatorio === 'pendiente' && g.tieneTelefono);
+  const recordatoriosFallidos = recordatorios.filter(g => g.estadoRecordatorio === 'fallido');
+  const grupoEnCurso = recordatorios.find(g => g.key === recordatorioEnCurso) || null;
   const recordatoriosSinTelefono = recordatorios.filter(g => g.estadoRecordatorio === 'pendiente' && !g.tieneTelefono);
   const recordatoriosEnviados = recordatorios.filter(g => g.estadoRecordatorio === 'enviado');
   const recordatoriosConfirmados = recordatorios.filter(g => g.estadoRecordatorio === 'confirmado');
@@ -3092,13 +3125,16 @@ export default function AgendaPage() {
                         type="date"
                         className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:border-[#C9A24B]"
                         value={fechaRecordatorio}
-                        onChange={(e) => { if (e.target.value) { setFechaRecordatorio(e.target.value); cargarRecordatorios(e.target.value); } }}
+                        onChange={(e) => { if (e.target.value) { setFechaRecordatorio(e.target.value); setRecordatorioEnCurso(null); recordatoriosFallidosRef.current = new Set(); cargarRecordatorios(e.target.value); } }}
                       />
                     </div>
                     <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-widest">
                       <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-100">{recordatoriosPendientes.length} por enviar</span>
                       <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100">{recordatoriosEnviados.length} enviados</span>
                       <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">{recordatoriosConfirmados.length} confirmados</span>
+                      {recordatoriosFallidos.length > 0 && (
+                        <span className="px-2.5 py-1 rounded-full bg-rose-50 text-rose-600 border border-rose-100">{recordatoriosFallidos.length} no se pudo enviar</span>
+                      )}
                       {recordatoriosSinTelefono.length > 0 && (
                         <span className="px-2.5 py-1 rounded-full bg-red-50 text-red-600 border border-red-100">{recordatoriosSinTelefono.length} sin teléfono</span>
                       )}
@@ -3117,17 +3153,20 @@ export default function AgendaPage() {
                         <p className="text-sm font-black uppercase tracking-widest text-slate-600">Sin citas ese día</p>
                       </div>
                     ) : (
-                      [...recordatoriosPendientes, ...recordatoriosSinTelefono, ...recordatoriosEnviados, ...recordatoriosConfirmados].map(g => {
-                        const esSiguiente = recordatoriosPendientes[0]?.key === g.key;
+                      [...recordatoriosPendientes, ...recordatoriosFallidos, ...recordatoriosSinTelefono, ...recordatoriosEnviados, ...recordatoriosConfirmados].map(g => {
+                        const enCurso = recordatorioEnCurso === g.key;
+                        const esSiguiente = !recordatorioEnCurso && recordatoriosPendientes[0]?.key === g.key;
                         const nombre = `${g.paciente?.nombre || ''} ${g.paciente?.apellido || ''}`.trim() || 'S/N';
                         const badge =
+                          enCurso ? { txt: 'Abierto en WhatsApp', cls: 'bg-violet-100 text-violet-700' } :
                           g.estadoRecordatorio === 'confirmado' ? { txt: 'Confirmado', cls: 'bg-emerald-100 text-emerald-700' } :
                           g.estadoRecordatorio === 'enviado' ? { txt: 'Enviado · esperando', cls: 'bg-blue-100 text-blue-700' } :
+                          g.estadoRecordatorio === 'fallido' ? { txt: 'No se pudo enviar', cls: 'bg-rose-100 text-rose-700' } :
                           !g.tieneTelefono ? { txt: 'Sin teléfono', cls: 'bg-red-100 text-red-600' } :
                           { txt: 'Por enviar', cls: 'bg-amber-100 text-amber-700' };
 
                         return (
-                          <div key={g.key} className={`bg-white p-4 rounded-2xl border shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${esSiguiente ? 'border-emerald-400 ring-2 ring-emerald-100' : 'border-slate-200'} ${g.estadoRecordatorio === 'confirmado' ? 'opacity-60' : ''}`}>
+                          <div key={g.key} className={`bg-white p-4 rounded-2xl border shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all ${enCurso ? 'border-violet-400 ring-2 ring-violet-100' : esSiguiente ? 'border-emerald-400 ring-2 ring-emerald-100' : g.estadoRecordatorio === 'fallido' ? 'border-rose-200' : 'border-slate-200'} ${g.estadoRecordatorio === 'confirmado' ? 'opacity-60' : ''}`}>
                             <div className="flex items-center gap-4 min-w-0">
                               <div className="flex flex-col gap-1 shrink-0">
                                 {g.citas.map((c: any) => (
@@ -3147,8 +3186,26 @@ export default function AgendaPage() {
                               </div>
                             </div>
 
-                            <div className="flex gap-2 shrink-0">
-                              {!g.tieneTelefono ? (
+                            <div className="flex flex-wrap gap-2 shrink-0">
+                              {enCurso ? (
+                                <>
+                                  <button onClick={() => marcarRecordatorioFallido(g)} className="px-3 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 flex items-center gap-1.5">
+                                    <X size={14} /> No se pudo
+                                  </button>
+                                  <button onClick={() => confirmarRecordatorioEnviado(g)} className="px-3 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl bg-emerald-500 text-white hover:bg-emerald-600 shadow-sm flex items-center gap-1.5">
+                                    <CheckCircle2 size={14} /> Sí, se envió
+                                  </button>
+                                </>
+                              ) : g.estadoRecordatorio === 'fallido' ? (
+                                <>
+                                  <Link prefetch={false} href={`/pacientes/${g.key}`} onClick={() => setModalRecordatorios(false)} className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 border border-slate-200 rounded-xl hover:bg-slate-50 flex items-center gap-1.5">
+                                    <User size={14} /> Corregir teléfono
+                                  </Link>
+                                  <button onClick={() => enviarRecordatorioGrupo(g)} disabled={!!recordatorioEnCurso} className="px-3 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 flex items-center gap-1.5 disabled:opacity-40">
+                                    <RefreshCcw size={14} /> Reintentar
+                                  </button>
+                                </>
+                              ) : !g.tieneTelefono ? (
                                 <Link prefetch={false} href={`/pacientes/${g.key}`} onClick={() => setModalRecordatorios(false)} className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500 border border-slate-200 rounded-xl hover:bg-slate-50 flex items-center gap-1.5">
                                   <User size={14} /> Agregar teléfono
                                 </Link>
@@ -3157,7 +3214,9 @@ export default function AgendaPage() {
                               ) : (
                                 <button
                                   onClick={() => enviarRecordatorioGrupo(g)}
-                                  className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl flex items-center gap-1.5 transition-all ${g.estadoRecordatorio === 'enviado' ? 'text-slate-500 border border-slate-200 hover:bg-slate-50' : 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-sm'}`}
+                                  disabled={!!recordatorioEnCurso}
+                                  title={recordatorioEnCurso ? 'Primero confirma si se envió el mensaje abierto' : undefined}
+                                  className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl flex items-center gap-1.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed ${g.estadoRecordatorio === 'enviado' ? 'text-slate-500 border border-slate-200 hover:bg-slate-50' : 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-sm'}`}
                                 >
                                   <MessageCircle size={14} /> {g.estadoRecordatorio === 'enviado' ? 'Reenviar' : 'Enviar'}
                                 </button>
@@ -3170,7 +3229,21 @@ export default function AgendaPage() {
                   </div>
 
                   <div className="p-6 md:p-8 border-t border-slate-100 bg-white shrink-0">
-                    {recordatoriosPendientes.length > 0 ? (
+                    {grupoEnCurso ? (
+                      <div className="rounded-2xl border-2 border-violet-200 bg-violet-50 p-4">
+                        <p className="text-center text-xs font-black uppercase tracking-widest text-violet-800 mb-3">
+                          ¿Se envió el mensaje a {`${grupoEnCurso.paciente?.nombre || ''} ${grupoEnCurso.paciente?.apellido || ''}`.trim()}?
+                        </p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <button onClick={() => marcarRecordatorioFallido(grupoEnCurso)} className="py-3.5 rounded-xl border border-rose-200 bg-white text-rose-600 font-black text-[11px] uppercase tracking-widest hover:bg-rose-50 flex items-center justify-center gap-2">
+                            <X size={16} /> No se pudo enviar
+                          </button>
+                          <button onClick={() => confirmarRecordatorioEnviado(grupoEnCurso)} className="py-3.5 rounded-xl bg-emerald-500 text-white font-black text-[11px] uppercase tracking-widest hover:bg-emerald-600 shadow-md flex items-center justify-center gap-2">
+                            <CheckCircle2 size={16} /> Sí, se envió
+                          </button>
+                        </div>
+                      </div>
+                    ) : recordatoriosPendientes.length > 0 ? (
                       <button
                         onClick={() => enviarRecordatorioGrupo(recordatoriosPendientes[0])}
                         className="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-md hover:bg-emerald-600 transition-all flex items-center justify-center gap-2"
@@ -3181,11 +3254,16 @@ export default function AgendaPage() {
                       </button>
                     ) : (
                       <div className="w-full py-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-emerald-700 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2">
-                        <CheckCircle2 size={16} /> {recordatorios.length > 0 ? 'Todos los recordatorios están enviados' : 'Nada por enviar'}
+                        <CheckCircle2 size={16} />
+                        {recordatorios.length === 0
+                          ? 'Nada por enviar'
+                          : recordatoriosFallidos.length > 0
+                            ? `Listo · ${recordatoriosFallidos.length} no se pudieron enviar (revisa su teléfono o llámalos)`
+                            : 'Todos los recordatorios están enviados'}
                       </div>
                     )}
                     <p className="text-[10px] font-bold text-slate-400 text-center mt-3">
-                      Cada clic abre WhatsApp con el mensaje listo. Envíalo, vuelve a esta pestaña y presiona el botón para el siguiente.
+                      Cada clic abre WhatsApp con el mensaje listo. Si salió bien, vuelve aquí y marca "Sí, se envió". Si el número está malo o no tiene WhatsApp, marca "No se pudo": la cita no se modifica.
                     </p>
                   </div>
                 </motion.div>
