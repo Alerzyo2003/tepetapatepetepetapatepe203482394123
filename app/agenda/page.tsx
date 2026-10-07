@@ -9,14 +9,16 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import {
   AlertTriangle, BellRing, Calendar as CalendarIcon, CalendarDays, ChevronLeft, ChevronRight, ClipboardList,
-  Globe, LayoutGrid, List, Loader2, Lock, Plus, Search, Timer, Users, X,
+  Globe, LayoutGrid, List, Loader2, Lock, Plus, Search, Users, X,
 } from 'lucide-react'
 
-import { contarInasistencias, marcarRecordatorioEnviado, obtenerFinanzasPacientes, registrarAuditoria } from './_components/data'
+import { contarInasistencias, obtenerFinanzasPacientes, registrarAuditoria } from './_components/data'
+import { configControl, configReprogramar, enviarRecordatorioIndividual, guardarEstadoCita } from './_components/acciones'
+import { useAgendaRealtime, useAvisoPacienteEspera, useReloj } from './_components/hooks'
+import AvisoPacienteEspera from './_components/AvisoPacienteEspera'
 import {
-  abrirWhatsApp, construirMensajeInasistencia, construirMensajeRecordatorio, construirMensajeResena,
-  DIAS_HASTA_CONTROL, DURACION_CONTROL, DURACIONES_DISPONIBLES, duracionMinutos, esWebPendiente, fechaISODeStr,
-  fechaLocalDeStr, getDiasLunesSabado, getLocalDateISO, GOLD, nombrePaciente, requiereControl,
+  abrirWhatsApp, construirMensajeInasistencia, construirMensajeResena,
+  esWebPendiente, fechaISODeStr, getDiasLunesSabado, getLocalDateISO, GOLD, nombrePaciente,
 } from './_components/utils'
 import type { AgendarConfig, Hueco, Profesional } from './_components/types'
 import { TarjetaCitaDia, TarjetaCitaSemana, type AccionesCita } from './_components/TarjetaCita'
@@ -56,9 +58,9 @@ export default function AgendaPage() {
   const [citasOnlinePendientes, setCitasOnlinePendientes] = useState<any[]>([]);
   const [cambiandoFecha, setCambiandoFecha] = useState(false);
   const [busquedaAgenda, setBusquedaAgenda] = useState('');
-  const [realtimeTrigger, setRealtimeTrigger] = useState(0);
-  const [notificacion, setNotificacion] = useState<{ nombre: string } | null>(null);
-  const [ahoraMs, setAhoraMs] = useState(() => Date.now()); // reloj del semáforo de espera
+  const realtimeTrigger = useAgendaRealtime();
+  const [avisoEspera, cerrarAvisoEspera] = useAvisoPacienteEspera();
+  const ahoraMs = useReloj(30000); // reloj del semáforo de espera
 
   // ── Modales ──
   const [agendarConfig, setAgendarConfig] = useState<AgendarConfig | null>(null);
@@ -68,8 +70,6 @@ export default function AgendaPage() {
 
   const dateInputRef = useRef<HTMLInputElement>(null);
   const fetchSeq = useRef(0);
-  const realtimeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const notifTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hoyISO = getLocalDateISO(new Date());
   const esHoySeleccionado = getLocalDateISO(selectedDate) === hoyISO;
@@ -77,45 +77,6 @@ export default function AgendaPage() {
   // ─────────────────────────────────────────────────────────────
   // Efectos
   // ─────────────────────────────────────────────────────────────
-
-  // Realtime + aviso de "paciente en espera" (el canal tiene el mismo nombre que usa el emisor)
-  useEffect(() => {
-    let cancelado = false;
-    let canalNotif: any = null;
-    let canalAgenda: any = null;
-    const programarRefresco = () => {
-      if (realtimeTimer.current) clearTimeout(realtimeTimer.current);
-      realtimeTimer.current = setTimeout(() => setRealtimeTrigger(p => p + 1), 400);
-    };
-
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (cancelado || !user) return;
-      canalNotif = supabase.channel(`notificaciones-${user.id}`)
-        .on('broadcast', { event: 'PACIENTE_EN_ESPERA' }, (payload) => {
-          setNotificacion({ nombre: payload.payload?.nombre || 'Un paciente' });
-          if (notifTimer.current) clearTimeout(notifTimer.current);
-          notifTimer.current = setTimeout(() => setNotificacion(null), 120000);
-        })
-        .subscribe();
-      canalAgenda = supabase.channel(`agenda-realtime-${user.id}-${Date.now()}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'presupuesto_items' }, programarRefresco)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'citas' }, programarRefresco)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'bloqueos_agenda' }, programarRefresco)
-        .subscribe();
-    })();
-
-    const reloj = setInterval(() => setAhoraMs(Date.now()), 30000);
-
-    return () => {
-      cancelado = true;
-      if (canalNotif) supabase.removeChannel(canalNotif);
-      if (canalAgenda) supabase.removeChannel(canalAgenda);
-      if (realtimeTimer.current) clearTimeout(realtimeTimer.current);
-      if (notifTimer.current) clearTimeout(notifTimer.current);
-      clearInterval(reloj);
-    };
-  }, []);
 
   useEffect(() => { cargarBasicos(); }, []);
 
@@ -137,17 +98,13 @@ export default function AgendaPage() {
   async function cargarBasicos() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      let especialistaInicial = 'Todos';
-
       if (session?.user) {
         setUsuarioLogueado(session.user.id);
         const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', session.user.id).maybeSingle();
         if (perfil) {
           setUserRol(perfil.rol);
-          if (!ROLES_AGENDA_COMPLETA.includes(perfil.rol)) {
-            especialistaInicial = session.user.id;
-            setFiltroEspecialista(session.user.id);
-          }
+          // Los doctores solo ven su propia agenda
+          if (!ROLES_AGENDA_COMPLETA.includes(perfil.rol)) setFiltroEspecialista(session.user.id);
         }
       }
 
@@ -261,31 +218,11 @@ export default function AgendaPage() {
     });
   };
 
-  const iniciarReprogramacion = (cita: any) => {
-    const mins = duracionMinutos(cita);
-    abrirAgendar({
-      citaReprogramar: cita,
-      profesionalId: cita.profesional_id || undefined,
-      duracion: DURACIONES_DISPONIBLES.includes(mins) ? mins : 30,
-      semanaInicio: fechaISODeStr(cita.inicio),
-      motivo: cita.motivo || '',
-    });
-  };
+  const iniciarReprogramacion = (cita: any) => abrirAgendar(configReprogramar(cita));
 
   const agendarControl = (cita: any) => {
     if (!cita?.pacientes) return toast.error('La cita no tiene paciente asociado');
-    const base = fechaLocalDeStr(cita.inicio);
-    base.setDate(base.getDate() + DIAS_HASTA_CONTROL);
-    if (base.getDay() === 0) base.setDate(base.getDate() + 1); // domingo → lunes
-    const fecha = getLocalDateISO(base);
-    abrirAgendar({
-      profesionalId: cita.profesional_id || undefined,
-      duracion: DURACION_CONTROL,
-      semanaInicio: fecha,
-      diaSugerido: fecha,
-      paciente: cita.pacientes,
-      motivo: `CONTROL ${cita.motivo || ''}`.trim().toUpperCase(),
-    });
+    abrirAgendar(configControl(cita));
   };
 
   const agendarEnHueco = (h: Hueco) => {
@@ -294,48 +231,9 @@ export default function AgendaPage() {
   };
 
   async function actualizarEstadoCita(cita: any, nuevoEstado: string) {
-    setCitasDia(prev => prev.map(c => c.id === cita.id ? { ...c, estado: nuevoEstado } : c));
-    const ahora = new Date();
-    const horaLocal = new Date(ahora.getTime() - ahora.getTimezoneOffset() * 60000).toISOString().replace('Z', '');
-    const update: any = { estado: nuevoEstado, modificado_por: usuarioLogueado };
-    if (nuevoEstado === 'cancelada') update.cancelado_por = usuarioLogueado;
-    if (nuevoEstado === 'en_espera') { update.llegada_confirmada = true; update.hora_llegada = horaLocal; }
-    if (nuevoEstado === 'atendiendose') update.hora_inicio_atencion = horaLocal;
-    if (nuevoEstado === 'atendido') update.hora_fin_atencion = horaLocal;
-
-    const { data: actual, error } = await supabase.from('citas').update(update).eq('id', cita.id).select('*, pacientes(nombre, apellido)').single();
-    if (error) { toast.error('Error al actualizar el estado'); await fetchCitasAgenda(); return; }
-
-    const nombre = nombrePaciente(cita.pacientes);
-    await registrarAuditoria(usuarioLogueado, 'UPDATE / ESTADO CITA', 'citas', `Cambió estado de la cita de ${nombre} a "${nuevoEstado.toUpperCase()}".`);
-
-    // Avisar al doctor que el paciente llegó (si no es él mismo quien lo marcó)
-    if (nuevoEstado === 'en_espera' && actual?.profesional_id && actual.profesional_id !== usuarioLogueado) {
-      const canal = supabase.channel(`notificaciones-${actual.profesional_id}`);
-      canal.subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await canal.send({ type: 'broadcast', event: 'PACIENTE_EN_ESPERA', payload: { nombre } });
-          supabase.removeChannel(canal);
-        }
-      });
-    }
-
-    toast.success('Estado actualizado');
-
-    if (nuevoEstado === 'no_asiste' && cita.pacientes) {
-      toast(`${nombre} no asistió`, {
-        description: '¿Enviarle un WhatsApp para reagendar?', duration: 15000,
-        action: { label: 'Enviar WhatsApp', onClick: () => abrirWhatsApp(cita.pacientes?.telefono, construirMensajeInasistencia(cita, profesionales)) },
-      });
-    }
-    if (nuevoEstado === 'atendido' && cita.pacientes && requiereControl(cita.motivo)) {
-      toast(`¿Agendar control en ${DIAS_HASTA_CONTROL} días?`, {
-        description: `${nombre} · ${cita.motivo}`, duration: 20000,
-        action: { label: 'Agendar control', onClick: () => agendarControl(cita) },
-      });
-    }
-
-    await fetchCitasAgenda();
+    setCitasDia(prev => prev.map(c => c.id === cita.id ? { ...c, estado: nuevoEstado } : c)); // optimista
+    await guardarEstadoCita(cita, nuevoEstado, { usuarioLogueado, profesionales, onAgendarControl: agendarControl });
+    await fetchCitasAgenda(); // si falló, esto revierte el cambio optimista
   }
 
   const eliminarCita = async (cita: any) => {
@@ -350,21 +248,11 @@ export default function AgendaPage() {
     } catch (e) { console.error(e); toast.error('No se pudo eliminar la cita'); }
   };
 
-  // Recordatorio individual: solo se marca "enviado" si recepción confirma que salió
-  const enviarRecordatorio = (cita: any) => {
-    if (!abrirWhatsApp(cita.pacientes?.telefono, construirMensajeRecordatorio([cita], profesionales))) return;
-    if (cita.estado_confirmacion !== 'pendiente') return;
-    toast(`¿Se envió el recordatorio a ${nombrePaciente(cita.pacientes)}?`, {
-      description: 'Confírmalo solo si el mensaje salió en WhatsApp.', duration: 30000,
-      action: { label: 'Sí, se envió', onClick: () => { marcarRecordatorioEnviado([cita]); toast.success('Recordatorio marcado como enviado'); } },
-    });
-  };
-
   const acciones: AccionesCita = {
     onCambiarEstado: actualizarEstadoCita,
     onReprogramar: iniciarReprogramacion,
     onPresupuesto: setCitaPresupuesto,
-    onRecordatorio: enviarRecordatorio,
+    onRecordatorio: (c) => enviarRecordatorioIndividual(c, profesionales),
     onResena: (c) => abrirWhatsApp(c.pacientes?.telefono, construirMensajeResena(c)),
     onCaja: (c) => {
       const id = c.pacientes?.id || c.paciente_id;
@@ -566,20 +454,7 @@ export default function AgendaPage() {
       )}
 
       {/* AVISO: PACIENTE EN SALA DE ESPERA */}
-      <AnimatePresence>
-        {notificacion && (
-          <div className="fixed inset-x-0 top-4 z-[1000001] flex justify-center px-4 pointer-events-none">
-            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="pointer-events-auto w-full max-w-md bg-amber-400 text-amber-950 rounded-2xl shadow-2xl border border-amber-500 p-4 flex items-center gap-3">
-              <Timer size={22} className="shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-widest opacity-70">Paciente en sala de espera</p>
-                <p className="font-black uppercase text-sm truncate">{notificacion.nombre}</p>
-              </div>
-              <button onClick={() => setNotificacion(null)} className="p-1.5 rounded-full hover:bg-amber-500/40 transition-colors"><X size={18} /></button>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <AvisoPacienteEspera nombre={avisoEspera} onClose={cerrarAvisoEspera} />
 
       {/* MODALES */}
       <ModalAgendar
