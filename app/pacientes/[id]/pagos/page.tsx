@@ -3,11 +3,12 @@ import React, { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import {  
-  Loader2, Coins, ReceiptText, CheckCircle2, AlertCircle,
+  Loader2, Coins, ReceiptText, CheckCircle2,
   CreditCard, Banknote, Landmark, History, EyeOff, ChevronUp,
   ChevronDown, Printer, Trash2, FileText, Wallet, Plus, User, X, CheckSquare
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { asegurarMiCaja, obtenerMiCaja } from '@/lib/cajas'
 import { motion, AnimatePresence } from 'framer-motion'
 
 type MedioPago = {
@@ -38,7 +39,9 @@ export default function PagosPacientePage() {
 
   const [usuarioLogueado, setUsuarioLogueado] = useState<any>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  // Caja abierta DEL USUARIO (cada admin/recepcionista tiene la suya; se abre sola con el primer pago)
   const [cajaActivaId, setCajaActivaId] = useState<string | null>(null);
+  const [numeroMiCaja, setNumeroMiCaja] = useState<number | null>(null);
 
   // ESTADOS PARA PAGO SELECTIVO Y MÚLTIPLES MÉTODOS
   const [pagosSeleccionados, setPagosSeleccionados] = useState<Record<string, number>>({})
@@ -127,8 +130,11 @@ export default function PagosPacientePage() {
       const { data: bancosData } = await supabase.from('bancos').select('nombre').eq('activo', true).order('nombre', { ascending: true });
       if (bancosData) setListaBancos(bancosData);
 
-      const { data: cajaActiva } = await supabase.from('sesiones_caja').select('id').eq('estado', 'abierta').maybeSingle();
-      setCajaActivaId(cajaActiva?.id || null);
+      if (session?.user) {
+          const miCaja = await obtenerMiCaja(session.user.id).catch(() => null);
+          setCajaActivaId(miCaja?.id || null);
+          setNumeroMiCaja(miCaja?.numero_caja ?? null);
+      }
 
       const { data: pacData } = await supabase.from('pacientes').select('*').eq('id', paciente_id).single()
       setPacienteInfo(pacData)
@@ -298,8 +304,24 @@ export default function PagosPacientePage() {
     });
   };
 
+  // Devuelve la caja abierta del usuario; si no tiene, se la abre automáticamente
+  const prepararMiCaja = async (): Promise<string | null> => {
+    if (!puedeVerFinanzas) { toast.error("Solo administración y recepción pueden registrar pagos."); return null; }
+    if (!usuarioLogueado?.id) { toast.error("Sesión no válida. Vuelve a iniciar sesión."); return null; }
+    try {
+      const { caja, recienAbierta } = await asegurarMiCaja(usuarioLogueado.id, perfil?.nombre_completo || usuarioLogueado.email || 'Usuario');
+      setCajaActivaId(caja.id);
+      setNumeroMiCaja(caja.numero_caja ?? null);
+      if (recienAbierta) toast.info(`Se abrió tu caja #${caja.numero_caja}. Los pagos de tu turno quedarán en ella.`);
+      return caja.id;
+    } catch (e) {
+      console.error(e);
+      toast.error("No se pudo abrir tu caja. Intenta nuevamente.");
+      return null;
+    }
+  }
+
   const procesarAbonoLibre = async () => {
-    if (!cajaActivaId) return toast.error("No se puede procesar el abono: No hay caja abierta.");
     if (!montoAbonoLibre || Number(montoAbonoLibre) <= 0) return toast.error("Ingrese un monto válido");
     
     if (metodoAbonoLibre !== 'Saldo a Favor') {
@@ -308,6 +330,9 @@ export default function PagosPacientePage() {
             if (!numeroTransferenciaAbonoLibre.trim() || !bancoAbonoLibre.trim()) return toast.error("Debe ingresar el N° de transferencia y seleccionar un banco obligatoriamente.");
         }
     }
+
+    const cajaId = await prepararMiCaja();
+    if (!cajaId) return;
 
     setCargandoAccion(true);
     try {
@@ -325,7 +350,7 @@ export default function PagosPacientePage() {
             profesional_id: usuarioLogueado?.id,
             fecha_pago: fechaPagoTransaccion,
             comentario: JSON.stringify(detalleAbono),
-            caja_id: cajaActivaId
+            caja_id: cajaId
         }]).select().single();
 
         if (errPago) throw errPago;
@@ -356,7 +381,6 @@ export default function PagosPacientePage() {
   }
 
   const procesarPagoCaja = async () => {
-    if (!cajaActivaId) return toast.error("No se puede procesar el pago: No hay caja abierta.");
     if (montoTotalAPagar <= 0) return toast.error("Seleccione al menos un tratamiento para pagar e ingrese un monto válido.");
 
     const sumMedios = mediosPago.reduce((acc, m) => acc + m.monto, 0);
@@ -378,6 +402,9 @@ export default function PagosPacientePage() {
     }
 
     if (totalSaldoUsado > saldoActual) return toast.error("Fondos insuficientes en Billetera Virtual para cubrir el monto asignado.");
+
+    const cajaId = await prepararMiCaja();
+    if (!cajaId) return;
 
     setCargandoAccion(true);
     let detallesDelPago: any[] = [];
@@ -420,7 +447,7 @@ export default function PagosPacientePage() {
                         item_id: itemInfo.id,
                         fecha_pago: fechaPagoTransaccion,
                         comentario: JSON.stringify([detalleItem]),
-                        caja_id: cajaActivaId
+                        caja_id: cajaId
                     }]).select('id').single();
 
                     if (pagoInsertado) idsGenerados.push(pagoInsertado.id);
@@ -674,7 +701,7 @@ export default function PagosPacientePage() {
             </div>
 
             <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
-                <button disabled={!cajaActivaId} onClick={() => setModalAbonoLibreAbierto(true)} className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-6 py-3.5 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-all flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 border border-emerald-400">
+                <button disabled={!puedeVerFinanzas} onClick={() => setModalAbonoLibreAbierto(true)} className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-6 py-3.5 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-all flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 border border-emerald-400">
                   <Plus size={16} strokeWidth={3} /> Ingresar Saldo a Favor
                 </button>
             </div>
@@ -765,12 +792,12 @@ export default function PagosPacientePage() {
                     </div>
                 </div>
 
-                {!cajaActivaId && (
-                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-700 text-xs font-bold flex items-center gap-3 shadow-sm">
-                        <AlertCircle size={20} className="shrink-0" />
-                        <div><p className="font-black">PAGOS BLOQUEADOS: NO HAY CAJA ABIERTA</p><p className="font-medium">Para registrar pagos, se debe iniciar turno en Cajas.</p></div>
-                    </div>
-                )}
+                <div className={`p-3 border rounded-2xl text-xs font-bold flex items-center gap-3 shadow-sm ${cajaActivaId ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+                    <Wallet size={18} className="shrink-0" />
+                    {cajaActivaId
+                        ? <p>Los pagos se registran en <span className="font-black">tu caja #{numeroMiCaja ?? ''}</span>.</p>
+                        : <p>No tienes caja abierta: <span className="font-black">se abrirá automáticamente</span> al registrar el primer pago.</p>}
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     {mediosPago.map((medio, index) => (
@@ -790,7 +817,7 @@ export default function PagosPacientePage() {
                                 <div className="space-y-0.5">
                                     <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest pl-0.5">Método</label>
                                     <div className="relative">
-                                        <select disabled={!cajaActivaId || montoTotalAPagar <= 0} className="w-full py-1 pl-5 pr-1 bg-white hover:bg-slate-50 focus:bg-white border border-slate-200/60 focus:border-emerald-500/50 rounded text-[9px] font-bold uppercase text-slate-700 outline-none focus:ring-1 focus:ring-emerald-500/10 appearance-none shadow-sm disabled:opacity-50" value={medio.metodo} onChange={(e) => updateMedioPago(medio.id, 'metodo', e.target.value)}>
+                                        <select disabled={!puedeVerFinanzas || montoTotalAPagar <= 0} className="w-full py-1 pl-5 pr-1 bg-white hover:bg-slate-50 focus:bg-white border border-slate-200/60 focus:border-emerald-500/50 rounded text-[9px] font-bold uppercase text-slate-700 outline-none focus:ring-1 focus:ring-emerald-500/10 appearance-none shadow-sm disabled:opacity-50" value={medio.metodo} onChange={(e) => updateMedioPago(medio.id, 'metodo', e.target.value)}>
                                             <option value="Transferencia">Transferencia</option>
                                             <option value="Tarjeta de Crédito">Tarjeta de Crédito</option>
                                             <option value="Tarjeta de Débito">Tarjeta de Débito</option>
@@ -808,7 +835,7 @@ export default function PagosPacientePage() {
                                     <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest pl-0.5">Monto</label>
                                     <div className="relative">
                                         <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-emerald-600 font-black text-[9px]">$</span>
-                                        <input type="number" disabled={!cajaActivaId || mediosPago.length === 1 || montoTotalAPagar <= 0} className="w-full py-1 pl-4 pr-1 bg-white border border-emerald-200 text-emerald-700 rounded text-[10px] font-black outline-none focus:ring-1 focus:ring-emerald-500/10 transition-all shadow-sm disabled:opacity-80 disabled:bg-slate-50" value={medio.monto} onChange={(e) => handleMontoManualChange(medio.id, Number(e.target.value))} />
+                                        <input type="number" disabled={!puedeVerFinanzas || mediosPago.length === 1 || montoTotalAPagar <= 0} className="w-full py-1 pl-4 pr-1 bg-white border border-emerald-200 text-emerald-700 rounded text-[10px] font-black outline-none focus:ring-1 focus:ring-emerald-500/10 transition-all shadow-sm disabled:opacity-80 disabled:bg-slate-50" value={medio.monto} onChange={(e) => handleMontoManualChange(medio.id, Number(e.target.value))} />
                                     </div>
                                 </div>
                             </div>
@@ -818,7 +845,7 @@ export default function PagosPacientePage() {
                                     <div className="space-y-0.5">
                                         <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest pl-0.5">N° Boleta SII (*)</label>
                                         <div className="relative">
-                                            <input type="text" disabled={!cajaActivaId || montoTotalAPagar <= 0} placeholder="Ej: 1542" className={`w-full py-1 pl-5 pr-1 bg-white border rounded text-[9px] font-bold uppercase text-slate-800 outline-none focus:ring-1 transition-all shadow-sm ${!medio.numeroBoleta.trim() && montoTotalAPagar > 0 ? 'border-amber-300 focus:border-amber-500 focus:ring-amber-500/10' : 'border-slate-200/60 focus:border-emerald-500/50'}`} value={medio.numeroBoleta} onChange={(e) => updateMedioPago(medio.id, 'numeroBoleta', e.target.value)} />
+                                            <input type="text" disabled={!puedeVerFinanzas || montoTotalAPagar <= 0} placeholder="Ej: 1542" className={`w-full py-1 pl-5 pr-1 bg-white border rounded text-[9px] font-bold uppercase text-slate-800 outline-none focus:ring-1 transition-all shadow-sm ${!medio.numeroBoleta.trim() && montoTotalAPagar > 0 ? 'border-amber-300 focus:border-amber-500 focus:ring-amber-500/10' : 'border-slate-200/60 focus:border-emerald-500/50'}`} value={medio.numeroBoleta} onChange={(e) => updateMedioPago(medio.id, 'numeroBoleta', e.target.value)} />
                                             <FileText className="absolute left-1.5 top-1/2 -translate-y-1/2 text-slate-400" size={10} />
                                         </div>
                                     </div>
@@ -826,12 +853,12 @@ export default function PagosPacientePage() {
                                         <div className="grid grid-cols-2 gap-1.5">
                                             <div className="space-y-0.5">
                                                 <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest pl-0.5">N° Transf (*)</label>
-                                                <input type="text" disabled={!cajaActivaId || montoTotalAPagar <= 0} placeholder="Ej: TR-1092" className={`w-full py-1 px-1.5 bg-white border rounded text-[9px] font-bold uppercase shadow-sm outline-none focus:ring-1 transition-all ${!medio.numeroTransferencia.trim() && montoTotalAPagar > 0 ? 'border-amber-300' : 'border-slate-200/60'}`} value={medio.numeroTransferencia} onChange={(e) => updateMedioPago(medio.id, 'numeroTransferencia', e.target.value)} />
+                                                <input type="text" disabled={!puedeVerFinanzas || montoTotalAPagar <= 0} placeholder="Ej: TR-1092" className={`w-full py-1 px-1.5 bg-white border rounded text-[9px] font-bold uppercase shadow-sm outline-none focus:ring-1 transition-all ${!medio.numeroTransferencia.trim() && montoTotalAPagar > 0 ? 'border-amber-300' : 'border-slate-200/60'}`} value={medio.numeroTransferencia} onChange={(e) => updateMedioPago(medio.id, 'numeroTransferencia', e.target.value)} />
                                             </div>
                                             <div className="space-y-0.5">
                                                 <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest pl-0.5">Banco (*)</label>
                                                 <div className="relative">
-                                                    <select disabled={!cajaActivaId || montoTotalAPagar <= 0} className={`w-full py-1 pl-1.5 pr-4 bg-white border rounded text-[9px] font-bold uppercase shadow-sm appearance-none outline-none focus:ring-1 transition-all ${!medio.banco.trim() && montoTotalAPagar > 0 ? 'border-amber-300' : 'border-slate-200/60'}`} value={medio.banco} onChange={(e) => updateMedioPago(medio.id, 'banco', e.target.value)}>
+                                                    <select disabled={!puedeVerFinanzas || montoTotalAPagar <= 0} className={`w-full py-1 pl-1.5 pr-4 bg-white border rounded text-[9px] font-bold uppercase shadow-sm appearance-none outline-none focus:ring-1 transition-all ${!medio.banco.trim() && montoTotalAPagar > 0 ? 'border-amber-300' : 'border-slate-200/60'}`} value={medio.banco} onChange={(e) => updateMedioPago(medio.id, 'banco', e.target.value)}>
                                                         <option value="" disabled>Seleccionar</option>
                                                         {listaBancos.map(b => <option key={b.nombre} value={b.nombre}>{b.nombre}</option>)}
                                                     </select>
@@ -847,12 +874,12 @@ export default function PagosPacientePage() {
                 </div>
 
                 <div className="flex justify-center pt-2">
-                    <button onClick={agregarMedioPago} disabled={!cajaActivaId || montoTotalAPagar <= 0} className="px-6 py-2 border-2 border-dashed border-emerald-300 text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-50 transition-colors flex items-center gap-2 disabled:opacity-50">
+                    <button onClick={agregarMedioPago} disabled={!puedeVerFinanzas || montoTotalAPagar <= 0} className="px-6 py-2 border-2 border-dashed border-emerald-300 text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-50 transition-colors flex items-center gap-2 disabled:opacity-50">
                         <Plus size={14} strokeWidth={3} /> Añadir otra forma de pago
                     </button>
                 </div>
 
-                <button onClick={procesarPagoCaja} disabled={cargandoAccion || montoTotalAPagar <= 0 || !cajaActivaId} className="w-full py-5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 flex items-center justify-center gap-3 border border-emerald-400">
+                <button onClick={procesarPagoCaja} disabled={cargandoAccion || montoTotalAPagar <= 0 || !puedeVerFinanzas} className="w-full py-5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 flex items-center justify-center gap-3 border border-emerald-400">
                   {cargandoAccion ? <Loader2 className="animate-spin" size={18}/> : <CheckCircle2 size={18} strokeWidth={2.5}/>}
                   {montoTotalAPagar <= 0 ? 'Selecciona un tratamiento arriba' : `Confirmar Pago por $${montoTotalAPagar.toLocaleString('es-CL')}`}
                 </button>
