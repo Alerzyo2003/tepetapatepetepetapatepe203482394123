@@ -32,8 +32,8 @@ export const SLOTS_HORARIOS = Array.from({ length: (21 - 8) * 4 + 1 }, (_, i) =>
 export const DURACIONES_DISPONIBLES = [15, 30, 45, 60, 90, 120, 150, 180, 210, 240, 270, 300];
 
 export const DIRECCION_CLINICA = 'Av. Venancia Leiva 1871, La Pintana';
-export const URL_CONFIRMAR = 'https://confirmar-cita-dignidad.vercel.app/confirmar';
-export const URL_AGENDAR_ONLINE = 'https://confirmar-cita-dignidad.vercel.app/agendar';
+export const URL_CONFIRMAR = 'https://agendar.clinicadignidad.cl/confirmar';
+export const URL_AGENDAR_ONLINE = 'https://agendar.clinicadignidad.cl/agendar';
 export const URL_RESENA_GOOGLE = 'https://g.page/r/CTmbdo9C4oVGEBM/review';
 
 // ─────────────────────────────────────────────────────────────
