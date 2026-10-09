@@ -57,6 +57,10 @@ export default function PagosPacientePage() {
   const [numeroBoletaAbonoLibre, setNumeroBoletaAbonoLibre] = useState('')
   const [numeroTransferenciaAbonoLibre, setNumeroTransferenciaAbonoLibre] = useState('')
   const [bancoAbonoLibre, setBancoAbonoLibre] = useState('')
+  const [notaAbonoLibre, setNotaAbonoLibre] = useState('')
+
+  // Comentario opcional del pago (se guarda en pagos.nota)
+  const [notaPago, setNotaPago] = useState('')
  
   const [pagoAImprimir, setPagoAImprimir] = useState<any>(null)
 
@@ -208,6 +212,7 @@ export default function PagosPacientePage() {
                   grupos[p.fecha_pago].metodos_detalle.push({ metodo: p.metodo_pago, monto: Number(p.monto), boleta: p.numero_boleta, ref: p.numero_referencia });
                   grupos[p.fecha_pago].comentarios_raw.push(...getDetalles(p.comentario));
                   grupos[p.fecha_pago].rawPagos.push(p);
+                  if (!grupos[p.fecha_pago].nota && p.nota) grupos[p.fecha_pago].nota = p.nota;
                   
                   const metodosSet = new Set(grupos[p.fecha_pago].metodos_detalle.map((m:any) => m.metodo));
                   grupos[p.fecha_pago].metodo_pago = Array.from(metodosSet).join(' + ');
@@ -350,6 +355,7 @@ export default function PagosPacientePage() {
             profesional_id: usuarioLogueado?.id,
             fecha_pago: fechaPagoTransaccion,
             comentario: JSON.stringify(detalleAbono),
+            nota: notaAbonoLibre.trim() || null,
             caja_id: cajaId
         }]).select().single();
 
@@ -363,12 +369,12 @@ export default function PagosPacientePage() {
             nuevoPago?.id,
             { saldo_a_favor_anterior: saldoActual },
             { saldo_a_favor_nuevo: saldoActual + montoNuevo, pago: nuevoPago },
-            `Ingresó $${montoNuevo.toLocaleString('es-CL')} al saldo a favor de ${pacienteInfo?.nombre} ${pacienteInfo?.apellido} (RUT: ${pacienteInfo?.rut}). Método: ${metodoAbonoLibre}.`
+            `Ingresó $${montoNuevo.toLocaleString('es-CL')} al saldo a favor de ${pacienteInfo?.nombre} ${pacienteInfo?.apellido} (RUT: ${pacienteInfo?.rut}). Método: ${metodoAbonoLibre}.${notaAbonoLibre.trim() ? ` Comentario: ${notaAbonoLibre.trim()}` : ''}`
         );
 
         toast.success(`Se agregaron $${montoNuevo.toLocaleString('es-CL')} al Saldo a Favor.`);
         setModalAbonoLibreAbierto(false);
-        setMontoAbonoLibre(''); setNumeroBoletaAbonoLibre(''); setNumeroTransferenciaAbonoLibre(''); setBancoAbonoLibre('');
+        setMontoAbonoLibre(''); setNumeroBoletaAbonoLibre(''); setNumeroTransferenciaAbonoLibre(''); setBancoAbonoLibre(''); setNotaAbonoLibre('');
         await cargarDatosFinancieros();
 
         if(window.confirm("¿Desea imprimir el comprobante de este ingreso?")) {
@@ -447,6 +453,7 @@ export default function PagosPacientePage() {
                         item_id: itemInfo.id,
                         fecha_pago: fechaPagoTransaccion,
                         comentario: JSON.stringify([detalleItem]),
+                        nota: notaPago.trim() || null,
                         caja_id: cajaId
                     }]).select('id').single();
 
@@ -481,7 +488,7 @@ export default function PagosPacientePage() {
                 pagos_realizados: detallesDelPago,
                 total_pagado: montoTotalAPagar 
             },
-            `Registró un pago selectivo de $${montoTotalAPagar.toLocaleString('es-CL')} para ${pacienteInfo?.nombre} ${pacienteInfo?.apellido}.`
+            `Registró un pago selectivo de $${montoTotalAPagar.toLocaleString('es-CL')} para ${pacienteInfo?.nombre} ${pacienteInfo?.apellido}.${notaPago.trim() ? ` Comentario: ${notaPago.trim()}` : ''}`
         );
 
         const detallesAgrupadosParaImprimir = Object.values(detallesDelPago.reduce((acc, curr) => {
@@ -505,6 +512,7 @@ export default function PagosPacientePage() {
         };
 
         setPagosSeleccionados({});
+        setNotaPago('');
         setMediosPago([{ id: 'default', metodo: 'Transferencia', monto: 0, numeroBoleta: '', numeroTransferencia: '', banco: '' }]);
         
         await cargarDatosFinancieros();
@@ -879,6 +887,14 @@ export default function PagosPacientePage() {
                     </button>
                 </div>
 
+                <div className="space-y-1.5">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Comentario (opcional)</label>
+                    <textarea rows={2} maxLength={500} disabled={!puedeVerFinanzas || montoTotalAPagar <= 0}
+                        placeholder="Ej: Paga el resto la próxima semana / pagó su hija / descuento autorizado por la Dra."
+                        className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/10 resize-none shadow-sm disabled:opacity-50"
+                        value={notaPago} onChange={(e) => setNotaPago(e.target.value)} />
+                </div>
+
                 <button onClick={procesarPagoCaja} disabled={cargandoAccion || montoTotalAPagar <= 0 || !puedeVerFinanzas} className="w-full py-5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 flex items-center justify-center gap-3 border border-emerald-400">
                   {cargandoAccion ? <Loader2 className="animate-spin" size={18}/> : <CheckCircle2 size={18} strokeWidth={2.5}/>}
                   {montoTotalAPagar <= 0 ? 'Selecciona un tratamiento arriba' : `Confirmar Pago por $${montoTotalAPagar.toLocaleString('es-CL')}`}
@@ -928,6 +944,9 @@ export default function PagosPacientePage() {
                                                     {pago.metodos_detalle.length > 1 && (
                                                         <span className="text-[8px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-md font-bold uppercase">Múltiple</span>
                                                     )}
+                                                    {pago.nota && (
+                                                        <p className="mt-1 text-[9px] italic text-amber-700 line-clamp-2 max-w-[160px]" title={pago.nota}>💬 {pago.nota}</p>
+                                                    )}
                                                 </td>
                                                 <td className="p-3.5 align-top text-right">
                                                     <p className={`font-black text-sm ${isAnulado ? 'text-red-500 line-through' : 'text-emerald-600'}`}>
@@ -947,6 +966,12 @@ export default function PagosPacientePage() {
                                                     <td colSpan={4} className="p-0">
                                                         <motion.div initial={{height: 0, opacity: 0}} animate={{height: 'auto', opacity: 1}} className="bg-slate-100/80 p-4 m-2 rounded-2xl border border-slate-200/60">
                                                             
+                                                            {pago.nota && (
+                                                                <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                                                                    <h5 className="text-[9px] font-black text-amber-700 uppercase mb-1">Comentario</h5>
+                                                                    <p className="text-[11px] text-slate-700 whitespace-pre-wrap">{pago.nota}</p>
+                                                                </div>
+                                                            )}
                                                             <h5 className="text-[9px] font-black text-slate-500 uppercase mb-2">Desglose de Tratamientos</h5>
                                                             {dt.length > 0 ? (
                                                                 <div className="space-y-2 mb-4">
@@ -1044,6 +1069,12 @@ export default function PagosPacientePage() {
                                 </div>
                             </div>
                         )}
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Comentario (opcional)</label>
+                            <textarea rows={2} maxLength={500} placeholder="Ej: Abono para tratamiento de ortodoncia"
+                                className="w-full p-4 bg-slate-50/80 hover:bg-white border rounded-2xl text-xs font-medium outline-none focus:ring-4 transition-all shadow-sm resize-none"
+                                value={notaAbonoLibre} onChange={(e) => setNotaAbonoLibre(e.target.value)} />
+                        </div>
                     </div>
                 </div>
                 <div className="p-8 border-t border-slate-100 bg-white/50 shrink-0 text-right flex gap-3">
