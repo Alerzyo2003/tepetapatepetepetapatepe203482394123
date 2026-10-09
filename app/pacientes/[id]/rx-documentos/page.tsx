@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
+import { procesarImagen, ES_IMAGEN, formatoPeso } from '@/lib/imagenes'
 
 export default function DocumentosPage() {
   const { id: paciente_id } = useParams()
@@ -19,6 +20,8 @@ export default function DocumentosPage() {
   const [subiendo, setSubiendo] = useState(false)
   const [cargando, setCargando] = useState(true)
   const [isMounted, setIsMounted] = useState(false)
+  // Si se marca, las imágenes se suben sin comprimir (igual se crea la miniatura)
+  const [calidadOriginal, setCalidadOriginal] = useState(false)
   
   // ESTADOS DEL VISOR INDIVIDUAL
   const [visorAbierto, setVisorAbierto] = useState(false)
@@ -58,6 +61,34 @@ export default function DocumentosPage() {
     }
   }
 
+  // Firma en una sola llamada las URLs del archivo y de su miniatura
+  async function conUrlsFirmadas(docs: any[]) {
+    const rutas = Array.from(new Set(docs.flatMap(d => [d.url_archivo, d.url_miniatura])
+      .filter((r: any) => r && !String(r).startsWith('http'))))
+    const firmadas: Record<string, string> = {}
+    if (rutas.length) {
+      const { data: urls } = await supabase.storage.from('pacientes_docs').createSignedUrls(rutas as string[], 3600)
+      ;(urls || []).forEach((u: any) => { if (u.path && u.signedUrl) firmadas[u.path] = u.signedUrl })
+    }
+    const url = (r: any) => (!r ? null : String(r).startsWith('http') ? r : firmadas[r] || null)
+    return docs.map(d => ({ ...d, signedUrl: url(d.url_archivo), miniUrl: url(d.url_miniatura) }))
+  }
+
+  // Nombre de descarga con su extensión (ej. "RX panorámica.webp")
+  const nombreDescarga = (doc: any) => {
+    const nombre = doc.titulo || doc.nombre_archivo || 'documento_clinico'
+    const ext = String(doc.url_archivo || '').split('?')[0].split('.').pop()
+    return ext && ext.length <= 5 && !nombre.toLowerCase().endsWith(`.${ext.toLowerCase()}`) ? `${nombre}.${ext}` : nombre
+  }
+
+  // Borra del almacenamiento los archivos de documentos eliminados (si falla, no bloquea)
+  async function borrarDelStorage(docs: any[]) {
+    const rutas = docs.flatMap(d => [d.url_archivo, d.url_miniatura]).filter((r: any) => r && !String(r).startsWith('http'))
+    if (!rutas.length) return
+    const { error } = await supabase.storage.from('pacientes_docs').remove(rutas)
+    if (error) console.warn('No se pudieron borrar los archivos del almacenamiento:', error.message)
+  }
+
   async function fetchDocumentos() {
     setCargando(true)
     try {
@@ -68,18 +99,7 @@ export default function DocumentosPage() {
         .order('fecha_subida', { ascending: false })
       
       if (error) throw error
-      if (data) {
-        const docsConUrls = await Promise.all(data.map(async (doc) => {
-            if (doc.url_archivo && !doc.url_archivo.startsWith('http')) {
-                const { data: signedUrlData } = await supabase.storage
-                    .from('pacientes_docs')
-                    .createSignedUrl(doc.url_archivo, 3600);
-                return { ...doc, signedUrl: signedUrlData?.signedUrl };
-            }
-            return { ...doc, signedUrl: doc.url_archivo };
-        }));
-        setDocumentos(docsConUrls);
-      }
+      if (data) setDocumentos(await conUrlsFirmadas(data));
     } catch (err) {
       console.error(err)
     } finally {
@@ -96,55 +116,80 @@ export default function DocumentosPage() {
       const { data: { user }, error: authError } = await supabase.auth.getUser()
       if (authError || !user) throw new Error("No hay sesión activa")
 
-      let nuevosDocs = [];
+      let nuevosDocs: any[] = [];
       const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-      const maxSize = 10 * 1024 * 1024;
+      const MAX_IMAGEN = 30 * 1024 * 1024; // las imágenes se comprimen antes de subir
+      const MAX_FINAL = 10 * 1024 * 1024;  // límite del archivo que se guarda
+      let pesoAntes = 0, pesoDespues = 0;
+      const toastId = files.length > 1 ? toast.loading(`Procesando 0 de ${files.length}...`) : undefined;
 
-      for (const file of files) {
+      for (const [i, file] of files.entries()) {
+        if (toastId) toast.loading(`Procesando ${i + 1} de ${files.length}: ${file.name}`, { id: toastId });
         if (!allowedTypes.includes(file.type)) {
           toast.error(`El archivo "${file.name}" tiene un tipo no permitido.`);
           continue;
         }
+        if (file.size > (ES_IMAGEN(file.type) ? MAX_IMAGEN : MAX_FINAL)) {
+          toast.error(`El archivo "${file.name}" es demasiado grande.`);
+          continue;
+        }
 
-        if (file.size > maxSize) {
+        // Imágenes: WebP de alta calidad + miniatura. PDF: se sube tal cual.
+        const img = await procesarImagen(file, { calidadOriginal });
+        if (img.pesoFinal > MAX_FINAL) {
           toast.error(`El archivo "${file.name}" supera el límite de 10MB.`);
           continue;
         }
 
-        const fileExt = file.name.split('.').pop()
-        const fileName = `${paciente_id}/${Date.now()}_${Math.random().toString(36).substr(2, 5)}.${fileExt}`
-        
-        const { error: storageError } = await supabase.storage.from('pacientes_docs').upload(fileName, file)
+        const base = `${paciente_id}/${Date.now()}_${Math.random().toString(36).substr(2, 5)}`
+        const fileName = `${base}.${img.extension}`
+        const { error: storageError } = await supabase.storage.from('pacientes_docs')
+          .upload(fileName, img.archivo, { contentType: img.tipo, cacheControl: '31536000' })
         if (storageError) {
           toast.error(`Error al subir "${file.name}".`);
           continue;
+        }
+
+        let miniName: string | null = null
+        if (img.miniatura) {
+          const { error: miniError } = await supabase.storage.from('pacientes_docs')
+            .upload(`${base}_mini.webp`, img.miniatura, { contentType: img.miniatura.type || 'image/webp', cacheControl: '31536000' })
+          if (!miniError) miniName = `${base}_mini.webp`
         }
 
         const { data, error: dbError } = await supabase.from('documentos_pacientes').insert([{
           paciente_id,
           nombre_archivo: file.name,
           url_archivo: fileName,
-          tipo_archivo: file.type,
-          titulo: file.name,
+          url_miniatura: miniName,
+          tipo_archivo: img.tipo,
+          titulo: file.name.replace(/\.[^.]+$/, ''),
           profesional_id: user.id
         }]).select().single()
 
-        if (data && !dbError) nuevosDocs.push(data);
+        if (data && !dbError) {
+          nuevosDocs.push(data);
+          pesoAntes += img.pesoOriginal;
+          pesoDespues += img.pesoFinal;
+        } else {
+          // Si no se pudo registrar, no dejar archivos huérfanos
+          await supabase.storage.from('pacientes_docs').remove([fileName, ...(miniName ? [miniName] : [])])
+          toast.error(`No se pudo registrar "${file.name}".`);
+        }
       }
+      if (toastId) toast.dismiss(toastId);
 
       if (nuevosDocs.length > 0) {
-        const nuevosDocsConUrl = await Promise.all(nuevosDocs.map(async (doc) => {
-            const { data: signedUrlData } = await supabase.storage
-                .from('pacientes_docs')
-                .createSignedUrl(doc.url_archivo, 3600);
-            return { ...doc, signedUrl: signedUrlData?.signedUrl };
-        }));
+        const nuevosDocsConUrl = await conUrlsFirmadas(nuevosDocs);
         setDocumentos(prev => [...nuevosDocsConUrl, ...prev])
-        
+
         // Auditoría Upload
         await registrarAuditoria('CREAR', `Subió ${nuevosDocs.length} archivo(s) digital(es)`);
-        
-        toast.success(`Se subieron ${nuevosDocs.length} de ${files.length} archivo(s) correctamente`)
+
+        const ahorro = pesoAntes - pesoDespues
+        toast.success(`Se subieron ${nuevosDocs.length} de ${files.length} archivo(s)`, {
+          description: ahorro > 50 * 1024 ? `${formatoPeso(pesoAntes)} → ${formatoPeso(pesoDespues)} (ahorro de ${Math.round((ahorro / pesoAntes) * 100)}%)` : undefined,
+        })
       }
     } catch (error: any) {
       toast.error('Ocurrió un error durante la subida.');
@@ -190,6 +235,7 @@ export default function DocumentosPage() {
       try {
         const { error } = await supabase.from('documentos_pacientes').delete().eq('id', seleccionado.id)
         if (error) throw error
+        await borrarDelStorage([seleccionado])
         
         // Auditoría Delete Individual
         await registrarAuditoria('ELIMINAR', `Eliminó el documento: ${seleccionado.titulo || seleccionado.nombre_archivo}`);
@@ -222,7 +268,7 @@ export default function DocumentosPage() {
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = doc.titulo || doc.nombre_archivo || 'documento_clinico';
+        link.download = nombreDescarga(doc);
         document.body.appendChild(link);
         link.click();
         
@@ -254,6 +300,7 @@ export default function DocumentosPage() {
        try {
           const { error } = await supabase.from('documentos_pacientes').delete().in('id', seleccionMultiples);
           if (error) throw error;
+          await borrarDelStorage(documentos.filter(d => seleccionMultiples.includes(d.id)));
           
           // Auditoría Delete Múltiple
           await registrarAuditoria('ELIMINAR', `Eliminó ${seleccionMultiples.length} documentos en bloque`);
@@ -321,10 +368,15 @@ export default function DocumentosPage() {
               {modoSeleccion ? 'Cancelar Selección' : 'Selección Múltiple'}
             </button>
 
+            <label className="flex items-center justify-center gap-2 px-4 py-3 rounded-[1rem] md:rounded-2xl bg-white/90 border border-white/80 text-[10px] font-black uppercase text-slate-600 cursor-pointer select-none shadow-sm" title="Sin marcar: las imágenes se guardan en WebP de alta calidad (pesan mucho menos). Marcar solo si necesitas el archivo exacto.">
+              <input type="checkbox" className="accent-blue-600 w-4 h-4" checked={calidadOriginal} onChange={(e) => setCalidadOriginal(e.target.checked)} disabled={subiendo} />
+              Calidad original
+            </label>
+
             <label className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-blue-700 text-white px-7 py-3.5 rounded-[1rem] md:rounded-2xl font-black text-[10px] uppercase cursor-pointer shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:from-slate-900 hover:to-slate-900 transition-all flex justify-center items-center gap-2 border border-blue-500">
               {subiendo ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} strokeWidth={2.5}/>}
               {subiendo ? 'Subiendo...' : 'Subir Documento(s)'}
-              <input type="file" multiple className="hidden" onChange={handleUploadMulti} disabled={subiendo} />
+              <input type="file" multiple accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" onChange={handleUploadMulti} disabled={subiendo} />
             </label>
           </div>
         </div>
@@ -364,7 +416,7 @@ export default function DocumentosPage() {
 
                 <div className={`aspect-square bg-slate-100/80 rounded-xl md:rounded-[2rem] mb-3 md:mb-4 overflow-hidden flex items-center justify-center relative transition-opacity ${modoSeleccion && seleccionMultiples.includes(doc.id) ? 'opacity-70' : ''}`}>
                   {(doc.tipo_archivo || '').includes('image') ? (
-                    <img src={doc.signedUrl} referrerPolicy="no-referrer" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                    <img src={doc.miniUrl || doc.signedUrl} loading="lazy" decoding="async" referrerPolicy="no-referrer" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
                   ) : (
                     <FileText className="text-slate-300 w-10 md:w-16 h-10 md:h-16" />
                   )}
@@ -398,7 +450,7 @@ export default function DocumentosPage() {
                           <Download size={14} strokeWidth={2.5}/> <span className="hidden sm:inline">Descargar</span>
                       </button>
                       <button onClick={() => {
-                          setDatosRenombrar(documentos.filter(d => seleccionMultiples.includes(d.id)).map(d => ({id: d.id, titulo: d.titulo || d.nombre_archivo, url: d.signedUrl, tipo: d.tipo_archivo})))
+                          setDatosRenombrar(documentos.filter(d => seleccionMultiples.includes(d.id)).map(d => ({id: d.id, titulo: d.titulo || d.nombre_archivo, url: d.miniUrl || d.signedUrl, tipo: d.tipo_archivo})))
                           setModalRenombrarAbierto(true)
                       }} className="flex-1 md:flex-none px-4 md:px-5 py-2.5 md:py-3 bg-blue-600 text-white hover:bg-blue-500 rounded-xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-md">
                           <Edit3 size={14} strokeWidth={2.5}/> <span className="hidden sm:inline">Renombrar</span>
@@ -491,7 +543,7 @@ export default function DocumentosPage() {
                       <button 
                         onClick={() => {
                           const link = document.createElement('a'); link.href = seleccionado.signedUrl;
-                          link.download = seleccionado.titulo || seleccionado.nombre_archivo || 'documento_clinico';
+                          link.download = nombreDescarga(seleccionado);
                           link.target = '_blank'; link.rel = 'noopener noreferrer';
                           document.body.appendChild(link); link.click();
                           document.body.removeChild(link); toast.success("Descarga iniciada");
@@ -565,7 +617,7 @@ export default function DocumentosPage() {
                           // 4. Forzamos la descarga
                           const link = document.createElement('a');
                           link.href = url;
-                          link.download = seleccionado.titulo || seleccionado.nombre_archivo || 'documento_clinico';
+                          link.download = nombreDescarga(seleccionado);
                           document.body.appendChild(link);
                           link.click();
                           
