@@ -35,7 +35,7 @@ export default function DetalleCajaPage() {
         .from('pagos')
         .select(`
           id, monto, metodo_pago, convenio, fecha_vencimiento, 
-          numero_referencia, numero_boleta, fecha_pago, paciente_id, 
+          numero_referencia, numero_boleta, fecha_pago, paciente_id, nota, 
           pacientes(nombre, apellido)
         `)
         .eq('caja_id', cajaId)
@@ -246,6 +246,7 @@ export default function DetalleCajaPage() {
                         <p className="text-xs font-bold uppercase text-[#0B1527] text-left">
                           {pac ? `${pac.nombre} ${pac.apellido}` : 'Sin nombre'}
                         </p>
+                        {p.nota && <p className="text-[10px] italic text-amber-700 mt-1 max-w-[260px]">💬 {p.nota}</p>}
                       </td>
                       <td className="px-6 py-5 text-left">
                         <div className="flex items-center gap-2 text-left text-slate-500">
