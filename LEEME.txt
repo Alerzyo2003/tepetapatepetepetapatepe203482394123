@@ -1,0 +1,27 @@
+ARREGLOS APP CLÍNICA DIGNIDAD — CÓMO APLICARLOS (en este orden)
+
+1) SUPABASE (antes de subir el código)
+   SQL Editor → ejecutar arreglos_pagos_y_seguridad.sql:
+   - PASO 1 (funciones de pagos): OBLIGATORIO antes de subir el código.
+     Sin esto, registrar/anular pagos dará error.
+   - PASO 2 (proteger 12 tablas internas) y PASO 4 (Realtime de Cajas): se pueden ejecutar junto al paso 1.
+   - PASO 3: NO ejecutar todavía; solo la consulta, y mandar el resultado.
+
+2) CÓDIGO
+   - Copiar el contenido de arreglos-app.zip sobre el proyecto (mismas rutas). Reemplaza los zips anteriores
+     (logs, permisos, citas S/N, liquidación): todo eso ya viene incluido aquí.
+   - BORRAR estos archivos viejos (no están en el menú y mostraban todos los pagos a cualquier usuario):
+       app/pagos/page.tsx
+       app/estadisticas/page.tsx
+       app/dashboard/cierrecaja.tsx
+       components/Sidebar.tsx
+       components/Notificaciones.tsx
+   - Opcional: quitar librerías que no se usan:
+       npm uninstall git @supabase/auth-helpers-nextjs csv-parser resend
+   - npm run build  → debe terminar sin errores
+   - Probar en local (npm run dev) antes de hacer push.
+
+3) SI ALGO FALLA
+   - Código: en Vercel → Deployments → deploy anterior → Instant Rollback.
+   - Supabase: las funciones nuevas no cambian datos por sí solas. Para deshacer la protección de una tabla:
+       alter table public.NOMBRE disable row level security;
