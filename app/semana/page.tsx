@@ -579,9 +579,10 @@ const handleDrop = async (e: React.DragEvent, profId: string, fecha: string, hor
 
   const handleGuardar = async () => {
     if (cargandoAccion) return;
-    if (modoNuevoPaciente && (!nuevoPaciente.nombre || !nuevoPaciente.apellido)) {
+    if (modoNuevoPaciente && (!nuevoPaciente.nombre.trim() || !nuevoPaciente.apellido.trim())) {
       return toast.error("Faltan datos del nuevo paciente", { description: "Nombre y Apellido son obligatorios." });
     }
+    if (!modoNuevoPaciente && !pacienteSeleccionado && !citaEnReprogramacion) return toast.error("Selecciona un paciente");
     setCargandoAccion(true);
     try {
       let pId = pacienteSeleccionado?.id;
@@ -594,17 +595,31 @@ const handleDrop = async (e: React.DragEvent, profId: string, fecha: string, hor
         } else {
             rutFinal = rutFinal.replace(/[^0-9kK-]/g, '');
         }
+        // Sin RUT: valor único para no chocar con otro paciente sin RUT
+        if (!rutFinal) rutFinal = `SIN-RUT-${Date.now()}`;
 
-        const { data: pNew } = await supabase.from('pacientes').insert([{ 
+        const { data: pNew, error: pErr } = await supabase.from('pacientes').insert([{ 
             nombre: nuevoPaciente.nombre.toUpperCase().trim(), 
             apellido: nuevoPaciente.apellido.toUpperCase().trim(), 
             rut: rutFinal, 
-            telefono: nuevoPaciente.telefono, 
+            telefono: nuevoPaciente.telefono || null, 
             fecha_nacimiento: nuevoPaciente.fecha_nacimiento || null, 
             sexo: nuevoPaciente.sexo || null, 
             activo: true 
         }]).select().single();
-        if (pNew) { pId = pNew.id; pNombreFull = `${nuevoPaciente.nombre} ${nuevoPaciente.apellido}`; pTelefono = nuevoPaciente.telefono; }
+        if (pErr || !pNew) {
+          // Antes el error se ignoraba y la cita se creaba SIN paciente (S/N, enlace /pacientes/null)
+          if ((pErr as any)?.code === '23505') toast.error("Ya existe un paciente con ese RUT", { description: "Búscalo con el buscador en vez de crearlo de nuevo." });
+          else toast.error("No se pudo crear el paciente", { description: pErr?.message });
+          setCargandoAccion(false);
+          return;
+        }
+        pId = pNew.id; pNombreFull = `${nuevoPaciente.nombre} ${nuevoPaciente.apellido}`; pTelefono = nuevoPaciente.telefono;
+      }
+      if (!citaEnReprogramacion && !pId) {
+        toast.error("Falta el paciente", { description: "No se creó la cita. Vuelve a seleccionar o crear el paciente." });
+        setCargandoAccion(false);
+        return;
       }
       const parsearAFechaLocal = (fechaStr: string, horaStr: string, duracionMin: number) => {
         const finDate = new Date(new Date(`${fechaStr}T${horaStr}:00`).getTime() + duracionMin * 60000);
@@ -620,7 +635,8 @@ const handleDrop = async (e: React.DragEvent, profId: string, fecha: string, hor
           const { inicio, fin } = parsearAFechaLocal(s.fecha, s.hora, s.duracion);
           return { paciente_id: pId, profesional_id: filtro.profesional_id, presupuesto_id: (tratamientoSeleccionadoId && tratamientoSeleccionadoId !== 'MANUAL') ? tratamientoSeleccionadoId : null, inicio, fin, estado: 'programada', motivo: nuevoTratamientoNombre.toUpperCase() || 'CONSULTA', creado_por: usuarioLogueado };
         });
-        await supabase.from('citas').insert(nuevasCitas);
+        const { error: errCitas } = await supabase.from('citas').insert(nuevasCitas);
+        if (errCitas) throw errCitas;
       }
       setCitaConfirmadaData({ paciente: pNombreFull.toUpperCase(), citas: horasSeleccionadas, telefono: pTelefono });
       setMostrarTicket(true); await fetchDatos();
