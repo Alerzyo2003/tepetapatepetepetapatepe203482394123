@@ -335,6 +335,12 @@ function FormularioAgendar({
         pId = pNew.id; pNombreFull = `${nuevoPaciente.nombre} ${nuevoPaciente.apellido}`; pTelefono = telefonoFinal;
       }
 
+      if (!citaEnReprogramacion && !pId) {
+        toast.error("Falta el paciente", { description: "No se creó la cita. Vuelve a seleccionar o crear el paciente." });
+        setCargandoAccion(false);
+        return;
+      }
+
       const aFechas = (s: HoraSeleccionada) => rangoCita(s.fecha, s.hora, s.duracion);
       const ordenadas = [...horasSeleccionadas].sort((a, b) => `${a.fecha}${a.hora}`.localeCompare(`${b.fecha}${b.hora}`));
       let citaIdConfirmacion: string | null = null;
