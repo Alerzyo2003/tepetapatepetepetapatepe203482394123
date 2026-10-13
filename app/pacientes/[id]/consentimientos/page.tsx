@@ -65,7 +65,7 @@ export default function ConsentimientosPacientePage() {
   }, [pacienteId])
 
   // --- FUNCIÓN DE AUDITORÍA ENRIQUECIDA (SEREMI) ---
-  const registrarAuditoria = async (accion: string, detalles: string, datos_anteriores: any = null, datos_nuevos: any = null) => {
+  const registrarAuditoria = async (accion: string, detalles: string, datos_anteriores: any = null, datos_nuevos: any = null, registroId: string | null = null) => {
     if (!sessionUserId || !perfil) return;
     try {
       await supabase.from('auditoria_clinica').insert([{
@@ -74,6 +74,7 @@ export default function ConsentimientosPacientePage() {
         nombre_usuario: perfil.nombre_completo,
         rol_al_momento: perfil.rol,
         paciente_id: pacienteId,
+        registro_afectado_id: registroId,
         accion,
         tabla: 'paciente_consentimientos',
         detalles,
@@ -94,9 +95,11 @@ export default function ConsentimientosPacientePage() {
         .select('*')
         .eq('paciente_id', pacienteId)
         .order('fecha_creacion', { ascending: false });
+      if (errEmitidos) throw errEmitidos;
 
       const [tipos, pres, pros] = await Promise.all([
-        supabase.from('consentimientos').select('*').eq('estado', 'Sí'),
+        // Plantillas activas (acepta "Sí", "Si", "si"... por si alguna quedó escrita distinto)
+        supabase.from('consentimientos').select('*').in('estado', ['Sí', 'Si', 'si', 'sí', 'SI', 'SÍ']).order('nombre'),
         supabase.from('presupuestos').select('id, nombre_tratamiento').eq('paciente_id', pacienteId),
         supabase.from('profesionales').select('id, user_id, nombre, apellido').eq('activo', true)
       ]);
@@ -165,13 +168,16 @@ export default function ConsentimientosPacientePage() {
         'INSERT / CREAR CONSENTIMIENTO', 
         `Generó consentimiento legal "${plantilla?.nombre}" asignado a Dr/a. ${pro?.nombre} ${pro?.apellido}.`, 
         null, 
-        nuevoRegistro
+        nuevoRegistro,
+        data?.id ?? null
       );
 
       toast.success("¡Registro legal generado exitosamente!");
       setModalAbierto(false);
       setForm({ tipo_id: '', presupuesto_id: '', especialista_id: '' });
-      fetchData(); 
+      // Se abre directo el documento recién creado (listo para imprimir), sin volver a buscarlo en la lista
+      if (data?.id) router.push(`/pacientes/${pacienteId}/consentimientos/${data.id}`);
+      else fetchData(); 
 
     } catch (error: any) {
       console.error("Error Supabase:", error);
@@ -206,7 +212,8 @@ export default function ConsentimientosPacientePage() {
         'UPDATE / REASIGNAR CONSENTIMIENTO', 
         `Reasignó el consentimiento "${docAEditar.nombre_doc}" al especialista Dr/a. ${nombrePro}.`, 
         { nombre_doc: docAEditar.nombre_doc }, 
-        { especialista_id_nuevo: docAEditar.especialista_id, asignado_a: nombrePro }
+        { especialista_id_nuevo: docAEditar.especialista_id, asignado_a: nombrePro },
+        docAEditar.id
       );
 
       toast.success("Especialista actualizado correctamente");
@@ -220,9 +227,15 @@ export default function ConsentimientosPacientePage() {
   }
 
   async function eliminarDocumento(id: string) {
-    if (!confirm("¿Deseas eliminar este registro permanentemente?")) return;
+    const doc = consentimientosEmitidos.find(d => d.id === id);
+    // Un consentimiento firmado es un documento legal: solo administración puede eliminarlo
+    if (doc?.firma_paciente === 'Firmado' && sessionUserRole !== 'ADMIN') {
+      return toast.error("Este consentimiento ya está firmado", { description: "Solo administración puede eliminarlo." });
+    }
+    if (!confirm(doc?.firma_paciente === 'Firmado'
+      ? "⚠️ Este consentimiento está FIRMADO por el paciente. ¿Seguro que deseas eliminarlo permanentemente?"
+      : "¿Deseas eliminar este registro permanentemente?")) return;
     try {
-      const doc = consentimientosEmitidos.find(d => d.id === id);
       
       const { error } = await supabase.from('paciente_consentimientos').delete().eq('id', id);
       if (error) throw error;
@@ -232,7 +245,8 @@ export default function ConsentimientosPacientePage() {
         'DELETE / ELIMINAR CONSENTIMIENTO', 
         `Eliminó el consentimiento "${doc?.nombre_consentimiento || 'Desconocido'}".`, 
         doc, 
-        null
+        null,
+        id
       );
 
       toast.success("Eliminado correctamente");
@@ -294,7 +308,7 @@ export default function ConsentimientosPacientePage() {
                       <p className="text-sm md:text-sm font-black text-slate-800 uppercase italic leading-tight">{doc.nombre_consentimiento}</p>
                       <p className="text-[9px] text-slate-400 font-bold uppercase mt-1 md:mt-1.5">{new Date(doc.fecha_creacion).toLocaleDateString('es-CL')}</p>
                   </td>
-                  <td className="px-4 md:px-6 py-5 md:py-6 text-center max-w-[220px]">
+                  <td className="px-2 md:px-6 py-2 md:py-6 block md:table-cell text-center md:max-w-[220px]">
                     <div className="flex md:block justify-between items-center w-full">
                       <span className="md:hidden text-[9px] font-black text-slate-400 uppercase tracking-widest">Especialista</span>
                       <span className="text-[9px] md:text-[10px] font-black text-slate-600 bg-slate-100 px-3 md:px-4 py-1.5 md:py-2 rounded-xl border uppercase inline-block break-words">

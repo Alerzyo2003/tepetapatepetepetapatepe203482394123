@@ -135,7 +135,7 @@ export default function DetalleConsentimientoPage() {
         {/* ENCABEZADO */}
         {modoVistaPrevia && (
           <div className="flex justify-between items-start mb-10 border-b-2 border-slate-900 pb-6">
-            <img src="https://yqdpmaopnvrgdqbfaiok.supabase.co/storage/v1/object/public/documentos_imagenes/440749454_122171956712064634_7168698893214813270_n.jpg" className="h-20 w-auto" alt="Logo" />
+            <img src="/logo.png" className="h-20 w-auto" alt="Logo" />
             <div className="text-right">
               <h2 className="text-lg font-black uppercase text-slate-900 leading-tight">Centro Médico y Dental Dignidad SpA</h2>
               <p className="text-[11px] font-bold text-slate-500 uppercase mt-1 italic">Fecha: {new Date().toLocaleDateString('es-CL')}</p>

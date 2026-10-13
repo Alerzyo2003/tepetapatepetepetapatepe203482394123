@@ -298,7 +298,7 @@ export default function DetalleCajaPage() {
 
               <div className="avoid-break" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', pageBreakInside: 'avoid' }}>
                  <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                    <img src="https://yqdpmaopnvrgdqbfaiok.supabase.co/storage/v1/object/public/documentos_imagenes/440749454_122171956712064634_7168698893214813270_n.jpg" alt="Logo" style={{ height: '40px', width: 'auto' }} crossOrigin="anonymous" />
+                    <img src="/logo.png" alt="Logo" style={{ height: '40px', width: 'auto' }} crossOrigin="anonymous" />
                     <div>
                        <h1 style={{ fontSize: '11px', fontWeight: 'bold', margin: '0 0 2px 0', textTransform: 'uppercase' }}>CENTRO MEDICO Y DENTAL DIGNIDAD SPA</h1>
                        <p style={{ fontSize: '9px', margin: '0 0 2px 0', color: '#555' }}>Fecha Impresión: {new Date().toLocaleDateString('es-CL')}</p>

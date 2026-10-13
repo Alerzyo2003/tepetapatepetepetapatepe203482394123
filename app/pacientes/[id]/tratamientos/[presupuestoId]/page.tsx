@@ -1689,7 +1689,7 @@ export default function DetalleTratamientoPage() {
             {/* ENCABEZADO CON LOGO */}
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
               <img 
-                src="https://yqdpmaopnvrgdqbfaiok.supabase.co/storage/v1/object/public/documentos_imagenes/440749454_122171956712064634_7168698893214813270_n.jpg" 
+                src="/logo.png" 
                 alt="Logo Clínica" 
                 style={{ width: '50px', height: '50px', objectFit: 'contain' }} 
               />

@@ -24,7 +24,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
 
   // Ruta del logo en Supabase
-  const LOGO_URL = "https://yqdpmaopnvrgdqbfaiok.supabase.co/storage/v1/object/public/documentos_imagenes/icon.png";
+  const LOGO_URL = "/logo.png";
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -83,7 +83,7 @@ export default function LoginPage() {
       <div className="hidden lg:flex lg:w-1/2 relative flex-col justify-between px-16 py-14 overflow-hidden">
         {/* Imagen de fondo */}
         <img
-          src="https://yqdpmaopnvrgdqbfaiok.supabase.co/storage/v1/object/public/documentos_imagenes/fondo-login.png"
+          src="/fondo-login.png"
           alt=""
           className="absolute inset-0 w-full h-full object-cover"
           style={{ objectPosition: '20% center' }}

@@ -1,11 +1,29 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ChevronLeft, Printer, Loader2, Download, FileText, UserCheck, ShieldCheck } from 'lucide-react'
 import DOMPurify from 'isomorphic-dompurify'
 import { toast } from 'sonner'
 import { motion } from 'framer-motion'
+
+const escapar = (v: any) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+// Divide el texto legal en párrafos para que el PDF salte de página entre párrafos (y no a la mitad de una línea)
+function dividirEnParrafos(contenido: string): string[] {
+  const raw = String(contenido || '')
+  if (!raw.trim()) return []
+  if (!/<[a-z][\s\S]*>/i.test(raw)) {
+    return raw.split('\n').map(l => (l.trim() ? `<p style="margin: 0 0 6px;">${escapar(l)}</p>` : '')).filter(Boolean)
+  }
+  const limpio = DOMPurify.sanitize(raw)
+  if (typeof window === 'undefined') return [limpio]
+  const cont = new DOMParser().parseFromString(`<div>${limpio}</div>`, 'text/html').body.firstElementChild
+  if (!cont) return [limpio]
+  return Array.from(cont.childNodes)
+    .map(n => (n.nodeType === 1 ? (n as Element).outerHTML : (n.textContent || '').trim() ? `<p>${escapar(n.textContent)}</p>` : ''))
+    .filter(Boolean)
+}
 
 export default function DetalleConsentimientoPage() {
   const params = useParams()
@@ -20,6 +38,9 @@ export default function DetalleConsentimientoPage() {
   const [documento, setDocumento] = useState<any>(null)
   const [paciente, setPaciente] = useState<any>(null)
   const [especialista, setEspecialista] = useState<any>(null)
+  const [nombreTratamiento, setNombreTratamiento] = useState<string | null>(null)
+  // Qué firmas pide la plantilla (se configura en Administración → Consentimientos)
+  const [firmas, setFirmas] = useState({ paciente: true, profesional: true })
   const [cargando, setCargando] = useState(true)
   const [generandoPdf, setGenerandoPdf] = useState(false)
 
@@ -72,24 +93,42 @@ export default function DetalleConsentimientoPage() {
   async function fetchTodo() {
     setCargando(true)
     try {
-      const { data: doc } = await supabase.from('paciente_consentimientos').select('*').eq('id', docId).maybeSingle()
-      const { data: pac } = await supabase.from('pacientes').select('*').eq('id', pacienteId).maybeSingle()
+      const [{ data: doc }, { data: pac }] = await Promise.all([
+        supabase.from('paciente_consentimientos').select('*').eq('id', docId).maybeSingle(),
+        supabase.from('pacientes').select('*').eq('id', pacienteId).maybeSingle(),
+      ])
 
       if (doc?.especialista_id) {
-        const [profRes, perfRes] = await Promise.all([
-          supabase.from('profesionales').select('nombre, apellido, firma_base64, especialidades(nombre)').eq('user_id', doc.especialista_id).maybeSingle(),
-          supabase.from('perfiles').select('rut').eq('id', doc.especialista_id).maybeSingle()
-        ])
-        if (profRes.data) {
+        // La lista de consentimientos guarda el id de la ficha del profesional (no su usuario):
+        // se busca por ambos para que siempre aparezcan su nombre, RUT y firma
+        const camposProf = 'id, user_id, nombre, apellido, firma_base64, especialidades(nombre)'
+        const porId = await supabase.from('profesionales').select(camposProf).eq('id', doc.especialista_id).maybeSingle()
+        const prof: any = porId.data
+          || (await supabase.from('profesionales').select(camposProf).eq('user_id', doc.especialista_id).maybeSingle()).data
+        if (prof) {
+          const { data: perf } = prof.user_id
+            ? await supabase.from('perfiles').select('rut').eq('id', prof.user_id).maybeSingle()
+            : { data: null }
           setEspecialista({
-            nombre: `Dr/a. ${profRes.data.nombre} ${profRes.data.apellido}`,
-            especialidad: (profRes.data as any).especialidades?.nombre || 'Especialista',
-            rut: perfRes.data?.rut || '---',
-            firma_base64: profRes.data.firma_base64
+            nombre: `Dr/a. ${prof.nombre} ${prof.apellido}`,
+            especialidad: (prof as any).especialidades?.nombre || 'Especialista',
+            rut: perf?.rut || '---',
+            firma_base64: prof.firma_base64
           })
+        } else if (doc.creado_por) {
+          setEspecialista({ nombre: doc.creado_por, especialidad: 'Especialista', rut: '---', firma_base64: null })
         }
       } else if (doc?.creado_por) {
         setEspecialista({ nombre: doc.creado_por, especialidad: 'Especialista', rut: '---', firma_base64: null })
+      }
+
+      if (doc?.consentimiento_id) {
+        const { data: plantilla } = await supabase.from('consentimientos').select('firma_paciente, firma_profesional').eq('id', doc.consentimiento_id).maybeSingle()
+        if (plantilla) setFirmas({ paciente: plantilla.firma_paciente !== false, profesional: plantilla.firma_profesional !== false })
+      }
+      if (doc?.presupuesto_id) {
+        const { data: pres } = await supabase.from('presupuestos').select('nombre_tratamiento').eq('id', doc.presupuesto_id).maybeSingle()
+        setNombreTratamiento(pres?.nombre_tratamiento || null)
       }
 
       setDocumento(doc)
@@ -97,92 +136,60 @@ export default function DetalleConsentimientoPage() {
     } catch (e) { console.error(e) } finally { setCargando(false) }
   }
 
-  const handlePrint = async () => {
+  const parrafos = useMemo(() => dividirEnParrafos(documento?.contenido_legal ?? ''), [documento])
+  const ultimoParrafo = parrafos.length ? parrafos[parrafos.length - 1] : ''
+  const parrafosPrevios = parrafos.slice(0, -1)
+
+  // Imprimir y descargar usan el mismo PDF
+  const generarPdf = async (modo: 'imprimir' | 'descargar') => {
+    // La pestaña se abre al instante (si se abre después de generar, el navegador la bloquea)
+    const ventana = modo === 'imprimir' ? window.open('', '_blank') : null
+    if (ventana) ventana.document.write('<p style="font-family: sans-serif; padding: 24px; color: #475569;">Preparando documento...</p>')
+
     setGenerandoPdf(true);
-    const toastId = toast.loading("Preparando documento numerado para imprimir...");
+    const toastId = toast.loading(modo === 'imprimir' ? "Preparando documento para imprimir..." : "Generando PDF...");
 
     try {
-      // REGISTRAR AUDITORÍA DE EXPORTACIÓN (SEREMI)
-      await registrarAuditoria('EXPORT / IMPRIMIR CONSENTIMIENTO', `Generó una vista de impresión del consentimiento "${documento?.nombre_consentimiento}"`);
+      await registrarAuditoria(
+        modo === 'imprimir' ? 'EXPORT / IMPRIMIR CONSENTIMIENTO' : 'EXPORT / DESCARGAR CONSENTIMIENTO',
+        modo === 'imprimir' ? `Generó una vista de impresión del consentimiento "${documento?.nombre_consentimiento}"` : `Descargó el PDF del consentimiento "${documento?.nombre_consentimiento}"`
+      );
 
       const html2pdf = (await import('html2pdf.js')).default;
       const element = document.getElementById('documento-pdf');
-      
-      if (!element) {
-        toast.error("No se encontró el documento para generar el PDF", { id: toastId });
-        setGenerandoPdf(false);
-        return;
-      }
-      
-      const opt = {
-        margin: [15, 15, 20, 15] as [number, number, number, number],
+      if (!element) throw new Error('No se encontró el documento');
+
+      const opt: any = {
+        margin: [12, 14, 16, 14],
         filename: `Consentimiento_${paciente?.rut || 'Clinica'}.pdf`,
-        image: { type: 'jpeg', quality: 1 } as const,
+        image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true, letterRendering: true, backgroundColor: '#ffffff', scrollY: 0 },
-        jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' } as const,
-        pagebreak: { mode: ['css', 'legacy'] as const }
+        jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' },
+        // Los párrafos y el bloque final (último párrafo + firmas) nunca se cortan entre páginas
+        pagebreak: { mode: ['css', 'legacy'], avoid: ['.bloque-final', '.parrafo-legal', '.no-cortar', 'img'] }
       };
 
-      await html2pdf().set(opt).from(element).toPdf().get('pdf').then((pdf: any) => {
-        const totalPages = pdf.internal.getNumberOfPages();
-        for (let i = 1; i <= totalPages; i++) {
-          pdf.setPage(i);
-          pdf.setFontSize(9);
-          pdf.setTextColor(120, 120, 120);
-          pdf.text(`Página ${i} de ${totalPages}`, pdf.internal.pageSize.getWidth() - 35, pdf.internal.pageSize.getHeight() - 8);
-        }
-        window.open(pdf.output('bloburl'), '_blank');
-      });
-
-      toast.success("Documento listo para imprimir", { id: toastId });
-    } catch (error) {
-      console.error(error);
-      toast.error("Error al preparar la impresión", { id: toastId });
-    } finally {
-      setGenerandoPdf(false);
-    }
-  };
-
-  const handleDownloadPDF = async () => {
-    setGenerandoPdf(true);
-    const toastId = toast.loading("Procesando y numerando PDF...");
-
-    try {
-      // REGISTRAR AUDITORÍA DE EXPORTACIÓN (SEREMI)
-      await registrarAuditoria('EXPORT / DESCARGAR CONSENTIMIENTO', `Descargó el PDF del consentimiento "${documento?.nombre_consentimiento}"`);
-
-      const html2pdf = (await import('html2pdf.js')).default;
-      const element = document.getElementById('documento-pdf');
-
-      if (!element) {
-        toast.error("No se encontró el documento para imprimir", { id: toastId });
-        setGenerandoPdf(false);
-      return;
+      const pdf = await html2pdf().set(opt).from(element).toPdf().get('pdf');
+      const totalPages = pdf.internal.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        pdf.setPage(i);
+        pdf.setFontSize(9);
+        pdf.setTextColor(120, 120, 120);
+        pdf.text(`Página ${i} de ${totalPages}`, pdf.internal.pageSize.getWidth() - 35, pdf.internal.pageSize.getHeight() - 8);
       }
-      
-      const opt = {
-        margin: [15, 15, 20, 15] as [number, number, number, number],
-        filename: `Consentimiento_${paciente?.rut || 'Clinica'}.pdf`,
-        image: { type: 'jpeg', quality: 1 } as const,
-        html2canvas: { scale: 2, useCORS: true, letterRendering: true, backgroundColor: '#ffffff', scrollY: 0 },
-        jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' } as const,
-        pagebreak: { mode: ['css', 'legacy'] as const }
-      };
 
-      await (html2pdf().set(opt).from(element).toPdf().get('pdf').then((pdf: any) => {
-        const totalPages = pdf.internal.getNumberOfPages();
-        for (let i = 1; i <= totalPages; i++) {
-          pdf.setPage(i);
-          pdf.setFontSize(9);
-          pdf.setTextColor(120, 120, 120);
-          pdf.text(`Página ${i} de ${totalPages}`, pdf.internal.pageSize.getWidth() - 35, pdf.internal.pageSize.getHeight() - 8);
-        }
-      }) as any).save();
-
-      toast.success("PDF descargado con éxito", { id: toastId });
+      if (modo === 'imprimir') {
+        const url = pdf.output('bloburl');
+        if (ventana) ventana.location.href = url; else window.open(url, '_blank');
+        toast.success("Documento listo para imprimir", { id: toastId });
+      } else {
+        pdf.save(opt.filename);
+        toast.success("PDF descargado con éxito", { id: toastId });
+      }
     } catch (error) {
       console.error(error);
-      toast.error("Error al generar el PDF", { id: toastId });
+      if (ventana) ventana.close();
+      toast.error("Error al generar el documento", { id: toastId });
     } finally {
       setGenerandoPdf(false);
     }
@@ -216,7 +223,7 @@ export default function DetalleConsentimientoPage() {
         
         <div className="flex items-center gap-3">
           <button 
-            onClick={handlePrint} 
+            onClick={() => generarPdf('imprimir')} 
             disabled={generandoPdf} 
             className="px-5 py-3 bg-white border border-slate-200/80 text-slate-700 rounded-2xl font-black text-[10px] uppercase tracking-wider shadow-sm hover:bg-slate-50 hover:text-blue-600 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
           >
@@ -224,7 +231,7 @@ export default function DetalleConsentimientoPage() {
             <span>{generandoPdf ? 'Preparando...' : 'Imprimir'}</span>
           </button>
           <button 
-            onClick={handleDownloadPDF} 
+            onClick={() => generarPdf('descargar')} 
             disabled={generandoPdf} 
             className="px-5 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-2xl font-black text-[10px] uppercase tracking-wider shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:from-slate-900 hover:to-slate-900 flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50 border border-blue-500"
           >
@@ -242,16 +249,21 @@ export default function DetalleConsentimientoPage() {
           className="w-full max-w-[850px] shadow-2xl mx-auto bg-white rounded-[2.5rem] overflow-hidden border border-white/80"
         >
           
-          <div id="documento-pdf" style={{ backgroundColor: '#ffffff', color: '#000000', padding: '50px', fontFamily: 'Arial, sans-serif' }}>
+          <div id="documento-pdf" style={{ backgroundColor: '#ffffff', color: '#000000', padding: '40px', fontFamily: 'Arial, sans-serif' }}>
             
             <style>{`
-              #documento-pdf p, #documento-pdf li { page-break-inside: avoid; }
+              #documento-pdf p, #documento-pdf li, #documento-pdf .parrafo-legal, #documento-pdf .bloque-final, #documento-pdf .no-cortar { page-break-inside: avoid; break-inside: avoid; }
+              #documento-pdf .texto-legal p { margin: 0 0 8px; }
+              #documento-pdf .texto-legal ol, #documento-pdf .texto-legal ul { margin: 0 0 8px; padding-left: 22px; }
+              #documento-pdf .ql-align-center { text-align: center; }
+              #documento-pdf .ql-align-right { text-align: right; }
+              #documento-pdf .ql-align-justify { text-align: justify; }
             `}</style>
             
             {/* Cabecera del Documento Impreso */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '2px solid #0f172a', paddingBottom: '20px', marginBottom: '30px' }}>
+            <div className="no-cortar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '2px solid #0f172a', paddingBottom: '16px', marginBottom: '22px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                <img src="https://yqdpmaopnvrgdqbfaiok.supabase.co/storage/v1/object/public/documentos_imagenes/440749454_122171956712064634_7168698893214813270_n.jpg" alt="Logo" style={{ height: '75px', width: 'auto', borderRadius: '8px' }} crossOrigin="anonymous" />
+                <img src="/logo.png" alt="Logo" style={{ height: '75px', width: 'auto', borderRadius: '8px' }} crossOrigin="anonymous" />
                 <div style={{ textAlign: 'left' }}>
                   <h1 style={{ fontSize: '16px', fontWeight: 'bold', textTransform: 'uppercase', color: '#0f172a', margin: 0, lineHeight: '1.2' }}>Centro Médico y Dental<br/>Dignidad</h1>
                 </div>
@@ -266,7 +278,7 @@ export default function DetalleConsentimientoPage() {
             </div>
 
             {/* Datos Resumen (Paciente, Tratamiento, Especialista) */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '18px 20px', marginBottom: '40px', pageBreakInside: 'avoid' }}>
+            <div className="no-cortar" style={{ display: 'flex', justifyContent: 'space-between', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px 20px', marginBottom: '26px', pageBreakInside: 'avoid' }}>
               
               <div style={{ width: '33%', textAlign: 'left' }}>
                 <span style={{ fontSize: '9px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '4px' }}>Paciente</span>
@@ -276,9 +288,9 @@ export default function DetalleConsentimientoPage() {
               
               <div style={{ width: '33%', textAlign: 'center', borderLeft: '1px solid #cbd5e1', borderRight: '1px solid #cbd5e1', padding: '0 10px' }}>
                 <span style={{ fontSize: '9px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '4px' }}>Tratamiento</span>
-                <p style={{ fontSize: '13px', fontWeight: 'bold', color: '#0f172a', textTransform: 'uppercase', margin: '0 0 3px 0' }}>{documento?.nombre_consentimiento}</p>
+                <p style={{ fontSize: '13px', fontWeight: 'bold', color: '#0f172a', textTransform: 'uppercase', margin: '0 0 3px 0' }}>{nombreTratamiento || documento?.nombre_consentimiento}</p>
                 <p style={{ fontSize: '11px', color: '#334155', margin: 0 }}>
-                  ID: {documento?.presupuesto_id ? String(documento.presupuesto_id).split('-')[0].toUpperCase() : 'NO ASOCIADO'}
+                  {documento?.presupuesto_id ? `Presupuesto ${String(documento.presupuesto_id).split('-')[0].toUpperCase()}` : 'Sin presupuesto asociado'}
                 </p>
               </div>
 
@@ -290,35 +302,50 @@ export default function DetalleConsentimientoPage() {
 
             </div>
 
-            {/* Contenido Legal */}
-            <div 
-              style={{ fontSize: '13.5px', lineHeight: '1.7', color: '#1e293b', textAlign: 'justify', marginBottom: '60px', overflowWrap: 'break-word', wordBreak: 'normal', whiteSpace: 'pre-wrap' }} 
-              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(documento?.contenido_legal ?? '') }}
-            />
+            {/* Contenido Legal: un bloque por párrafo para que el PDF no corte líneas */}
+            <div className="texto-legal" style={{ fontSize: '13px', lineHeight: '1.65', color: '#1e293b', textAlign: 'justify', overflowWrap: 'break-word', wordBreak: 'normal' }}>
+              {parrafosPrevios.map((html, i) => (
+                <div key={i} className="parrafo-legal" dangerouslySetInnerHTML={{ __html: html }} />
+              ))}
+            </div>
 
-            {/* Firmas */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '30px', pageBreakInside: 'avoid' }}>
-              <div style={{ width: '45%', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <div style={{ width: '100%', height: '80px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', borderBottom: '1px solid #0f172a', paddingBottom: '10px', marginBottom: '10px' }}>
-                  {(especialista?.firma_base64 || documento?.img_firma_especialista) && (
-                    <img 
-                      src={especialista?.firma_base64 || documento?.img_firma_especialista} 
-                      style={{ maxHeight: '70px', objectFit: 'contain', mixBlendMode: 'multiply' }} 
-                      crossOrigin="anonymous" 
-                    />
+            {/* Bloque final: último párrafo + firmas juntos, para que la firma nunca quede sola ni cortada en otra página */}
+            <div className="bloque-final" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+              {ultimoParrafo && (
+                <div className="texto-legal" style={{ fontSize: '13px', lineHeight: '1.65', color: '#1e293b', textAlign: 'justify', overflowWrap: 'break-word' }} dangerouslySetInnerHTML={{ __html: ultimoParrafo }} />
+              )}
+
+              {(firmas.profesional || firmas.paciente) && (
+                <div style={{ display: 'flex', justifyContent: firmas.profesional && firmas.paciente ? 'space-between' : 'center', paddingTop: '45px' }}>
+                  {firmas.profesional && (
+                    <div style={{ width: '45%', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <div style={{ width: '100%', height: '80px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', borderBottom: '1px solid #0f172a', paddingBottom: '6px', marginBottom: '8px' }}>
+                        {(especialista?.firma_base64 || documento?.img_firma_especialista) && (
+                          <img
+                            src={especialista?.firma_base64 || documento?.img_firma_especialista}
+                            style={{ maxHeight: '72px', maxWidth: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }}
+                            crossOrigin="anonymous"
+                          />
+                        )}
+                      </div>
+                      <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#0f172a', textTransform: 'uppercase', margin: '0 0 2px 0' }}>{especialista?.nombre}</p>
+                      {especialista?.rut && especialista.rut !== '---' && <p style={{ fontSize: '10px', color: '#334155', margin: '0 0 2px 0' }}>RUT: {especialista.rut}</p>}
+                      <p style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>Firma Especialista</p>
+                    </div>
+                  )}
+
+                  {firmas.paciente && (
+                    <div style={{ width: '45%', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                      <div style={{ width: '100%', height: '80px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', borderBottom: '1px solid #0f172a', paddingBottom: '6px', marginBottom: '8px' }}>
+                        {documento?.img_firma_paciente && <img src={documento.img_firma_paciente} style={{ maxHeight: '72px', maxWidth: '100%', objectFit: 'contain', mixBlendMode: 'multiply' }} crossOrigin="anonymous" />}
+                      </div>
+                      <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#0f172a', textTransform: 'uppercase', margin: '0 0 2px 0' }}>{paciente?.nombre} {paciente?.apellido}</p>
+                      {paciente?.rut && <p style={{ fontSize: '10px', color: '#334155', margin: '0 0 2px 0' }}>RUT: {paciente.rut}</p>}
+                      <p style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>Aceptación Paciente</p>
+                    </div>
                   )}
                 </div>
-                <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#0f172a', textTransform: 'uppercase', margin: '0 0 2px 0' }}>{especialista?.nombre}</p>
-                <p style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>Firma Especialista</p>
-              </div>
-              
-              <div style={{ width: '45%', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <div style={{ width: '100%', height: '80px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', borderBottom: '1px solid #0f172a', paddingBottom: '10px', marginBottom: '10px' }}>
-                  {documento?.img_firma_paciente && <img src={documento.img_firma_paciente} style={{ maxHeight: '70px', objectFit: 'contain', mixBlendMode: 'multiply' }} crossOrigin="anonymous" />}
-                </div>
-                <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#0f172a', textTransform: 'uppercase', margin: '0 0 2px 0' }}>{paciente?.nombre} {paciente?.apellido}</p>
-                <p style={{ fontSize: '9px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>Aceptación Paciente</p>
-              </div>
+              )}
             </div>
 
           </div>

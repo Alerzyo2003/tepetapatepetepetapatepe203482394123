@@ -435,7 +435,7 @@ export default function RecetasPage() {
                     {/* ENCABEZADO */}
                     <div className="text-left border-b-2 border-slate-900 pb-4 md:pb-5 mb-5 md:mb-6 flex flex-col sm:flex-row items-center sm:items-start gap-4 md:gap-6">
                       <img 
-                          src="https://yqdpmaopnvrgdqbfaiok.supabase.co/storage/v1/object/public/documentos_imagenes/440749454_122171956712064634_7168698893214813270_n.jpg"
+                          src="/logo.png"
                           className="w-16 h-16 md:w-20 md:h-20 rounded-full object-cover shrink-0 mix-blend-multiply" 
                           alt="Logo" referrerPolicy="no-referrer" />
                       <div className="flex-1 text-center sm:text-left">

@@ -188,7 +188,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <Link href="/" className="flex items-center gap-4 group transition-all" onClick={() => setMobileMenuOpen(false)}>
                     <div className="relative shrink-0 w-11 h-11 rounded-2xl overflow-hidden border border-white/10 shadow-lg group-hover:scale-105 transition-transform duration-300">
                       <img 
-                        src="https://yqdpmaopnvrgdqbfaiok.supabase.co/storage/v1/object/public/documentos_imagenes/440749454_122171956712064634_7168698893214813270_n.jpg" 
+                        src="/logo.png" 
                         alt="Logo" 
                         referrerPolicy="no-referrer" 
                         className="w-full h-full object-cover" 

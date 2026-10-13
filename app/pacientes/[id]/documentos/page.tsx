@@ -297,7 +297,7 @@ export default function DocumentosClinicosPage() {
             <p style="margin: 2px 0; font-size: 11px;">${esc(autor?.nombre_completo || '---')}, ${esc(autor?.especialidad || 'Especialista')}, RUT ${esc(autor?.rut || '')}</p>
             <p style="margin: 2px 0; font-size: 10px; color: #444;">Fecha emisión: ${new Date().toLocaleDateString('es-CL')}</p>
           </div>
-          <img src="https://yqdpmaopnvrgdqbfaiok.supabase.co/storage/v1/object/public/documentos_imagenes/440749454_122171956712064634_7168698893214813270_n.jpg" style="width: 56px; height: 56px; border-radius: 50%;" />
+          <img src="/logo.png" style="width: 56px; height: 56px; border-radius: 50%;" />
         </div>
 
         <h1 class="no-cortar" style="${sinCorte} text-align: center; text-transform: uppercase; font-size: 17px; font-weight: 900; margin: 14px 0;">${esc(tituloEdicion)}</h1>
@@ -715,7 +715,7 @@ export default function DocumentosClinicosPage() {
                   <div className="bg-white shadow-2xl border border-slate-200/80 rounded-[2.5rem] overflow-hidden text-slate-900" id="hoja-impresion">
                     <div className="p-8 md:p-12 flex flex-col h-full text-left">
                         <header className="flex justify-between items-start border-b border-slate-900 pb-6 mb-8">
-                            <img src="https://yqdpmaopnvrgdqbfaiok.supabase.co/storage/v1/object/public/documentos_imagenes/440749454_122171956712064634_7168698893214813270_n.jpg" className="w-16 h-16 rounded-full" />
+                            <img src="/logo.png" className="w-16 h-16 rounded-full" />
                             <div className="text-right">
                                 <h2 className="text-[11px] font-black uppercase leading-tight">Clínica Dignidad</h2>
                                 <p className="text-[9px] text-slate-400 mt-1 uppercase">Certificado Clínico Digital</p>
