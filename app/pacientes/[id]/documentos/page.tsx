@@ -1,16 +1,32 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
 import {
   FileText, Plus, Printer, Trash2, Loader2, Save, 
   ChevronRight, Type, AlignLeft, Minus, AlignJustify, 
-  PenTool, Download, UserCheck, Users, Search, X, ChevronDown
+  PenTool, Download, UserCheck, Users, Search, X, ChevronDown, CheckCircle2, AlertTriangle
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import DOMPurify from 'isomorphic-dompurify'
+
+// Escapa texto para insertarlo en el HTML del PDF
+const esc = (v: any) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+// Texto del documento para el PDF: cada línea es un párrafo que no se corta entre páginas
+// (antes un párrafo largo podía quedar cortado a la mitad de una línea)
+const textoParaPdf = (contenido: any) => {
+  const t = String(contenido ?? '')
+  if (/<[a-z][\s\S]*>/i.test(t)) {
+    return `<div style="font-size: 12.5px; line-height: 1.5; text-align: justify; margin: 0 0 10px;">${DOMPurify.sanitize(t)}</div>`
+  }
+  return t.split('\n').map(linea => linea.trim() === ''
+    ? '<div style="height: 8px;"></div>'
+    : `<p class="no-cortar" style="font-size: 12.5px; line-height: 1.5; text-align: justify; margin: 0 0 3px; white-space: pre-wrap; page-break-inside: avoid; break-inside: avoid;">${esc(linea)}</p>`
+  ).join('')
+}
 
 export default function DocumentosClinicosPage() {
   const { id: paciente_id } = useParams()
@@ -39,6 +55,17 @@ export default function DocumentosClinicosPage() {
   const [especialistaSeleccionadoId, setEspecialistaSeleccionadoId] = useState<string>('')
   const [mounted, setMounted] = useState(false)
 
+  // --- GUARDADO AUTOMÁTICO ---
+  // Documento creado en esta sesión: se puede seguir editando y cada cambio se guarda solo.
+  // Al salir (Volver u otro documento) queda en solo lectura, igual que antes.
+  const [idEnEdicion, setIdEnEdicion] = useState<string | null>(null)
+  const [estadoGuardado, setEstadoGuardado] = useState<'guardado' | 'pendiente' | 'guardando' | 'error' | null>(null)
+  const ultimoGuardadoRef = useRef<string>('')
+  const timerGuardadoRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const auditoriaEdicionRef = useRef<Set<string>>(new Set())
+
+  const enEdicion = docSeleccionado === 'NUEVO' || (!!idEnEdicion && docSeleccionado?.id === idEnEdicion)
+
   useEffect(() => {
     setMounted(true);
     
@@ -60,7 +87,7 @@ export default function DocumentosClinicosPage() {
   }, [paciente_id])
 
   // --- FUNCIÓN DE AUDITORÍA ENRIQUECIDA (SEREMI) ---
-  const registrarAuditoria = async (accion: string, detalles: string, datos_anteriores: any = null, datos_nuevos: any = null) => {
+  const registrarAuditoria = async (accion: string, detalles: string, datos_anteriores: any = null, datos_nuevos: any = null, registroId: string | null = null) => {
     if (!sessionUserId || !perfil) return;
     try {
       await supabase.from('auditoria_clinica').insert([{
@@ -69,7 +96,7 @@ export default function DocumentosClinicosPage() {
         nombre_usuario: perfil.nombre_completo,
         rol_al_momento: perfil.rol,
         paciente_id: paciente_id as string,
-        registro_afectado_id: docSeleccionado && docSeleccionado !== 'NUEVO' ? docSeleccionado.id : null,
+        registro_afectado_id: registroId || (docSeleccionado && docSeleccionado !== 'NUEVO' ? docSeleccionado.id : null),
         accion,
         tabla: 'documentos_clinicos',
         detalles,
@@ -146,6 +173,87 @@ export default function DocumentosClinicosPage() {
     }
   }
 
+  const firmaContenido = (titulo: string, bloques: any[], especialistaId: string) => JSON.stringify({ titulo, bloques, especialistaId })
+
+  // Crea el documento en la base de datos (se llama apenas se elige la plantilla)
+  const crearDocumento = async (titulo: string, bloques: any[], especialistaId: string) => {
+    if (!especialistaId) return null;
+    const especialistaFull = profesionalesFull.find(p => p.user_id === especialistaId);
+    const nuevoDoc = {
+      paciente_id,
+      especialista_id: especialistaId,
+      titulo_documento: titulo,
+      contenido: bloques,
+      llenado_por: especialistaFull?.nombre_completo
+    };
+    setEstadoGuardado('guardando');
+    const { data, error } = await supabase.from('documentos_clinicos').insert([nuevoDoc]).select().single();
+    if (error || !data) { setEstadoGuardado('error'); return null; }
+    ultimoGuardadoRef.current = firmaContenido(titulo, bloques, especialistaId);
+    setEstadoGuardado('guardado');
+    await registrarAuditoria('INSERT / CREAR DOCUMENTO CLÍNICO', `Creó nuevo documento clínico "${titulo}" (guardado automático)`, null, nuevoDoc, data.id);
+    fetchDocumentos();
+    return data;
+  }
+
+  // Guarda los cambios del documento en edición (título, contenido y especialista)
+  const guardarCambios = async (): Promise<boolean> => {
+    if (timerGuardadoRef.current) { clearTimeout(timerGuardadoRef.current); timerGuardadoRef.current = null; }
+    if (!idEnEdicion || docSeleccionado?.id !== idEnEdicion) return true;
+    const firma = firmaContenido(tituloEdicion, bloquesEdicion, especialistaSeleccionadoId);
+    if (firma === ultimoGuardadoRef.current) { setEstadoGuardado('guardado'); return true; }
+
+    setEstadoGuardado('guardando');
+    const especialistaFull = profesionalesFull.find(p => p.user_id === especialistaSeleccionadoId);
+    const cambios = {
+      titulo_documento: tituloEdicion,
+      contenido: bloquesEdicion,
+      especialista_id: especialistaSeleccionadoId,
+      llenado_por: especialistaFull?.nombre_completo
+    };
+    const { error } = await supabase.from('documentos_clinicos').update(cambios).eq('id', idEnEdicion);
+    if (error) { setEstadoGuardado('error'); return false; }
+    ultimoGuardadoRef.current = firma;
+    setEstadoGuardado('guardado');
+
+    // Auditoría: una vez por documento en esta sesión (no en cada tecla)
+    if (!auditoriaEdicionRef.current.has(idEnEdicion)) {
+      auditoriaEdicionRef.current.add(idEnEdicion);
+      await registrarAuditoria('UPDATE / EDITAR DOCUMENTO CLÍNICO', `Completó/editó el documento clínico "${tituloEdicion}" (guardado automático)`, null, cambios, idEnEdicion);
+    }
+    setDocSeleccionado((prev: any) => (prev && prev !== 'NUEVO' && prev.id === idEnEdicion ? { ...prev, ...cambios } : prev));
+    setDocumentos(prev => prev.map(d => (d.id === idEnEdicion ? { ...d, ...cambios } : d)));
+    return true;
+  }
+
+  // Guardado automático: 1 segundo después del último cambio
+  useEffect(() => {
+    if (!idEnEdicion || docSeleccionado?.id !== idEnEdicion) return;
+    const firma = firmaContenido(tituloEdicion, bloquesEdicion, especialistaSeleccionadoId);
+    if (firma === ultimoGuardadoRef.current) return;
+    setEstadoGuardado('pendiente');
+    if (timerGuardadoRef.current) clearTimeout(timerGuardadoRef.current);
+    timerGuardadoRef.current = setTimeout(() => { guardarCambios(); }, 1000);
+    return () => { if (timerGuardadoRef.current) clearTimeout(timerGuardadoRef.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tituloEdicion, bloquesEdicion, especialistaSeleccionadoId, idEnEdicion]);
+
+  // Aviso si se intenta cerrar la pestaña con cambios sin guardar
+  useEffect(() => {
+    const aviso = (e: BeforeUnloadEvent) => {
+      if (estadoGuardado === 'pendiente' || estadoGuardado === 'guardando') { e.preventDefault(); e.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', aviso);
+    return () => window.removeEventListener('beforeunload', aviso);
+  }, [estadoGuardado]);
+
+  // Antes de salir del documento en edición: guarda lo pendiente y lo deja en solo lectura
+  const cerrarEdicion = async () => {
+    if (idEnEdicion) await guardarCambios();
+    setIdEnEdicion(null);
+    setEstadoGuardado(null);
+  }
+
   const handlePrint = async (modo: 'imprimir' | 'descargar') => {
     const elementoWeb = document.getElementById('hoja-impresion');
     if (!elementoWeb) return toast.error("No hay contenido", { id: 'no-contenido' });
@@ -154,6 +262,14 @@ export default function DocumentosClinicosPage() {
     toast.loading("Generando documento...", { id: 'pdf-toast' });
     
     try {
+      // Si es un documento nuevo que aún no se pudo guardar, se guarda antes de imprimir
+      if (docSeleccionado === 'NUEVO') {
+        const creado = await crearDocumento(tituloEdicion, bloquesEdicion, especialistaSeleccionadoId);
+        if (creado) { setDocSeleccionado(creado); setIdEnEdicion(creado.id); }
+      } else {
+        await guardarCambios();
+      }
+
       // REGISTRAR AUDITORÍA DE EXPORTACIÓN (SEREMI)
       await registrarAuditoria('EXPORT / PDF DOCUMENTO CLÍNICO', `Generó vista de impresión/PDF del documento clínico "${tituloEdicion}"`);
 
@@ -161,8 +277,8 @@ export default function DocumentosClinicosPage() {
       const autor = profesionalesFull.find(p => p.user_id === especialistaSeleccionadoId);
       
       const container = document.createElement('div');
-      container.style.padding = '45px'; 
-      container.style.color = '#000'; 
+      container.style.padding = '0';
+      container.style.color = '#000';
       container.style.fontFamily = 'Arial, sans-serif';
 
       const calcularEdad = (fecha: string) => {
@@ -173,61 +289,67 @@ export default function DocumentosClinicosPage() {
         return `${edad} años`;
       };
 
+      const sinCorte = 'page-break-inside: avoid; break-inside: avoid;';
       container.innerHTML = `
-        <div style="border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: flex-end;">
+        <div class="no-cortar" style="${sinCorte} border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-end;">
           <div>
             <h2 style="margin: 0; font-size: 13px; font-weight: 900;">CENTRO MEDICO Y DENTAL DIGNIDAD SPA</h2>
-            <p style="margin: 2px 0; font-size: 11px;">${autor?.nombre_completo || '---'}, ${autor?.especialidad || 'Especialista'}, RUT ${autor?.rut || ''}</p>
-            <p style="margin: 2px 0; font-size: 10px; color: #444;">Fecha emisión: ${new Date().toLocaleDateString()}</p>
+            <p style="margin: 2px 0; font-size: 11px;">${esc(autor?.nombre_completo || '---')}, ${esc(autor?.especialidad || 'Especialista')}, RUT ${esc(autor?.rut || '')}</p>
+            <p style="margin: 2px 0; font-size: 10px; color: #444;">Fecha emisión: ${new Date().toLocaleDateString('es-CL')}</p>
           </div>
-          <img src="https://yqdpmaopnvrgdqbfaiok.supabase.co/storage/v1/object/public/documentos_imagenes/440749454_122171956712064634_7168698893214813270_n.jpg" style="width: 60px; height: 60px; border-radius: 50%;" />
+          <img src="https://yqdpmaopnvrgdqbfaiok.supabase.co/storage/v1/object/public/documentos_imagenes/440749454_122171956712064634_7168698893214813270_n.jpg" style="width: 56px; height: 56px; border-radius: 50%;" />
         </div>
 
-        <h1 style="text-align: center; text-transform: uppercase; font-size: 18px; font-weight: 900; margin: 20px 0;">${tituloEdicion}</h1>
-        
-        <div style="background-color: #f8f9fa; padding: 12px; border-radius: 8px; margin-bottom: 20px; font-size: 11px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; border: 1px solid #eee;">
-          <div><strong>PACIENTE:</strong> ${pacienteData?.nombre || ''} ${pacienteData?.apellido || ''}</div>
-          <div><strong>RUT:</strong> ${pacienteData?.rut || '---'}</div>
-          <div><strong>NACIMIENTO:</strong> ${pacienteData?.fecha_nacimiento || '---'}</div>
+        <h1 class="no-cortar" style="${sinCorte} text-align: center; text-transform: uppercase; font-size: 17px; font-weight: 900; margin: 14px 0;">${esc(tituloEdicion)}</h1>
+
+        <div class="no-cortar" style="${sinCorte} background-color: #f8f9fa; padding: 10px 12px; border-radius: 8px; margin-bottom: 16px; font-size: 11px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; border: 1px solid #eee;">
+          <div><strong>PACIENTE:</strong> ${esc(pacienteData?.nombre || '')} ${esc(pacienteData?.apellido || '')}</div>
+          <div><strong>RUT:</strong> ${esc(pacienteData?.rut || '---')}</div>
+          <div><strong>NACIMIENTO:</strong> ${esc(pacienteData?.fecha_nacimiento || '---')}</div>
           <div><strong>EDAD:</strong> ${calcularEdad(pacienteData?.fecha_nacimiento)}</div>
         </div>
 
         ${bloquesEdicion.map(b => {
-            if (b.tipo === 'titulo') return `<div style="page-break-inside: avoid; margin-top: 15px;"><h3 style="text-transform: uppercase; border-bottom: 1px solid #000; font-size: 14px; padding-bottom: 4px; margin: 0;">${b.contenido}</h3></div>`;
-            if (b.tipo === 'texto') return `<div style="margin-bottom: 12px;"><p style="white-space: pre-wrap; font-size: 13px; line-height: 1.6; text-align: justify; margin: 0; widows: 2; orphans: 2;">${b.contenido}</p></div>`;
-            if (b.tipo === 'separador') return `<hr style="border: 0; border-top: 1px solid #000; margin: 15px 0;" />`;
-            if (b.tipo === 'input' || b.tipo === 'textarea') return `<div style="page-break-inside: avoid; margin-bottom: 10px; font-size: 13px;"><strong>${b.label}:</strong> ${b.valor_llenado || '---'}</div>`;
+            if (b.tipo === 'titulo') return `<div class="no-cortar" style="${sinCorte} margin-top: 12px; margin-bottom: 6px;"><h3 style="text-transform: uppercase; border-bottom: 1px solid #000; font-size: 13px; padding-bottom: 3px; margin: 0;">${esc(b.contenido)}</h3></div>`;
+            if (b.tipo === 'texto') return `<div style="margin-bottom: 10px;">${textoParaPdf(b.contenido)}</div>`;
+            if (b.tipo === 'separador') return `<hr style="border: 0; border-top: 1px solid #000; margin: 12px 0;" />`;
+            if (b.tipo === 'input' || b.tipo === 'textarea') return `<div class="no-cortar" style="${sinCorte} margin-bottom: 8px; font-size: 12.5px;"><strong>${esc(b.label)}:</strong> ${esc(b.valor_llenado || '---')}</div>`;
             return '';
         }).join('')}
-        
-        <div style="margin-top: 80px; display: flex; justify-content: space-between; text-align: center; page-break-inside: avoid;">
-          <div style="width: 200px;">
-            <div style="height: 60px;"></div>
-            <div style="border-top: 1.5px solid #000; padding-top: 10px; font-size: 10px; font-weight: bold;">FIRMA PACIENTE</div>
-          </div>
-          <div style="width: 220px;">
-            <div style="height: 60px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 2px;">
-                ${autor?.firma_base64 ? `<img src="${autor.firma_base64}" style="max-height: 75px; mix-blend-mode: multiply;" />` : ''}
-            </div>
-            <div style="border-top: 1.5px solid #000; padding-top: 10px; font-size: 10px;">
-                <strong>${autor?.nombre_completo?.toUpperCase() || ''}</strong><br/>
-                ${autor?.especialidad?.toUpperCase() || ''}<br/>
-                RUT: ${autor?.rut || ''}
-            </div>
-          </div>
-        </div>
 
-        <div style="margin-top: 40px; border-top: 1px solid #eee; padding-top: 10px; text-align: center; font-size: 9px; color: #777;">
-          Venancia Leiva 1871, La Pintana, Región Metropolitana | +56966467641 / +56994464662
+        <!-- Firmas y pie: un solo bloque que nunca se corta (si no cabe, pasa completo a la página siguiente) -->
+        <div class="no-cortar" style="${sinCorte} padding-top: 45px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-end; text-align: center;">
+            <div style="width: 210px;">
+              <div style="height: 70px;"></div>
+              <div style="border-top: 1.5px solid #000; padding-top: 8px; font-size: 10px; font-weight: bold;">FIRMA PACIENTE</div>
+            </div>
+            <div style="width: 230px;">
+              <div style="height: 70px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 2px;">
+                ${autor?.firma_base64 ? `<img src="${autor.firma_base64}" style="max-height: 68px; max-width: 220px; object-fit: contain; mix-blend-mode: multiply;" />` : ''}
+              </div>
+              <div style="border-top: 1.5px solid #000; padding-top: 8px; font-size: 10px; line-height: 1.4;">
+                <strong>${esc(autor?.nombre_completo?.toUpperCase() || '')}</strong><br/>
+                ${esc(autor?.especialidad?.toUpperCase() || '')}<br/>
+                RUT: ${esc(autor?.rut || '')}
+              </div>
+            </div>
+          </div>
+          <div style="margin-top: 22px; border-top: 1px solid #eee; padding-top: 8px; text-align: center; font-size: 9px; color: #777;">
+            Venancia Leiva 1871, La Pintana, Región Metropolitana | +56966467641 / +56994464662
+          </div>
         </div>
       `;
 
-      const opt: any = { 
-        margin: 12, 
-        filename: `${tituloEdicion}.pdf`, 
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' }, 
+      const opt: any = {
+        margin: [10, 12, 14, 12],
+        filename: `${tituloEdicion}.pdf`,
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
         jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' },
-        pagebreak: { mode: 'legacy' } 
+        // 'css' respeta page-break-inside: avoid; 'avoid' empuja completos a la página siguiente
+        // los bloques marcados (firmas, títulos, campos y líneas de texto) en vez de cortarlos
+        pagebreak: { mode: ['css', 'legacy'], avoid: ['.no-cortar', 'img'] }
       };
 
       const pdf = await html2pdf().set(opt).from(container).toPdf().get('pdf');
@@ -276,6 +398,9 @@ export default function DocumentosClinicosPage() {
 
         toast.success("Documento Guardado", { id: 'guardado-exito' }); 
         setDocSeleccionado(data); // Cambiamos de 'NUEVO' al documento creado para reflejar que ya existe ID
+        setIdEnEdicion(data.id); // sigue editable y con guardado automático
+        ultimoGuardadoRef.current = firmaContenido(tituloEdicion, bloquesEdicion, especialistaSeleccionadoId);
+        setEstadoGuardado('guardado');
         setMostrandoCategorias(false); 
       } else {
         // ACTUALIZACIÓN DE ENCARGADO O CONTENIDO EXISTENTE
@@ -328,6 +453,8 @@ export default function DocumentosClinicosPage() {
       );
 
       toast.success("Documento eliminado correctamente");
+      if (timerGuardadoRef.current) clearTimeout(timerGuardadoRef.current);
+      setIdEnEdicion(null); setEstadoGuardado(null);
       setDocSeleccionado(null);
       fetchDocumentos();
     } catch (e) {
@@ -340,13 +467,26 @@ export default function DocumentosClinicosPage() {
     setBloquesEdicion(prev => [...prev, { id, tipo, label: 'ETIQUETA', contenido: '', valor_llenado: '' }]);
   }
 
-  const seleccionarPlantilla = (plantilla: any) => {
-    setTituloEdicion((plantilla.nombre_display || "DOCUMENTO CLÍNICO").toUpperCase());
-    setBloquesEdicion(typeof plantilla.contenido === 'string' ? JSON.parse(plantilla.contenido) : plantilla.contenido);
+  const seleccionarPlantilla = async (plantilla: any) => {
+    const titulo = (plantilla.nombre_display || "DOCUMENTO CLÍNICO").toUpperCase();
+    const bloques = (typeof plantilla.contenido === 'string' ? JSON.parse(plantilla.contenido) : plantilla.contenido) || [];
+    setTituloEdicion(titulo);
+    setBloquesEdicion(bloques);
     setDocSeleccionado('NUEVO'); setMostrandoCategorias(false);
+
+    // Se guarda apenas se elige: ya no hay que apretar "Guardar"
+    const creado = await crearDocumento(titulo, bloques, especialistaSeleccionadoId);
+    if (creado) {
+      setDocSeleccionado(creado);
+      setIdEnEdicion(creado.id);
+    } else {
+      toast.error("No se pudo guardar automáticamente", { description: "Usa el botón Guardar.", id: 'error-autoguardado' });
+    }
   }
 
   const seleccionarDocumentoGuardado = async (doc: any) => {
+    if (docSeleccionado?.id === doc.id && doc.id === idEnEdicion) return; // ya está abierto y en edición
+    await cerrarEdicion();
     if (docSeleccionado?.id === doc.id) { setDocSeleccionado(null); return; }
     setDocSeleccionado(doc); setTituloEdicion(doc.titulo_documento);
     setBloquesEdicion(typeof doc.contenido === 'string' ? JSON.parse(doc.contenido) : doc.contenido);
@@ -401,15 +541,29 @@ export default function DocumentosClinicosPage() {
                 {generandoPdf ? 'Generando...' : 'Descargar PDF'}
               </button>
               
-              {/* Botón de Guardar Inicial */}
-              {docSeleccionado === 'NUEVO' && (
+              {/* Estado del guardado automático */}
+              {enEdicion && estadoGuardado && (
+                <span className={`px-4 py-3 rounded-2xl font-black text-[10px] uppercase flex items-center gap-2 border ${estadoGuardado === 'error' ? 'bg-red-50 text-red-600 border-red-200' : estadoGuardado === 'guardado' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                  {estadoGuardado === 'guardado' && <><CheckCircle2 size={14} /> Guardado</>}
+                  {(estadoGuardado === 'pendiente' || estadoGuardado === 'guardando') && <><Loader2 size={14} className="animate-spin" /> Guardando...</>}
+                  {estadoGuardado === 'error' && <><AlertTriangle size={14} /> No se pudo guardar</>}
+                </span>
+              )}
+              {enEdicion && estadoGuardado === 'error' && docSeleccionado !== 'NUEVO' && (
+                <button onClick={guardarCambios} className="px-5 py-3 bg-emerald-500 text-white rounded-2xl font-black text-[10px] uppercase shadow-lg hover:bg-emerald-600 flex items-center gap-2 transition-all">
+                  <Save size={14} /> Reintentar
+                </button>
+              )}
+
+              {/* Botón de Guardar: solo si el guardado automático falló al crear */}
+              {docSeleccionado === 'NUEVO' && estadoGuardado !== 'guardando' && (
                 <button onClick={guardarDocumentoFinal} disabled={guardando} className="px-5 py-3 bg-emerald-500 text-white rounded-2xl font-black text-[10px] uppercase shadow-lg hover:bg-emerald-600 flex items-center gap-2 transition-all">
                   {guardando ? <Loader2 size={14} className="animate-spin"/> : <Save size={14} />} Guardar
                 </button>
               )}
 
               {/* Botón de Actualizar Encargado */}
-              {docSeleccionado !== 'NUEVO' && docSeleccionado?.especialista_id !== especialistaSeleccionadoId && (
+              {docSeleccionado !== 'NUEVO' && !enEdicion && docSeleccionado?.especialista_id !== especialistaSeleccionadoId && (
                 <button onClick={guardarDocumentoFinal} disabled={guardando} className="px-5 py-3 bg-amber-500 text-white rounded-2xl font-black text-[10px] uppercase shadow-lg hover:bg-amber-600 flex items-center gap-2 transition-all">
                   {guardando ? <Loader2 size={14} className="animate-spin"/> : <Save size={14} />} Actualizar Encargado
                 </button>
@@ -425,7 +579,7 @@ export default function DocumentosClinicosPage() {
           )}
 
           {(mostrandoCategorias || docSeleccionado) && (
-            <button onClick={() => {setMostrandoCategorias(false); setDocSeleccionado(null); setIsOpenLista(false);}} className="bg-slate-100 text-slate-600 px-5 py-3 rounded-2xl font-black text-[10px] uppercase hover:bg-slate-200 transition-all">
+            <button onClick={async () => { await cerrarEdicion(); setMostrandoCategorias(false); setDocSeleccionado(null); setIsOpenLista(false);}} className="bg-slate-100 text-slate-600 px-5 py-3 rounded-2xl font-black text-[10px] uppercase hover:bg-slate-200 transition-all">
               Volver
             </button>
           )}
@@ -535,7 +689,7 @@ export default function DocumentosClinicosPage() {
               </motion.div>
             ) : docSeleccionado ? (
               <div className="flex flex-col md:flex-row gap-6">
-                {docSeleccionado === 'NUEVO' && (
+                {enEdicion && (
                   <div className="flex flex-row md:flex-col gap-2 sticky top-8 z-20 overflow-x-auto pb-4 md:pb-0">
                     <ToolBtn icon={<Type size={16}/>} label="Título" onClick={() => agregarBloqueManual('titulo')} />
                     <ToolBtn icon={<AlignLeft size={16}/>} label="Texto" onClick={() => agregarBloqueManual('texto')} />
@@ -568,13 +722,13 @@ export default function DocumentosClinicosPage() {
                             </div>
                         </header>
 
-                        <input className="text-2xl font-black uppercase italic w-full border-none mb-8 focus:ring-0 placeholder:text-slate-200 text-left text-slate-900 bg-transparent" placeholder="TÍTULO..." value={tituloEdicion} onChange={(e) => setTituloEdicion(e.target.value.toUpperCase())} readOnly={docSeleccionado !== 'NUEVO'} />
+                        <input className="text-2xl font-black uppercase italic w-full border-none mb-8 focus:ring-0 placeholder:text-slate-200 text-left text-slate-900 bg-transparent" placeholder="TÍTULO..." value={tituloEdicion} onChange={(e) => setTituloEdicion(e.target.value.toUpperCase())} readOnly={!enEdicion} />
                         
                         <div className="flex-1 space-y-6">
                             {bloquesEdicion.map((bloque, idx) => (
                                 <div key={bloque.id} className="relative group text-left">
-                                    {docSeleccionado === 'NUEVO' && <button onClick={() => setBloquesEdicion(prev => prev.filter(b => b.id !== bloque.id))} className="absolute -left-10 top-0 p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={14}/></button>}
-                                    <RenderDinamico bloque={bloque} isReadOnly={docSeleccionado !== 'NUEVO'} onUpdate={(k: string, v: any) => { const n = [...bloquesEdicion]; n[idx][k] = v; setBloquesEdicion(n); }}/>
+                                    {enEdicion && <button onClick={() => setBloquesEdicion(prev => prev.filter(b => b.id !== bloque.id))} className="absolute -left-10 top-0 p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={14}/></button>}
+                                    <RenderDinamico bloque={bloque} isReadOnly={!enEdicion} onUpdate={(k: string, v: any) => { setBloquesEdicion(prev => prev.map((b, i) => (i === idx ? { ...b, [k]: v } : b))); }}/>
                                 </div>
                             ))}
                         </div>
