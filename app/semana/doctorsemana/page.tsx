@@ -412,14 +412,41 @@ if (estaOcupadoPorSeleccion) return toast.warning("El horario choca con otra sel
   };
 
   const handleGuardar = async () => {
-    if (cargandoAccion) return; setCargandoAccion(true);
+    if (cargandoAccion) return;
+    if (modoNuevoPaciente && !citaEnReprogramacion && (!nuevoPaciente.nombre.trim() || !nuevoPaciente.apellido.trim())) {
+      return toast.error("Faltan datos del nuevo paciente", { description: "Nombre y Apellido son obligatorios." });
+    }
+    if (!modoNuevoPaciente && !pacienteSeleccionado && !citaEnReprogramacion) return toast.error("Selecciona un paciente");
+    setCargandoAccion(true);
     try {
       let pId = pacienteSeleccionado?.id;
       let pNombreFull = pacienteSeleccionado ? `${pacienteSeleccionado.nombre} ${pacienteSeleccionado.apellido}` : "";
       if (modoNuevoPaciente && !citaEnReprogramacion) {
-        const rutLimpio = nuevoPaciente.rut.replace(/[^0-9kK]/g, '').toUpperCase().trim();
-        const { data: pNew } = await supabase.from('pacientes').insert([{ nombre: nuevoPaciente.nombre.toUpperCase().trim(), apellido: nuevoPaciente.apellido.toUpperCase().trim(), rut: rutLimpio, telefono: nuevoPaciente.telefono, fecha_nacimiento: nuevoPaciente.fecha_nacimiento, sexo: nuevoPaciente.sexo, activo: true }]).select().single();
-        if (pNew) { pId = pNew.id; pNombreFull = `${nuevoPaciente.nombre} ${nuevoPaciente.apellido}`; }
+        // Sin RUT: valor único para no chocar con otro paciente sin RUT
+        const rutLimpio = nuevoPaciente.rut.replace(/[^0-9kK]/g, '').toUpperCase().trim() || `SIN-RUT-${Date.now()}`;
+        const { data: pNew, error: pErr } = await supabase.from('pacientes').insert([{
+          nombre: nuevoPaciente.nombre.toUpperCase().trim(),
+          apellido: nuevoPaciente.apellido.toUpperCase().trim(),
+          rut: rutLimpio,
+          telefono: nuevoPaciente.telefono || null,
+          // Este formulario no pide fecha ni sexo: se envían vacíos como null (un texto vacío hacía fallar el registro)
+          fecha_nacimiento: nuevoPaciente.fecha_nacimiento || null,
+          sexo: nuevoPaciente.sexo || null,
+          activo: true,
+        }]).select().single();
+        if (pErr || !pNew) {
+          // Antes el error se ignoraba y la cita se creaba SIN paciente (S/N, enlace /pacientes/null)
+          if ((pErr as any)?.code === '23505') toast.error("Ya existe un paciente con ese RUT", { description: "Búscalo con el buscador en vez de crearlo de nuevo." });
+          else toast.error("No se pudo crear el paciente", { description: pErr?.message });
+          setCargandoAccion(false);
+          return;
+        }
+        pId = pNew.id; pNombreFull = `${nuevoPaciente.nombre} ${nuevoPaciente.apellido}`;
+      }
+      if (!citaEnReprogramacion && !pId) {
+        toast.error("Falta el paciente", { description: "No se creó la cita. Vuelve a seleccionar o crear el paciente." });
+        setCargandoAccion(false);
+        return;
       }
       const parsearAFechaLocal = (fechaStr: string, horaStr: string, duracionMin: number) => {
         const finDate = new Date(new Date(`${fechaStr}T${horaStr}:00`).getTime() + duracionMin * 60000);
@@ -449,7 +476,8 @@ if (estaOcupadoPorSeleccion) return toast.warning("El horario choca con otra sel
           const { inicio, fin } = parsearAFechaLocal(s.fecha, s.hora, s.duracion);
           return { paciente_id: pId, profesional_id: filtro.profesional_id, presupuesto_id: (tratamientoSeleccionadoId && tratamientoSeleccionadoId !== 'MANUAL') ? tratamientoSeleccionadoId : null, inicio, fin, estado: 'programada', motivo: nuevoTratamientoNombre.toUpperCase() || 'CONSULTA', creado_por: usuarioLogueado };
         });
-        await supabase.from('citas').insert(nuevasCitas);
+        const { error: errCitas } = await supabase.from('citas').insert(nuevasCitas);
+        if (errCitas) throw errCitas;
         
         const detallesCitas = nuevasCitas.map(c => `Cita para ${pNombreFull} el ${c.inicio.split('T')[0]} a las ${c.inicio.split('T')[1].substring(0,5)}`).join('; ');
         await supabase.from('auditoria_clinica').insert([{
