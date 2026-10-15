@@ -11,7 +11,13 @@ const escapar = (v: any) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g,
 
 // Divide el texto legal en párrafos para que el PDF salte de página entre párrafos (y no a la mitad de una línea)
 function dividirEnParrafos(contenido: string): string[] {
+  // Quita guiones invisibles (vienen al copiar desde Word/PDF) y espacios de ancho cero:
+  // son los que hacen que una palabra aparezca cortada con "-" al final de la línea
+  // Los espacios "duros" (&nbsp;) también vienen de Word: unen todas las palabras en una sola
+  // y el navegador no puede bajar de línea, así que se cambian por espacios normales
   const raw = String(contenido || '')
+    .replace(/\u00AD|&shy;|\u200B/gi, '')
+    .replace(/&nbsp;|&#160;|\u00A0/gi, ' ')
   if (!raw.trim()) return []
   if (!/<[a-z][\s\S]*>/i.test(raw)) {
     return raw.split('\n').map(l => (l.trim() ? `<p style="margin: 0 0 6px;">${escapar(l)}</p>` : '')).filter(Boolean)
@@ -20,9 +26,52 @@ function dividirEnParrafos(contenido: string): string[] {
   if (typeof window === 'undefined') return [limpio]
   const cont = new DOMParser().parseFromString(`<div>${limpio}</div>`, 'text/html').body.firstElementChild
   if (!cont) return [limpio]
-  return Array.from(cont.childNodes)
-    .map(n => (n.nodeType === 1 ? (n as Element).outerHTML : (n.textContent || '').trim() ? `<p>${escapar(n.textContent)}</p>` : ''))
-    .filter(Boolean)
+  const estaVacio = (el: Element) => !(el.textContent || '').trim() && !el.querySelector('img')
+
+  const bloques: { html: string; titulo: boolean }[] = []
+  for (const n of Array.from(cont.childNodes)) {
+    if (n.nodeType === 1) {
+      const el = n as Element
+      // Se descartan los párrafos vacíos (<p><br></p> del editor)
+      if (estaVacio(el)) continue
+      // Las listas se separan ítem por ítem: así una lista larga puede seguir en la hoja siguiente
+      // en vez de saltar completa y dejar media hoja en blanco
+      if (el.tagName === 'OL' || el.tagName === 'UL') {
+        Array.from(el.children).forEach((li, i) => {
+          if (estaVacio(li)) return
+          const lista = el.cloneNode(false) as Element
+          if (el.tagName === 'OL') lista.setAttribute('start', String((Number(el.getAttribute('start')) || 1) + i))
+          lista.appendChild(li.cloneNode(true))
+          bloques.push({ html: lista.outerHTML, titulo: esTitulo(li) })
+        })
+        continue
+      }
+      bloques.push({ html: el.outerHTML, titulo: esTitulo(el) })
+    } else if ((n.textContent || '').trim()) {
+      bloques.push({ html: `<p>${escapar(n.textContent)}</p>`, titulo: false })
+    }
+  }
+
+  // Cada título se pega al bloque que le sigue, para que nunca quede solo al final de una hoja
+  const resultado: string[] = []
+  let pendiente = ''
+  for (const b of bloques) {
+    if (b.titulo) { pendiente += b.html; continue }
+    resultado.push(pendiente + b.html)
+    pendiente = ''
+  }
+  if (pendiente) resultado.push(pendiente)
+  return resultado
+}
+
+// Un "título" es un encabezado (h1–h6) o una línea corta escrita entera en negrita
+function esTitulo(el: Element): boolean {
+  if (/^H[1-6]$/.test(el.tagName)) return true
+  const texto = (el.textContent || '').replace(/\s+/g, '')
+  if (!texto || texto.length > 120) return false
+  const negrita = Array.from(el.querySelectorAll('strong, b, h1, h2, h3, h4, h5, h6'))
+    .map(e => e.textContent || '').join('').replace(/\s+/g, '')
+  return negrita.length >= texto.length
 }
 
 export default function DetalleConsentimientoPage() {
@@ -137,8 +186,11 @@ export default function DetalleConsentimientoPage() {
   }
 
   const parrafos = useMemo(() => dividirEnParrafos(documento?.contenido_legal ?? ''), [documento])
-  const ultimoParrafo = parrafos.length ? parrafos[parrafos.length - 1] : ''
-  const parrafosPrevios = parrafos.slice(0, -1)
+  // Los últimos párrafos viajan junto con las firmas: si no caben, pasan todos juntos a la hoja
+  // siguiente, así la firma nunca queda sola en una hoja
+  const PARRAFOS_CON_FIRMA = 2
+  const parrafosFinales = parrafos.slice(-PARRAFOS_CON_FIRMA)
+  const parrafosPrevios = parrafos.slice(0, Math.max(0, parrafos.length - PARRAFOS_CON_FIRMA))
 
   // Imprimir y descargar usan el mismo PDF
   const generarPdf = async (modo: 'imprimir' | 'descargar') => {
@@ -163,7 +215,9 @@ export default function DetalleConsentimientoPage() {
         margin: [12, 14, 16, 14],
         filename: `Consentimiento_${paciente?.rut || 'Clinica'}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, letterRendering: true, backgroundColor: '#ffffff', scrollY: 0 },
+        // Sin letterRendering (mide letra por letra y descuadra las líneas) y con ancho fijo
+        // para que el PDF salga igual desde el celular que desde el computador
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollY: 0, windowWidth: 1000 },
         jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' },
         // Los párrafos y el bloque final (último párrafo + firmas) nunca se cortan entre páginas
         pagebreak: { mode: ['css', 'legacy'], avoid: ['.bloque-final', '.parrafo-legal', '.no-cortar', 'img'] }
@@ -252,9 +306,10 @@ export default function DetalleConsentimientoPage() {
           <div id="documento-pdf" style={{ backgroundColor: '#ffffff', color: '#000000', padding: '40px', fontFamily: 'Arial, sans-serif' }}>
             
             <style>{`
+              #documento-pdf, #documento-pdf * { hyphens: none !important; -webkit-hyphens: none !important; word-break: normal !important; overflow-wrap: break-word !important; white-space: normal !important; max-width: 100%; }
               #documento-pdf p, #documento-pdf li, #documento-pdf .parrafo-legal, #documento-pdf .bloque-final, #documento-pdf .no-cortar { page-break-inside: avoid; break-inside: avoid; }
               #documento-pdf .texto-legal p { margin: 0 0 8px; }
-              #documento-pdf .texto-legal ol, #documento-pdf .texto-legal ul { margin: 0 0 8px; padding-left: 22px; }
+              #documento-pdf .texto-legal ol, #documento-pdf .texto-legal ul { margin: 0 0 2px; padding-left: 22px; }
               #documento-pdf .ql-align-center { text-align: center; }
               #documento-pdf .ql-align-right { text-align: right; }
               #documento-pdf .ql-align-justify { text-align: justify; }
@@ -303,16 +358,20 @@ export default function DetalleConsentimientoPage() {
             </div>
 
             {/* Contenido Legal: un bloque por párrafo para que el PDF no corte líneas */}
-            <div className="texto-legal" style={{ fontSize: '13px', lineHeight: '1.65', color: '#1e293b', textAlign: 'justify', overflowWrap: 'break-word', wordBreak: 'normal' }}>
+            <div className="texto-legal" style={{ fontSize: '13px', lineHeight: '1.65', color: '#1e293b', textAlign: 'justify' }}>
               {parrafosPrevios.map((html, i) => (
                 <div key={i} className="parrafo-legal" dangerouslySetInnerHTML={{ __html: html }} />
               ))}
             </div>
 
-            {/* Bloque final: último párrafo + firmas juntos, para que la firma nunca quede sola ni cortada en otra página */}
+            {/* Bloque final: últimos párrafos + firmas juntos, para que la firma nunca quede sola ni cortada en otra página */}
             <div className="bloque-final" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
-              {ultimoParrafo && (
-                <div className="texto-legal" style={{ fontSize: '13px', lineHeight: '1.65', color: '#1e293b', textAlign: 'justify', overflowWrap: 'break-word' }} dangerouslySetInnerHTML={{ __html: ultimoParrafo }} />
+              {parrafosFinales.length > 0 && (
+                <div className="texto-legal" style={{ fontSize: '13px', lineHeight: '1.65', color: '#1e293b', textAlign: 'justify' }}>
+                  {parrafosFinales.map((html, i) => (
+                    <div key={i} dangerouslySetInnerHTML={{ __html: html }} />
+                  ))}
+                </div>
               )}
 
               {(firmas.profesional || firmas.paciente) && (
