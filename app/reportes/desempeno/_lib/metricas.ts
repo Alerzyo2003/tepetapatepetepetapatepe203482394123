@@ -77,6 +77,11 @@ export interface Metricas {
     margenPct: number
     anticipos: number // pagos ingresados a saldo a favor (sin prestación): entran a caja, se producen al usarse
     anticiposN: number
+    // Desglose del dinero recibido (misma base: pagos que entraron a caja). recibidoLab + recibidoRx + recibidoResto = recaudacion
+    recibidoLab: number
+    recibidoRx: number
+    recibidoRxN: number
+    recibidoResto: number // otros tratamientos + abonos a saldo a favor
     egresos: number
     egresosPorCategoria: { name: string; value: number }[]
     marketing: number
@@ -176,7 +181,9 @@ export function calcularMetricas(d: DatosPeriodo, fijos: DatosFijos, pacientesPo
   let recaudacion = 0, saldoAFavorUsado = 0, produccion = 0, honorarios = 0, honorariosPendientesTerminar = 0
   let reembolsoLabDoctores = 0, lab = 0, ventaConLab = 0, margenClinica = 0, anticipos = 0, anticiposN = 0
   let liquidable = 0, honorariosLiquidables = 0, produccionRx = 0
+  let recibidoLab = 0, recibidoRx = 0
   const itemsRx = new Set<string>()
+  const itemsRxRecibido = new Set<string>()
   const categorias: Record<string, number> = {}
   const tratamientos: Record<string, { value: number; items: Set<string> }> = {}
   const facturacionPaciente: Record<string, number> = {}
@@ -234,6 +241,11 @@ export function calcularMetricas(d: DatosPeriodo, fijos: DatosFijos, pacientesPo
 
     const cat = d.categoriaPrestacion[item.prestacion_id] || 'Sin categoría'
     if (esRx(cat)) { produccionRx += monto; itemsRx.add(item.id); f.rx += monto }
+    if (!saldo) {
+      const labRecibido = Math.min(monto, labPago)
+      recibidoLab += labRecibido
+      if (esRx(cat)) { recibidoRx += monto - labRecibido; itemsRxRecibido.add(item.id) }
+    }
     categorias[cat] = (categorias[cat] || 0) + monto
     sumarTratamiento(limpiarNombrePrestacion(item.nombre_prestacion) || 'Prestación sin nombre', monto, item.id)
 
@@ -423,6 +435,9 @@ export function calcularMetricas(d: DatosPeriodo, fijos: DatosFijos, pacientesPo
       recaudacion, medios, saldoAFavorUsado, produccion, liquidable, honorariosLiquidables, enProceso: Math.max(0, produccion - liquidable),
       produccionRx, produccionRxN: itemsRx.size, honorarios, honorariosPendientesTerminar, reembolsoLabDoctores,
       lab, ventaConLab, margenClinica, margenPct: ratio(margenClinica, produccion), anticipos, anticiposN,
+      // Redondeo a pesos: el resto se calcula por diferencia para que la suma calce exacta con el dinero recibido
+      recibidoLab: Math.round(recibidoLab), recibidoRx: Math.round(recibidoRx), recibidoRxN: itemsRxRecibido.size,
+      recibidoResto: Math.round(recaudacion) - Math.round(recibidoLab) - Math.round(recibidoRx),
       egresos, egresosPorCategoria: top(egresosPorCat, 20), marketing, utilidad, liquidacionesPagadas,
       ticketPromedio: ratio(produccion, atendidos),
     },
