@@ -29,6 +29,58 @@ async function traerTodo(consulta: (desde: number, hasta: number) => any) {
   return filas
 }
 
+const ESTADOS_TERMINADO = ['realizado', 'atendido', 'terminado', 'finalizado', 'completado']
+const fechaMs = (f: any) => new Date(f ? String(f).replace(' ', 'T') : 0).getTime()
+
+// Lo pendiente de pagar a un doctor, con la MISMA regla que la página de detalle:
+// - solo pagos de prestaciones pagadas al 100% (tolerancia $1) y evolucionadas (terminadas)
+// - se suman todos los pagos hasta fin de mes (aunque sean de meses anteriores) y las atenciones directas
+// - a eso se le descuenta lo ya pagado en liquidaciones cerradas, repartido del pago más antiguo al más nuevo
+function pendienteDelDoctor(prof: any, atenciones: any[], pagos: any[], cierres: any[]) {
+  const porcentajeDr = pctComision(prof.porcentaje_comision) / 100
+  const produccion: { fecha: any; restante: number }[] = []
+
+  for (const a of atenciones) {
+    if (a.profesional_id !== prof.user_id) continue
+    produccion.push({ fecha: a.fecha, restante: Number(a.monto_cobrado) * porcentajeDr })
+  }
+  for (const pago of pagos) {
+    const item = Array.isArray(pago.presupuesto_items) ? pago.presupuesto_items[0] : pago.presupuesto_items
+    if (!item) continue
+    if ((item.profesional_id || pago.profesional_id || null) !== prof.user_id) continue
+    const precio = Number(item.precio_pactado || 0)
+    if (!(precio > 0 && Number(item.abonado || 0) >= precio - 1)) continue // REGLA: solo si está pagada al 100%
+
+    const monto = Number(pago.monto || 0)
+    const fraccion = Math.min(1, monto / (precio || monto || 1))
+    let pct = porcentajeDr
+    if (item.tipo_reparto === 'doctor') pct = 1
+    else if (item.tipo_reparto === 'clinica') pct = 0
+    else if (item.tipo_reparto === 'forzado') pct = Number(item.porcentaje_forzado || 0) / 100
+    const terminado = ESTADOS_TERMINADO.includes(String(item.estado || '').toLowerCase())
+    const reembolsoLab = item.lab_pagado_por_dr ? Number(item.costo_laboratorio || 0) * fraccion : 0
+    produccion.push({ fecha: pago.fecha_pago, restante: terminado ? Math.max(0, monto) * pct + reembolsoLab : 0 }) // REGLA: solo si está evolucionada
+  }
+  produccion.sort((x, y) => fechaMs(x.fecha) - fechaMs(y.fecha))
+
+  // Lo ya pagado se descuenta de lo más antiguo hacia lo más nuevo (hasta la fecha de cada pago de liquidación)
+  for (const liq of cierres) {
+    if (liq.profesional_id !== prof.id) continue
+    let porRepartir = Number(liq.monto_total)
+    const limite = new Date(String(liq.fecha_pago || liq.periodo_hasta).replace(' ', 'T'))
+    limite.setHours(23, 59, 59, 999)
+    for (const x of produccion) {
+      if (x.restante <= 0) continue
+      if (porRepartir <= 0) break
+      if (fechaMs(x.fecha) > limite.getTime()) continue
+      const descuento = Math.min(x.restante, porRepartir)
+      x.restante -= descuento
+      porRepartir -= descuento
+    }
+  }
+  return produccion.reduce((acc, x) => acc + (x.restante > 0 ? x.restante : 0), 0)
+}
+
 export default function LiquidacionesPage() {
   const [liquidaciones, setLiquidaciones] = useState<any[]>([])
   const [cargando, setCargando] = useState(true)
@@ -98,6 +150,32 @@ export default function LiquidacionesPage() {
         .gte('periodo_desde', fechaCortaInicio)
         .lte('periodo_hasta', fechaCortaFin)
         .eq('estado', 'Finalizada')
+
+      // 5. Para el "Líquido a pagar": todo lo producido y lo ya liquidado hasta fin de mes (misma regla que el detalle)
+      const [pagosHistoricos, atencionesHistoricas, cierresHistoricos] = await Promise.all([
+        traerTodo((a, b) => supabase
+          .from('pagos')
+          .select('id, monto, fecha_pago, profesional_id, item_id, presupuesto_items ( profesional_id, precio_pactado, abonado, costo_laboratorio, lab_pagado_por_dr, estado, tipo_reparto, porcentaje_forzado )')
+          .not('item_id', 'is', null)
+          .lte('fecha_pago', finRango)
+          .or('estado.is.null,estado.neq.Anulado')
+          .order('id')
+          .range(a, b)),
+        traerTodo((a, b) => supabase
+          .from('atenciones_realizadas')
+          .select('id, fecha, monto_cobrado, profesional_id')
+          .lte('fecha', finRango)
+          .order('id')
+          .range(a, b)),
+        traerTodo((a, b) => supabase
+          .from('liquidaciones')
+          .select('id, profesional_id, monto_total, fecha_pago, periodo_hasta')
+          .eq('estado', 'Finalizada')
+          .lte('periodo_hasta', fechaCortaFin)
+          .order('fecha_pago', { ascending: true })
+          .order('id')
+          .range(a, b)),
+      ])
 
       const abonosItems: any[] = abonosData || [];
       const cerradas = liquidacionesCerradas || [];
@@ -184,7 +262,8 @@ if (tipoReparto === 'doctor') {
         const margenClinica = utilidadAtenciones + utilidadAbonos;
 
         const totalYaPagadoHistorico = historialPagosMap[p.id] || 0;
-        const saldoPendienteDoctor = Math.max(0, totalLiquidoMensual - totalYaPagadoHistorico);
+        // Solo prestaciones pagadas al 100% y evolucionadas, menos lo ya liquidado (igual que el detalle del doctor)
+        const saldoPendienteDoctor = Math.round(pendienteDelDoctor(p, atencionesHistoricas, pagosHistoricos, cierresHistoricos));
 
         const completamentePagado = totalYaPagadoHistorico > 0 && saldoPendienteDoctor <= 0;
 
@@ -197,6 +276,7 @@ if (tipoReparto === 'doctor') {
           abonos: sumaAbonos,
           total: totalProduccion,
           honorarios: saldoPendienteDoctor, 
+          honorariosMes: totalLiquidoMensual,
           utilidad: margenClinica,
           yaPagado: completamentePagado,
           totalYaPagado: totalYaPagadoHistorico
@@ -267,7 +347,7 @@ if (tipoReparto === 'doctor') {
 
   const globalTotal = liquidaciones.reduce((acc, curr) => acc + curr.total, 0)
   const globalHonorarios = liquidaciones.reduce((acc, curr) => acc + curr.honorarios, 0)
-  const globalUtilidad = globalTotal - (liquidaciones.reduce((acc, curr) => acc + (curr.totalYaPagado + curr.honorarios), 0))
+  const globalUtilidad = globalTotal - liquidaciones.reduce((acc, curr) => acc + (curr.honorariosMes || 0), 0)
 
   const filtradas = liquidaciones.filter(l => 
     l.nombreCompleto.toLowerCase().includes(busqueda.toLowerCase())
@@ -530,7 +610,7 @@ function StatCard({ label, value, icon, type }: { label: string, value: number, 
       </div>
       <div>
         <p className={`text-[10px] font-black uppercase tracking-widest mb-1.5 text-left ${type === 'light' ? 'text-slate-500' : 'text-white/80'}`}>{label}</p>
-        <p className="text-3xl lg:text-4xl font-black italic tracking-tighter truncate text-left">${(value || 0).toLocaleString('es-CL')}</p>
+        <p className="text-3xl lg:text-4xl font-black italic tracking-tighter truncate text-left">${Math.round(value || 0).toLocaleString('es-CL')}</p>
       </div>
     </div>
   )
