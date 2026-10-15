@@ -54,6 +54,21 @@ export interface LineaDetalle {
   clinica: number
 }
 
+// Un pago que entró a caja en el mes, separado en las partes que forman el total
+export interface LineaRecibido {
+  fecha: string
+  paciente: string
+  doctor: string
+  concepto: string
+  categoria: string
+  medioPago: string
+  monto: number
+  rx: number
+  lab: number
+  saldoAFavor: number
+  otros: number
+}
+
 export interface Conciliacion { id: string; fecha: string; responsable: string; estado: string; declarado: number | null; pagos: number; diferencia: number | null }
 
 export interface Metricas {
@@ -77,11 +92,11 @@ export interface Metricas {
     margenPct: number
     anticipos: number // pagos ingresados a saldo a favor (sin prestación): entran a caja, se producen al usarse
     anticiposN: number
-    // Desglose del dinero recibido (misma base: pagos que entraron a caja). recibidoLab + recibidoRx + recibidoResto = recaudacion
-    recibidoLab: number
+    // De dónde viene el dinero recibido: recibidoRx + recibidoLab + anticipos (saldo a favor) + recibidoOtros = recaudacion
     recibidoRx: number
     recibidoRxN: number
-    recibidoResto: number // otros tratamientos + abonos a saldo a favor
+    recibidoLab: number
+    recibidoOtros: number
     egresos: number
     egresosPorCategoria: { name: string; value: number }[]
     marketing: number
@@ -92,6 +107,7 @@ export interface Metricas {
   cajas: { conciliacion: Conciliacion[]; abiertas: number; diferenciaTotal: number; pagosFueraDeCaja: number }
   doctores: FilaDoctor[]
   detalle: LineaDetalle[]
+  recibido: LineaRecibido[]
   ventas: {
     categorias: { name: string; value: number }[]
     tratamientos: { name: string; value: number; cantidad: number }[]
@@ -184,6 +200,7 @@ export function calcularMetricas(d: DatosPeriodo, fijos: DatosFijos, pacientesPo
   let recibidoLab = 0, recibidoRx = 0
   const itemsRx = new Set<string>()
   const itemsRxRecibido = new Set<string>()
+  const recibido: LineaRecibido[] = []
   const categorias: Record<string, number> = {}
   const tratamientos: Record<string, { value: number; items: Set<string> }> = {}
   const facturacionPaciente: Record<string, number> = {}
@@ -212,7 +229,13 @@ export function calcularMetricas(d: DatosPeriodo, fijos: DatosFijos, pacientesPo
 
     const item = d.items[p.item_id]
     if (!item) {
-      if (!saldo) { anticipos += monto; anticiposN++ }
+      if (!saldo) {
+        anticipos += monto; anticiposN++
+        recibido.push({
+          fecha: p.fecha_pago, paciente: nombreCompleto(pacientesPorId[p.paciente_id]), doctor: nombreDoc(doctorDePago(p)),
+          concepto: 'Abono a saldo a favor', categoria: '', medioPago: p.metodo_pago || '', monto, rx: 0, lab: 0, saldoAFavor: monto, otros: 0,
+        })
+      }
       continue
     }
     prodPorDia[dia] = (prodPorDia[dia] || 0) + monto
@@ -242,9 +265,17 @@ export function calcularMetricas(d: DatosPeriodo, fijos: DatosFijos, pacientesPo
     const cat = d.categoriaPrestacion[item.prestacion_id] || 'Sin categoría'
     if (esRx(cat)) { produccionRx += monto; itemsRx.add(item.id); f.rx += monto }
     if (!saldo) {
-      const labRecibido = Math.min(monto, labPago)
+      // Se redondea por pago para que el detalle del Excel sume exacto lo mismo que el panel
+      const labRecibido = Math.round(Math.min(monto, labPago))
+      const rxRecibido = esRx(cat) ? monto - labRecibido : 0
       recibidoLab += labRecibido
-      if (esRx(cat)) { recibidoRx += monto - labRecibido; itemsRxRecibido.add(item.id) }
+      recibidoRx += rxRecibido
+      if (rxRecibido > 0) itemsRxRecibido.add(item.id)
+      recibido.push({
+        fecha: p.fecha_pago, paciente: nombreCompleto(pacientesPorId[p.paciente_id]), doctor: nombreDoc(docId),
+        concepto: limpiarNombrePrestacion(item.nombre_prestacion) || 'Prestación sin nombre', categoria: cat, medioPago: p.metodo_pago || '',
+        monto, rx: rxRecibido, lab: labRecibido, saldoAFavor: 0, otros: monto - labRecibido - rxRecibido,
+      })
     }
     categorias[cat] = (categorias[cat] || 0) + monto
     sumarTratamiento(limpiarNombrePrestacion(item.nombre_prestacion) || 'Prestación sin nombre', monto, item.id)
@@ -435,15 +466,15 @@ export function calcularMetricas(d: DatosPeriodo, fijos: DatosFijos, pacientesPo
       recaudacion, medios, saldoAFavorUsado, produccion, liquidable, honorariosLiquidables, enProceso: Math.max(0, produccion - liquidable),
       produccionRx, produccionRxN: itemsRx.size, honorarios, honorariosPendientesTerminar, reembolsoLabDoctores,
       lab, ventaConLab, margenClinica, margenPct: ratio(margenClinica, produccion), anticipos, anticiposN,
-      // Redondeo a pesos: el resto se calcula por diferencia para que la suma calce exacta con el dinero recibido
-      recibidoLab: Math.round(recibidoLab), recibidoRx: Math.round(recibidoRx), recibidoRxN: itemsRxRecibido.size,
-      recibidoResto: Math.round(recaudacion) - Math.round(recibidoLab) - Math.round(recibidoRx),
+      recibidoRx, recibidoRxN: itemsRxRecibido.size, recibidoLab,
+      recibidoOtros: recaudacion - recibidoRx - recibidoLab - anticipos,
       egresos, egresosPorCategoria: top(egresosPorCat, 20), marketing, utilidad, liquidacionesPagadas,
       ticketPromedio: ratio(produccion, atendidos),
     },
     cajas: { conciliacion, abiertas: conciliacion.filter(c => c.declarado === null).length, diferenciaTotal, pagosFueraDeCaja },
     doctores,
     detalle: detalle.sort((x, y) => String(x.fecha).localeCompare(String(y.fecha))),
+    recibido: recibido.sort((x, y) => String(x.fecha).localeCompare(String(y.fecha))),
     ventas: {
       categorias: top(categorias),
       tratamientos: Object.entries(tratamientos).map(([name, t]) => ({ name, value: t.value, cantidad: t.items.size }))
