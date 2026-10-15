@@ -13,8 +13,6 @@ const r = (n: number) => Math.round(n || 0)
 const suma = (filas: LineaDetalle[], f: (x: LineaDetalle) => number) => filas.reduce((s, x) => s + f(x), 0)
 const conSaldo = (x: LineaDetalle) => String(x.medioPago || '').toLowerCase().includes('saldo')
 const esAtencion = (x: LineaDetalle) => x.medioPago === 'Atención directa'
-// Misma regla que el panel: la parte de laboratorio de cada pago, redondeada por pago
-const labDelPago = (x: LineaDetalle) => Math.round(Math.min(x.monto, x.lab))
 
 // Crea una hoja con anchos de columna y formato de pesos en las columnas indicadas
 const hoja = (filas: any[][], columnasPesos: number[] = [], anchos: number[] = []) => ({ filas, columnasPesos, anchos })
@@ -66,27 +64,30 @@ export function armarHojas(opciones: OpcionesExcel): Hoja[] {
   const proceso = det.filter(x => x.clasificacion === 'En proceso')
   agregar(hoja([encabezado, ...proceso.map(filaDet), [], totalDet(proceso)], pesosDet, anchosDet), 'En proceso')
 
-  // 5. Laboratorio
-  const lab = det.filter(x => x.lab > 0)
-  const labCaja = lab.filter(x => !conSaldo(x) && !esAtencion(x)).reduce((s, x) => s + labDelPago(x), 0)
+  // 5. Laboratorio: toda la carpeta Laboratorios + el costo de laboratorio de prestaciones de otras carpetas (misma regla que el panel)
+  const lab = det.filter(x => x.laboratorio > 0)
+  const labCaja = suma(lab.filter(x => !conSaldo(x) && !esAtencion(x)), x => x.laboratorio)
+  const labAtenciones = suma(lab.filter(esAtencion), x => x.laboratorio)
   const filasLab = [
-    ['Fecha', 'Paciente', 'Doctor', 'Prestación', 'Pieza', 'Monto cobrado', 'Precio prestación', 'Costo lab. total de la prestación',
+    ['Fecha', 'Paciente', 'Doctor', 'Prestación', 'Carpeta', 'Medio de pago', 'Monto cobrado', 'Cuenta como laboratorio',
       'Costo lab. de este pago', 'Lab. pagado por el doctor (reembolsar)', 'Estado prestación'],
-    ...lab.map(x => [fechaTexto(x.fecha), x.paciente, x.doctor, x.prestacion, x.pieza, r(x.monto), r(x.precioPrestacion), r(x.labTotalPrestacion),
+    ...lab.map(x => [fechaTexto(x.fecha), x.paciente, x.doctor, x.prestacion, x.categoria, x.medioPago, r(x.monto), r(x.laboratorio),
       r(x.lab), x.labPagadoPorDoctor ? 'Sí' : 'No', x.estadoPrestacion]),
     [],
-    ['TOTAL', '', '', `${lab.length} pagos`, '', r(suma(lab, x => x.monto)), '', '', r(suma(lab, x => x.lab)),
+    ['TOTAL', '', '', `${lab.length} pagos`, '', '', r(suma(lab, x => x.monto)), r(suma(lab, x => x.laboratorio)), r(suma(lab, x => x.lab)),
       r(suma(lab.filter(x => x.labPagadoPorDoctor), x => x.lab)), ''],
-    ['   Pagado con dinero del mes (va en el total del mes)', '', '', '', '', '', '', '', labCaja, '', ''],
-    ['   Pagado con saldo a favor (ya se contó cuando se abonó)', '', '', '', '', '', '', '', r(suma(lab, x => x.lab)) - labCaja, '', ''],
+    ['   Pagado con dinero del mes (va en el total del mes)', '', '', '', '', '', '', r(labCaja), '', '', ''],
+    ['   Pagado con saldo a favor (ya se contó cuando se abonó)', '', '', '', '', '', '', r(suma(lab.filter(conSaldo), x => x.laboratorio)), '', '', ''],
+    ...(labAtenciones > 0 ? [['   Atenciones directas', '', '', '', '', '', '', r(labAtenciones), '', '', '']] : []),
     [],
-    ['El costo de laboratorio se reparte en proporción a lo pagado: si se paga el 50% de la prestación, se cuenta el 50% del costo de laboratorio.'],
+    ['Cuenta como laboratorio: el pago completo de las prestaciones de la carpeta Laboratorios y, en otras carpetas, solo su costo de laboratorio (proporcional a lo pagado).'],
+    ['Costo lab. de este pago: lo que se le paga al laboratorio según el costo de laboratorio cargado en la prestación.'],
   ]
-  agregar(hoja(filasLab, [5, 6, 7, 8, 9], [16, 28, 24, 32, 7, 14, 14, 18, 16, 18, 14]), 'Laboratorio')
+  agregar(hoja(filasLab, [6, 7, 8, 9], [16, 28, 24, 32, 22, 16, 14, 16, 16, 18, 14]), 'Laboratorio')
 
   // 6. RX (detalle + resumen por tipo)
   const rx = det.filter(x => x.esRx)
-  const rxCaja = rx.filter(x => !conSaldo(x) && !esAtencion(x)).reduce((s, x) => s + x.monto - labDelPago(x), 0)
+  const rxCaja = suma(rx.filter(x => !conSaldo(x) && !esAtencion(x)), x => x.monto - x.laboratorio)
   const porTipo: Record<string, { n: number; monto: number }> = {}
   for (const x of rx) { const t = (porTipo[x.prestacion] ||= { n: 0, monto: 0 }); t.n++; t.monto += x.monto }
   const filasRx = [
