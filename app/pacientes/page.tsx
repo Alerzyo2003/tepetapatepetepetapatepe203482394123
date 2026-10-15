@@ -15,6 +15,14 @@ const GOLD = '#C9A24B'
 const NAVY = '#0E1B2E'
 const GOLD_LIGHT = '#E8CD8A'
 
+// Pacientes por página en el listado (se pueden cargar más)
+const PAGINA = 50
+// Valores especiales del filtro de convenio (el convenio del paciente se guarda en pacientes.prevision)
+const CONVENIO_ALGUNO = '__con_convenio__'
+const CONVENIO_NINGUNO = '__sin_convenio__'
+const normalizarConvenio = (v: any) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim()
+const esSinConvenio = (v: any) => { const n = normalizarConvenio(v); return !n || n === 'sin convenio' || n.startsWith('particular') }
+
 export default function ClientesPage() {
   const [pacientes, setPacientes] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -57,15 +65,23 @@ export default function ClientesPage() {
   // ==========================================
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(false)
   const [filtros, setFiltros] = useState({
-    prevision: '',
+    convenio: '',
     sexo: '',
     tipoPaciente: '',
     soloConvenio: false,
     edadMin: '',
     edadMax: '',
   })
-  const [opcionesPrevision, setOpcionesPrevision] = useState<string[]>([])
+  // Cada convenio con todas las formas en que está escrito en las fichas (mayúsculas, espacios, etc.)
+  const [opcionesConvenio, setOpcionesConvenio] = useState<{ nombre: string; valores: string[]; deshabilitado: boolean }[]>([])
   const [opcionesTipoPaciente, setOpcionesTipoPaciente] = useState<string[]>([])
+
+  // Búsqueda aplicada (con espera para no consultar en cada tecla), total encontrado y paginación
+  const [terminoBuscado, setTerminoBuscado] = useState('')
+  const [total, setTotal] = useState<number | null>(null)
+  const [limite, setLimite] = useState(PAGINA)
+  const [cargandoMas, setCargandoMas] = useState(false)
+  const reqRef = useRef(0)
 
   const cantidadFiltrosActivos = Object.entries(filtros).filter(([key, val]) => {
     if (typeof val === 'boolean') return val === true
@@ -73,7 +89,7 @@ export default function ClientesPage() {
   }).length
 
   const limpiarFiltros = () => setFiltros({
-    prevision: '', sexo: '', tipoPaciente: '',
+    convenio: '', sexo: '', tipoPaciente: '',
     soloConvenio: false, edadMin: '', edadMax: '',
   })
 
@@ -90,7 +106,7 @@ export default function ClientesPage() {
     getUserProfile()
   }, [])
 
-  // Carga las opciones reales existentes en la BD para los selects de filtro
+  // Carga las opciones reales para los selects de filtro: convenios creados en Administración + los que tienen las fichas
   useEffect(() => {
     const fetchOpcionesFiltro = async () => {
       // Por páginas: Supabase entrega máximo 1.000 filas (antes faltaban opciones de los pacientes restantes)
@@ -101,24 +117,46 @@ export default function ClientesPage() {
         data.push(...pag)
         if (pag.length < 1000) break
       }
-      if (data.length) {
-        setOpcionesPrevision([...new Set(data.map((d: any) => d.prevision).filter(Boolean))].sort())
-        setOpcionesTipoPaciente([...new Set(data.map((d: any) => d.tipo_paciente).filter(Boolean))].sort())
+      const { data: convs } = await supabase.from('convenios').select('nombre_convenio, estado')
+
+      const mapa = new Map<string, { nombre: string; valores: Set<string>; deshabilitado: boolean }>()
+      const agregar = (valor: any, nombre: string, deshabilitado: boolean) => {
+        if (esSinConvenio(valor)) return
+        const clave = normalizarConvenio(valor)
+        const actual = mapa.get(clave)
+        if (actual) { actual.valores.add(String(valor)); return }
+        mapa.set(clave, { nombre, valores: new Set([String(valor), nombre]), deshabilitado })
       }
+      for (const c of convs || []) {
+        if (c.nombre_convenio) agregar(c.nombre_convenio, String(c.nombre_convenio).trim(), c.estado !== 'Habilitado')
+      }
+      for (const d of data) {
+        if (d.prevision) agregar(d.prevision, String(d.prevision).trim(), false)
+      }
+      setOpcionesConvenio([...mapa.values()]
+        .map(x => ({ nombre: x.nombre, valores: [...x.valores], deshabilitado: x.deshabilitado }))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es')))
+      if (data.length) setOpcionesTipoPaciente([...new Set(data.map((d: any) => d.tipo_paciente).filter(Boolean))].sort())
     }
     fetchOpcionesFiltro()
   }, [refreshKey])
 
-  useEffect(() => { cargarPacientes() }, [verDeshabilitados, refreshKey, filtros])
-
+  // El texto se aplica 600 ms después de dejar de escribir (mínimo 2 letras)
   useEffect(() => {
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
-    if (busqueda.trim() === '') { cargarPacientes(); return; }
-    if (busqueda.trim().length < 2) return
+    const t = busqueda.trim()
+    if (t === '') { setTerminoBuscado(''); setBuscando(false); return }
+    if (t.length < 2) { setBuscando(false); return }
     setBuscando(true)
-    searchTimeoutRef.current = setTimeout(() => cargarPacientes(busqueda), 600)
+    searchTimeoutRef.current = setTimeout(() => setTerminoBuscado(t), 600)
     return () => { if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current) }
   }, [busqueda])
+
+  // Al cambiar la búsqueda o los filtros se vuelve a la primera página
+  useEffect(() => { setLimite(PAGINA) }, [verDeshabilitados, filtros, terminoBuscado])
+
+  // Texto y filtros se combinan (antes, al cambiar un filtro se perdía lo escrito en el buscador)
+  useEffect(() => { cargarPacientes() }, [verDeshabilitados, refreshKey, filtros, terminoBuscado, limite])
 
   const calcularFechaDesdeEdad = (edad: number) => {
     const hoy = new Date()
@@ -126,22 +164,34 @@ export default function ClientesPage() {
     return `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}`
   }
 
-  async function cargarPacientes(term?: string) {
-    const buscandoTexto = !!term && term.trim().length >= 2
-    if (buscandoTexto) setBuscando(true); else setLoading(true)
+  async function cargarPacientes() {
+    const id = ++reqRef.current
+    const term = terminoBuscado
+    const buscandoTexto = term.length >= 2
+    if (buscandoTexto) setBuscando(true); else if (!cargandoMas) setLoading(true)
 
     try {
-      let query = supabase.from('pacientes').select('*').eq('activo', !verDeshabilitados)
+      let query = supabase.from('pacientes').select('*', { count: 'exact' }).eq('activo', !verDeshabilitados)
 
       if (buscandoTexto) {
-        const palabras = term!.trim().split(/\s+/).filter(p => p.length > 0)
+        // Se quitan caracteres que rompen la consulta (comas, paréntesis, comodines)
+        const palabras = term.split(/\s+/).map(p => p.replace(/[,()*%\\]/g, '')).filter(p => p.length > 0)
         palabras.forEach((palabra) => {
           query = query.or(`nombre.ilike.%${palabra}%,apellido.ilike.%${palabra}%,rut.ilike.%${palabra}%`)
         })
       }
 
       // 🔥 FILTROS 🔥
-      if (filtros.prevision) query = query.eq('prevision', filtros.prevision)
+      // Convenio (se guarda en pacientes.prevision)
+      if (filtros.convenio === CONVENIO_NINGUNO) {
+        query = query.or('prevision.is.null,prevision.eq.,prevision.ilike.sin*convenio*,prevision.ilike.particular*')
+      } else if (filtros.convenio === CONVENIO_ALGUNO) {
+        query = query.not('prevision', 'is', null).neq('prevision', '')
+          .not('prevision', 'ilike', 'sin%convenio%').not('prevision', 'ilike', 'particular%')
+      } else if (filtros.convenio) {
+        const opcion = opcionesConvenio.find(o => o.nombre === filtros.convenio)
+        query = query.in('prevision', opcion ? opcion.valores : [filtros.convenio])
+      }
       if (filtros.sexo) query = query.eq('sexo', filtros.sexo)
       if (filtros.tipoPaciente) query = query.eq('tipo_paciente', filtros.tipoPaciente)
       if (filtros.soloConvenio) query = query.eq('tarjeta_comunidad', true)
@@ -150,11 +200,17 @@ export default function ClientesPage() {
       // Edad máxima: nació hace como mucho X+1 años -> fecha_nacimiento >= hoy-(X+1)
       if (filtros.edadMax) query = query.gte('fecha_nacimiento', calcularFechaDesdeEdad(Number(filtros.edadMax) + 1))
 
-      const { data } = await query.order('nombre', { ascending: true }).limit(buscandoTexto ? 30 : 50)
+      const { data, count, error } = await query.order('nombre', { ascending: true }).order('id').range(0, limite - 1)
+      if (id !== reqRef.current) return // llegó la respuesta de una búsqueda anterior
+      if (error) { toast.error('No se pudieron cargar los pacientes'); return }
       setPacientes(data || [])
+      setTotal(count ?? null)
     } finally {
-      setLoading(false)
-      setBuscando(false)
+      if (id === reqRef.current) {
+        setLoading(false)
+        setBuscando(false)
+        setCargandoMas(false)
+      }
     }
   }
 
@@ -418,14 +474,20 @@ export default function ClientesPage() {
                 <div className="mt-3 bg-white border border-slate-200 rounded-[2rem] shadow-lg p-6 space-y-5">
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Previsión</label>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Convenio</label>
                       <select
                         className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-[#C9A24B] transition-all cursor-pointer"
-                        value={filtros.prevision}
-                        onChange={(e) => setFiltros(prev => ({ ...prev, prevision: e.target.value }))}
+                        value={filtros.convenio}
+                        onChange={(e) => setFiltros(prev => ({ ...prev, convenio: e.target.value }))}
                       >
-                        <option value="">Todas</option>
-                        {opcionesPrevision.map(op => <option key={op} value={op}>{op}</option>)}
+                        <option value="">Todos</option>
+                        <option value={CONVENIO_ALGUNO}>Con cualquier convenio</option>
+                        <option value={CONVENIO_NINGUNO}>Sin convenio / Particular</option>
+                        <optgroup label="Convenio específico">
+                          {opcionesConvenio.map(op => (
+                            <option key={op.nombre} value={op.nombre}>{op.nombre}{op.deshabilitado ? ' (deshabilitado)' : ''}</option>
+                          ))}
+                        </optgroup>
                       </select>
                     </div>
 
@@ -484,7 +546,7 @@ export default function ClientesPage() {
                         checked={filtros.soloConvenio}
                         onChange={(e) => setFiltros(prev => ({ ...prev, soloConvenio: e.target.checked }))}
                       />
-                      <span className="text-[11px] font-bold text-slate-600">Con convenio / tarjeta comunidad</span>
+                      <span className="text-[11px] font-bold text-slate-600">Solo con tarjeta comunidad</span>
                     </label>
                   </div>
 
@@ -510,6 +572,13 @@ export default function ClientesPage() {
           </AnimatePresence>
         </div>
 
+        {/* CANTIDAD ENCONTRADA */}
+        {!loading && total !== null && (
+          <p className="text-[11px] font-bold text-slate-500 pl-2 -mb-2">
+            {total.toLocaleString('es-CL')} paciente{total === 1 ? '' : 's'}{total > pacientes.length ? ` · mostrando ${pacientes.length.toLocaleString('es-CL')}` : ''}
+          </p>
+        )}
+
         {/* LISTADO DE PACIENTES */}
         {loading ? (
           <div className="py-20 flex justify-center"><Loader2 className="animate-spin text-[#C9A24B]" size={36} /></div>
@@ -531,6 +600,16 @@ export default function ClientesPage() {
                 perfil={perfil}
               />
             ))}
+            {total !== null && total > pacientes.length && (
+              <button
+                onClick={() => { setCargandoMas(true); setLimite(l => l + PAGINA) }}
+                disabled={cargandoMas}
+                className="w-full py-3.5 rounded-2xl bg-white border border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-600 hover:border-[#C9A24B] hover:text-[#0A111F] transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                {cargandoMas ? <Loader2 size={14} className="animate-spin" /> : <ChevronDown size={14} />}
+                Cargar {Math.min(PAGINA, total - pacientes.length)} más
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -887,7 +966,7 @@ function FilaPaciente({ p, isExpanded, onExpand, onPagar, onCambiarEstado, refre
                               <p className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-50" style={{ color: '#8A6D2F' }}><ShieldCheck size={14} style={{ color: GOLD }}/> {p.prevision || 'Particular'}</p>
                            </div>
                         </div>
-                        <Link href={`/pacientes/editar/${p.id}`} className="w-full mt-5 py-3.5 text-white text-[10px] font-black uppercase hover:brightness-125 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md" style={{ backgroundColor: NAVY }}>
+                        <Link href={`/pacientes/${p.id}/datos`} className="w-full mt-5 py-3.5 text-white text-[10px] font-black uppercase hover:brightness-125 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md" style={{ backgroundColor: NAVY }}>
                            Actualizar Datos <ChevronRight size={14}/>
                         </Link>
                      </div>
