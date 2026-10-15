@@ -192,12 +192,12 @@ export default function PanelDesempenoNegocio() {
       const pct = (label: string, v: number | null, p?: number | null) => [label, v === null ? '—' : porcentaje(v), p == null ? '' : porcentaje(p)]
       const resumen: (string | number)[][] = [
         ['Indicador', `${MESES_LARGOS[mes - 1]} ${anio}`, cortePrevio ? `Mes anterior al día ${cortePrevio.getDate()}` : 'Mes anterior'],
-        fila('Total del mes (dinero recibido)', m.dinero.recaudacion, mp?.dinero.recaudacion),
+        fila('Total ingresado en el mes (lo que entró a caja)', m.dinero.recaudacion, mp?.dinero.recaudacion),
         fila('   Radiografías (RX)', m.dinero.recibidoRx, mp?.dinero.recibidoRx),
         fila('   Laboratorio', m.dinero.recibidoLab, mp?.dinero.recibidoLab),
-        fila('   Saldo a favor (abonos)', m.dinero.anticipos, mp?.dinero.anticipos),
+        fila('   Abonos a saldo a favor', m.dinero.anticipos, mp?.dinero.anticipos),
         fila('   Otros tratamientos', m.dinero.recibidoOtros, mp?.dinero.recibidoOtros),
-        fila('Saldo a favor usado en prestaciones (no suma al total)', m.dinero.saldoAFavorUsado, mp?.dinero.saldoAFavorUsado),
+        fila('Saldo a favor usado en tratamientos (no suma: no es plata nueva)', m.dinero.saldoAFavorUsado, mp?.dinero.saldoAFavorUsado),
         fila('Generado en el mes', m.dinero.produccion, mp?.dinero.produccion),
         fila('   Pagado y evolucionado 100%', m.dinero.liquidable, mp?.dinero.liquidable),
         fila('   En proceso', m.dinero.enProceso, mp?.dinero.enProceso),
@@ -274,7 +274,7 @@ export default function PanelDesempenoNegocio() {
   const repartoRecibido = [
     { label: 'RX', valor: d.recibidoRx, color: '#6366f1' },
     { label: 'Laboratorio', valor: d.recibidoLab, color: '#b45309' },
-    { label: 'Saldo a favor', valor: d.anticipos, color: '#0891b2' },
+    { label: 'Abonos a saldo a favor', valor: d.anticipos, color: '#0891b2' },
     { label: 'Otros tratamientos', valor: d.recibidoOtros, color: '#94a3b8' },
   ]
 
@@ -357,19 +357,22 @@ export default function PanelDesempenoNegocio() {
         <div className={`space-y-10 transition-opacity ${cargando ? 'opacity-60 pointer-events-none' : ''}`}>
 
           {/* ── 01 RESUMEN ── */}
-          <Seccion id="resumen" numero={1} titulo="Resumen del mes" subtitulo="Cuánto dinero entró en el mes y de dónde viene: RX + laboratorio + saldo a favor + otros tratamientos = total.">
-            {/* De dónde viene el total del mes: RX + Laboratorio + Saldo a favor + Otros tratamientos = Dinero recibido */}
+          <Seccion id="resumen" numero={1} titulo="Resumen del mes" subtitulo="Todo lo que entró a caja en el mes y de dónde viene: RX + Laboratorio + Abonos a saldo a favor + Otros tratamientos = Total ingresado.">
+            {/* De dónde viene el total ingresado: RX + Laboratorio + Abonos a saldo a favor + Otros tratamientos */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
-              <Kpi icon={Wallet} label="Total del mes" value={money(d.recaudacion)} delta={v(d.recaudacion, mp?.dinero.recaudacion)} accent="#0d9488"
-                sub="Dinero recibido: lo que entró a caja en el mes (efectivo, tarjeta, transferencia)" />
+              <Kpi icon={Wallet} label="Total ingresado" value={money(d.recaudacion)} delta={v(d.recaudacion, mp?.dinero.recaudacion)} accent="#0d9488"
+                sub="Todo lo que entró a caja en el mes (efectivo, tarjeta y transferencia). Es la suma de las otras 4 tarjetas." />
               <Kpi icon={ScanLine} label="Radiografías (RX)" value={money(d.recibidoRx)} delta={v(d.recibidoRx, mp?.dinero.recibidoRx)} accent="#6366f1"
-                sub={`${d.recibidoRxN} RX pagadas con dinero del mes${d.produccionRx - d.recibidoRx >= 1 ? ` · con las pagadas con saldo a favor, total RX ${money(d.produccionRx)}` : ''}`} />
+                sub={<>Pagos de la carpeta RADIOGRAFIAS con dinero del mes · {d.recibidoRxN} RX
+                  {d.produccionRx - d.recibidoRx >= 1 && <><br />Además, {money(d.produccionRx - d.recibidoRx)} en RX pagadas con saldo a favor (no suman: ya se contaron como abono).</>}</>} />
               <Kpi icon={Package} label="Laboratorio" value={money(d.recibidoLab)} delta={v(d.recibidoLab, mp?.dinero.recibidoLab)} accent="#b45309"
-                sub={`Carpeta Laboratorios completa (+ costo de lab. de otras prestaciones), pagado con dinero del mes${d.laboratorioTotal - d.recibidoLab >= 1 ? ` · con lo pagado con saldo a favor, total laboratorio ${money(d.laboratorioTotal)}` : ''}`} />
-              <Kpi icon={PiggyBank} label="Saldo a favor" value={money(d.anticipos)} delta={v(d.anticipos, mp?.dinero.anticipos)} accent="#0891b2"
-                sub={`${d.anticiposN} abonos que los pacientes dejaron para usar después${d.saldoAFavorUsado > 0 ? ` · en el mes se usaron ${money(d.saldoAFavorUsado)} de saldo en prestaciones (eso no suma: ya se contó cuando se abonó)` : ''}`} />
+                sub={<>Pagos de la carpeta Laboratorios con dinero del mes (y el costo de laboratorio de prestaciones de otras carpetas)
+                  {d.laboratorioTotal - d.recibidoLab >= 1 && <><br />Además, {money(d.laboratorioTotal - d.recibidoLab)} pagados con saldo a favor (no suman: ya se contaron como abono).</>}</>} />
+              <Kpi icon={PiggyBank} label="Abonos a saldo a favor" value={money(d.anticipos)} delta={v(d.anticipos, mp?.dinero.anticipos)} accent="#0891b2"
+                sub={<>{d.anticiposN} pagos que entraron a caja sin asignarse a un tratamiento: el paciente los deja para usarlos después.
+                  {d.saldoAFavorUsado > 0 && <><br />En el mes se usaron {money(d.saldoAFavorUsado)} de saldo (abonado este mes o antes) para pagar tratamientos: eso no suma, porque no es plata nueva.</>}</>} />
               <Kpi icon={Stethoscope} label="Otros tratamientos" value={money(d.recibidoOtros)} delta={v(d.recibidoOtros, mp?.dinero.recibidoOtros)} accent="#475569"
-                sub="Todo lo demás pagado en prestaciones (sin la parte de laboratorio)" />
+                sub="Pagos con dinero del mes a tratamientos de las demás carpetas (ortodoncia, operatoria, endodoncia, cirugía, convenios, etc.)." />
             </div>
             {d.recaudacion > 0 && (
               <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm space-y-3">
@@ -388,7 +391,7 @@ export default function PanelDesempenoNegocio() {
                     </Fragment>
                   ))}
                   <span className="text-slate-300">=</span>
-                  <span className="font-black text-slate-900">Total del mes {money(d.recaudacion)}</span>
+                  <span className="font-black text-slate-900">Total ingresado {money(d.recaudacion)}</span>
                 </div>
               </div>
             )}
@@ -759,14 +762,14 @@ export default function PanelDesempenoNegocio() {
               <button type="button" onClick={() => setShowLegend(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Cerrar leyenda"><X size={18} /></button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <LegendItem title="Total del mes (dinero recibido)" text="Todos los pagos vigentes del mes (efectivo, tarjeta, transferencia), incluidos los abonos a saldo a favor. No incluye el fondo de apertura de caja ni lo pagado usando saldo a favor (ese dinero ya se contó cuando entró). Se forma así: RX + Laboratorio + Saldo a favor + Otros tratamientos. El detalle pago por pago está en la hoja 'De dónde viene el total' del Excel." />
+              <LegendItem title="Total ingresado" text="Todo lo que entró a caja en el mes (efectivo, tarjeta, transferencia), incluidos los abonos a saldo a favor. No incluye el fondo de apertura de caja ni lo pagado usando saldo a favor (esa plata ya se contó cuando entró). Se forma así: RX + Laboratorio + Abonos a saldo a favor + Otros tratamientos. El detalle pago por pago está en la hoja 'De dónde viene el total' del Excel." />
               <LegendItem title="Generado en el mes" text="Todo lo cobrado en el mes en prestaciones (más atenciones directas), estén terminadas o no. Incluye lo pagado con saldo a favor." />
               <LegendItem title="Pagado y evolucionado 100%" text="Parte de lo generado cuya prestación ya está pagada completa y evolucionada al 100%. Es lo que se puede liquidar a los doctores (misma regla que la liquidación)." />
               <LegendItem title="En proceso" text="Parte de lo generado cuya prestación todavía no está evolucionada al 100% o no está pagada completa. Pasa a 'evolucionado 100%' cuando se cumplen ambas cosas." />
               <LegendItem title="Radiografías (RX)" text="Lo pagado con dinero del mes en prestaciones de la carpeta RADIOGRAFIAS. Las promociones que incluyen una RX (ej. limpieza + bite wing) no se cuentan aquí. Las RX pagadas con saldo a favor se muestran aparte (total RX), porque esa plata entró como abono." />
               <LegendItem title="Laboratorio" text="Todo lo pagado con dinero del mes en prestaciones de la carpeta Laboratorios (insumos, cepillos, trabajos de laboratorio, etc.). En prestaciones de otras carpetas, solo su costo de laboratorio, proporcional a lo pagado. Lo pagado con saldo a favor se muestra aparte en 'total laboratorio'. Es distinto del 'Costo para laboratorio' de la sección 2, que es solo lo que se le paga al laboratorio." />
-              <LegendItem title="Saldo a favor" text="Pagos que no son de ninguna prestación: el paciente deja plata para usarla después. Cuando la usa, ese pago no vuelve a sumar al total." />
-              <LegendItem title="Otros tratamientos" text="Todo lo demás pagado con dinero del mes en prestaciones (sin la parte de laboratorio ni las RX)." />
+              <LegendItem title="Abonos a saldo a favor" text="Pagos que entraron a caja sin asignarse a ningún tratamiento: el paciente deja plata para usarla después. Cuando la usa, ese pago no vuelve a sumar al total, porque no es plata nueva." />
+              <LegendItem title="Otros tratamientos" text="Pagos con dinero del mes a tratamientos de las demás carpetas (no RADIOGRAFIAS ni Laboratorios). Si alguno tiene costo de laboratorio cargado, ese costo se cuenta en Laboratorio." />
               <LegendItem title="Honorarios" text={`Parte del doctor según su % de comisión o el reparto de la prestación (100% doctor, 100% clínica o % forzado), calculada ${CONFIG.HONORARIO_SOBRE_NETO_DE_LAB ? "sobre lo pagado menos laboratorio" : "sobre el pago completo (igual que la Liquidación); si el doctor pagó el laboratorio, se le reembolsa aparte"}.`} />
               <LegendItem title="Margen clínica" text="Generado − honorarios − laboratorio." />
               <LegendItem title="Utilidad estimada" text={CONFIG.HONORARIOS_INCLUIDOS_EN_EGRESOS ? 'Dinero recibido − laboratorio − egresos (los honorarios ya están en egresos).' : 'Dinero recibido − honorarios − laboratorio − egresos.'} />
