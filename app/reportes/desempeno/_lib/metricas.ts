@@ -1,7 +1,7 @@
 // Cálculo de métricas del Panel de Desempeño (funciones puras, sin consultas)
 import type { DatosFijos, DatosPeriodo } from './consultas'
 import {
-  CONFIG, MESES, esCitaWeb, esRx, esSaldoAFavor, esWebPendiente, fechaISO, fechaLocal, labProporcional,
+  CONFIG, MESES, esCarpetaLab, esCitaWeb, esRx, esSaldoAFavor, esWebPendiente, fechaISO, fechaLocal, labProporcional,
   limpiarNombrePrestacion, medioDePago, minsDeHora, nombreCompleto, normalizar, ratio,
 } from './util'
 
@@ -49,6 +49,7 @@ export interface LineaDetalle {
   lab: number
   labTotalPrestacion: number
   labPagadoPorDoctor: boolean
+  laboratorio: number // parte que cuenta como Laboratorio: el pago completo si es de la carpeta Laboratorios; si no, su costo de laboratorio
   esRx: boolean
   honorario: number
   clinica: number
@@ -97,6 +98,7 @@ export interface Metricas {
     recibidoRxN: number
     recibidoLab: number
     recibidoOtros: number
+    laboratorioTotal: number // como recibidoLab, pero incluye lo pagado con saldo a favor
     egresos: number
     egresosPorCategoria: { name: string; value: number }[]
     marketing: number
@@ -197,7 +199,7 @@ export function calcularMetricas(d: DatosPeriodo, fijos: DatosFijos, pacientesPo
   let recaudacion = 0, saldoAFavorUsado = 0, produccion = 0, honorarios = 0, honorariosPendientesTerminar = 0
   let reembolsoLabDoctores = 0, lab = 0, ventaConLab = 0, margenClinica = 0, anticipos = 0, anticiposN = 0
   let liquidable = 0, honorariosLiquidables = 0, produccionRx = 0
-  let recibidoLab = 0, recibidoRx = 0
+  let recibidoLab = 0, recibidoRx = 0, laboratorioTotal = 0
   const itemsRx = new Set<string>()
   const itemsRxRecibido = new Set<string>()
   const recibido: LineaRecibido[] = []
@@ -264,9 +266,12 @@ export function calcularMetricas(d: DatosPeriodo, fijos: DatosFijos, pacientesPo
 
     const cat = d.categoriaPrestacion[item.prestacion_id] || 'Sin categoría'
     if (esRx(cat)) { produccionRx += monto; itemsRx.add(item.id); f.rx += monto }
+    // Laboratorio: la carpeta Laboratorios cuenta completa; en otras carpetas, solo el costo de laboratorio.
+    // Se redondea por pago para que el detalle del Excel sume exacto lo mismo que el panel.
+    const laboratorio = esCarpetaLab(cat) ? monto : Math.round(Math.min(monto, labPago))
+    laboratorioTotal += laboratorio
     if (!saldo) {
-      // Se redondea por pago para que el detalle del Excel sume exacto lo mismo que el panel
-      const labRecibido = Math.round(Math.min(monto, labPago))
+      const labRecibido = laboratorio
       const rxRecibido = esRx(cat) ? monto - labRecibido : 0
       recibidoLab += labRecibido
       recibidoRx += rxRecibido
@@ -287,7 +292,7 @@ export function calcularMetricas(d: DatosPeriodo, fijos: DatosFijos, pacientesPo
       precioPrestacion: precio, pagadoPrestacion: Number(item.abonado || 0), estadoPrestacion: item.estado || 'pendiente',
       clasificacion: terminado && pagadoCompleto ? 'Evolucionado 100%' : 'En proceso',
       motivoEnProceso: terminado && pagadoCompleto ? '' : [!terminado && 'Falta evolucionar', !pagadoCompleto && 'Falta pagar'].filter(Boolean).join(' y '),
-      lab: labPago, labTotalPrestacion: Number(item.costo_laboratorio || 0), labPagadoPorDoctor: !!item.lab_pagado_por_dr,
+      lab: labPago, labTotalPrestacion: Number(item.costo_laboratorio || 0), labPagadoPorDoctor: !!item.lab_pagado_por_dr, laboratorio,
       esRx: esRx(cat), honorario: honor, clinica,
     })
   }
@@ -306,13 +311,15 @@ export function calcularMetricas(d: DatosPeriodo, fijos: DatosFijos, pacientesPo
     // Una atención directa ya está realizada y cobrada
     liquidable += monto; honorariosLiquidables += honor; f.liquidable += monto
     if (esRx(cat)) { produccionRx += monto; itemsRx.add(`at-${a.id}`); f.rx += monto }
+    const laboratorio = esCarpetaLab(cat) ? monto : 0
+    laboratorioTotal += laboratorio
     categorias[cat] = (categorias[cat] || 0) + monto
     sumarTratamiento(prest?.['Nombre Accion'] || prest?.Nombre || 'Atención directa', monto, `at-${a.id}`)
     detalle.push({
       fecha: a.fecha, pacienteId: a.paciente_id || null, paciente: nombreCompleto(pacientesPorId[a.paciente_id]), doctor: nombreDoc(a.profesional_id),
       prestacion: prest?.['Nombre Accion'] || prest?.Nombre || 'Atención directa', categoria: cat, pieza: '', medioPago: 'Atención directa', monto,
       precioPrestacion: monto, pagadoPrestacion: monto, estadoPrestacion: 'realizado', clasificacion: 'Evolucionado 100%', motivoEnProceso: '',
-      lab: 0, labTotalPrestacion: 0, labPagadoPorDoctor: false, esRx: esRx(cat), honorario: honor, clinica: monto - honor,
+      lab: 0, labTotalPrestacion: 0, labPagadoPorDoctor: false, laboratorio, esRx: esRx(cat), honorario: honor, clinica: monto - honor,
     })
     const dia = fechaLocal(a.fecha).getDay()
     prodPorDia[dia] = (prodPorDia[dia] || 0) + monto
@@ -467,7 +474,7 @@ export function calcularMetricas(d: DatosPeriodo, fijos: DatosFijos, pacientesPo
       produccionRx, produccionRxN: itemsRx.size, honorarios, honorariosPendientesTerminar, reembolsoLabDoctores,
       lab, ventaConLab, margenClinica, margenPct: ratio(margenClinica, produccion), anticipos, anticiposN,
       recibidoRx, recibidoRxN: itemsRxRecibido.size, recibidoLab,
-      recibidoOtros: recaudacion - recibidoRx - recibidoLab - anticipos,
+      recibidoOtros: recaudacion - recibidoRx - recibidoLab - anticipos, laboratorioTotal,
       egresos, egresosPorCategoria: top(egresosPorCat, 20), marketing, utilidad, liquidacionesPagadas,
       ticketPromedio: ratio(produccion, atendidos),
     },
