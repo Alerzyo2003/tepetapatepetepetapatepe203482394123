@@ -61,7 +61,7 @@ export function Kpi({ icon: Icon, label, value, delta, invertido, sub, accent, v
         <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `${accent}1a` }}>
           <Icon size={14} style={{ color: accent }} />
         </div>
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{label}</span>
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-tight">{label}</span>
       </div>
       <div className={`text-xl sm:text-2xl font-black tabular-nums truncate mt-1 ${valorClase}`}>{value}</div>
       <Delta v={delta} invertido={invertido} />
