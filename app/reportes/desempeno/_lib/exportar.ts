@@ -11,6 +11,10 @@ const fechaTexto = (s: string) => {
 }
 const r = (n: number) => Math.round(n || 0)
 const suma = (filas: LineaDetalle[], f: (x: LineaDetalle) => number) => filas.reduce((s, x) => s + f(x), 0)
+const conSaldo = (x: LineaDetalle) => String(x.medioPago || '').toLowerCase().includes('saldo')
+const esAtencion = (x: LineaDetalle) => x.medioPago === 'Atención directa'
+// Misma regla que el panel: la parte de laboratorio de cada pago, redondeada por pago
+const labDelPago = (x: LineaDetalle) => Math.round(Math.min(x.monto, x.lab))
 
 // Crea una hoja con anchos de columna y formato de pesos en las columnas indicadas
 const hoja = (filas: any[][], columnasPesos: number[] = [], anchos: number[] = []) => ({ filas, columnasPesos, anchos })
@@ -30,7 +34,19 @@ export function armarHojas(opciones: OpcionesExcel): Hoja[] {
   const det = m.detalle
 
   // 1. Resumen
-  agregar(hoja([[opciones.titulo], [], ...opciones.resumen], [1, 2], [42, 18, 22]), 'Resumen')
+  agregar(hoja([[opciones.titulo], [], ...opciones.resumen], [1, 2], [52, 18, 22]), 'Resumen')
+
+  // 1b. De dónde viene el total: cada pago que entró a caja, separado en RX + Laboratorio + Saldo a favor + Otros
+  const rec = m.recibido
+  const sumaRec = (f: (x: (typeof rec)[number]) => number) => rec.reduce((s, x) => s + f(x), 0)
+  agregar(hoja([
+    ['Fecha', 'Paciente', 'Doctor', 'Concepto', 'Carpeta', 'Medio de pago', 'Monto', 'RX', 'Laboratorio', 'Saldo a favor', 'Otros tratamientos'],
+    ...rec.map(x => [fechaTexto(x.fecha), x.paciente, x.doctor, x.concepto, x.categoria, x.medioPago, r(x.monto), r(x.rx), r(x.lab), r(x.saldoAFavor), r(x.otros)]),
+    [],
+    ['TOTAL', '', '', `${rec.length} pagos`, '', '', r(sumaRec(x => x.monto)), r(sumaRec(x => x.rx)), r(sumaRec(x => x.lab)), r(sumaRec(x => x.saldoAFavor)), r(sumaRec(x => x.otros))],
+    [],
+    ['RX + Laboratorio + Saldo a favor + Otros tratamientos = Total del mes. No incluye los pagos hechos usando saldo a favor: esa plata ya se contó cuando el paciente la abonó.'],
+  ], [6, 7, 8, 9, 10], [16, 28, 24, 34, 22, 16, 14, 12, 12, 14, 16]), 'De dónde viene el total')
 
   // 2. Todo lo generado
   const encabezado = ['Fecha', 'Paciente', 'Doctor', 'Prestación', 'Pieza', 'Categoría', 'Medio de pago', 'Monto cobrado',
@@ -52,6 +68,7 @@ export function armarHojas(opciones: OpcionesExcel): Hoja[] {
 
   // 5. Laboratorio
   const lab = det.filter(x => x.lab > 0)
+  const labCaja = lab.filter(x => !conSaldo(x) && !esAtencion(x)).reduce((s, x) => s + labDelPago(x), 0)
   const filasLab = [
     ['Fecha', 'Paciente', 'Doctor', 'Prestación', 'Pieza', 'Monto cobrado', 'Precio prestación', 'Costo lab. total de la prestación',
       'Costo lab. de este pago', 'Lab. pagado por el doctor (reembolsar)', 'Estado prestación'],
@@ -60,6 +77,8 @@ export function armarHojas(opciones: OpcionesExcel): Hoja[] {
     [],
     ['TOTAL', '', '', `${lab.length} pagos`, '', r(suma(lab, x => x.monto)), '', '', r(suma(lab, x => x.lab)),
       r(suma(lab.filter(x => x.labPagadoPorDoctor), x => x.lab)), ''],
+    ['   Pagado con dinero del mes (va en el total del mes)', '', '', '', '', '', '', '', labCaja, '', ''],
+    ['   Pagado con saldo a favor (ya se contó cuando se abonó)', '', '', '', '', '', '', '', r(suma(lab, x => x.lab)) - labCaja, '', ''],
     [],
     ['El costo de laboratorio se reparte en proporción a lo pagado: si se paga el 50% de la prestación, se cuenta el 50% del costo de laboratorio.'],
   ]
@@ -67,6 +86,7 @@ export function armarHojas(opciones: OpcionesExcel): Hoja[] {
 
   // 6. RX (detalle + resumen por tipo)
   const rx = det.filter(x => x.esRx)
+  const rxCaja = rx.filter(x => !conSaldo(x) && !esAtencion(x)).reduce((s, x) => s + x.monto - labDelPago(x), 0)
   const porTipo: Record<string, { n: number; monto: number }> = {}
   for (const x of rx) { const t = (porTipo[x.prestacion] ||= { n: 0, monto: 0 }); t.n++; t.monto += x.monto }
   const filasRx = [
@@ -74,6 +94,9 @@ export function armarHojas(opciones: OpcionesExcel): Hoja[] {
     ...rx.map(x => [fechaTexto(x.fecha), x.paciente, x.doctor, x.prestacion, x.medioPago, r(x.monto), r(x.honorario), r(x.clinica)]),
     [],
     ['TOTAL', '', '', `${rx.length} RX`, '', r(suma(rx, x => x.monto)), r(suma(rx, x => x.honorario)), r(suma(rx, x => x.clinica))],
+    ['   Pagado con dinero del mes (va en el total del mes)', '', '', '', '', rxCaja, '', ''],
+    ['   Pagado con saldo a favor (ya se contó cuando se abonó)', '', '', '', '', r(suma(rx.filter(conSaldo), x => x.monto)), '', ''],
+    ...(rx.some(esAtencion) ? [['   Atenciones directas', '', '', '', '', r(suma(rx.filter(esAtencion), x => x.monto)), '', '']] : []),
     [],
     ['Resumen por tipo de RX', '', '', 'Cantidad', '', 'Monto'],
     ...Object.entries(porTipo).sort((a, b) => b[1].monto - a[1].monto).map(([t, v]) => [t, '', '', v.n, '', r(v.monto)]),
