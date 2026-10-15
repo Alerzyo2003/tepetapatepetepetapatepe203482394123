@@ -201,7 +201,8 @@ export default function PanelDesempenoNegocio() {
         fila('Generado en el mes', m.dinero.produccion, mp?.dinero.produccion),
         fila('   Pagado y evolucionado 100%', m.dinero.liquidable, mp?.dinero.liquidable),
         fila('   En proceso', m.dinero.enProceso, mp?.dinero.enProceso),
-        fila('   Laboratorio total (incluye lo pagado con saldo a favor)', m.dinero.lab, mp?.dinero.lab),
+        fila('   Laboratorio total (incluye lo pagado con saldo a favor)', m.dinero.laboratorioTotal, mp?.dinero.laboratorioTotal),
+        fila('   Costo de laboratorio (lo que se le paga al laboratorio)', m.dinero.lab, mp?.dinero.lab),
         fila('   RX total (incluye lo pagado con saldo a favor)', m.dinero.produccionRx, mp?.dinero.produccionRx),
         fila('Honorarios de lo generado', m.dinero.honorarios, mp?.dinero.honorarios),
         fila('   Listos para liquidar (100%)', m.dinero.honorariosLiquidables, mp?.dinero.honorariosLiquidables),
@@ -363,8 +364,8 @@ export default function PanelDesempenoNegocio() {
                 sub="Dinero recibido: lo que entró a caja en el mes (efectivo, tarjeta, transferencia)" />
               <Kpi icon={ScanLine} label="Radiografías (RX)" value={money(d.recibidoRx)} delta={v(d.recibidoRx, mp?.dinero.recibidoRx)} accent="#6366f1"
                 sub={`${d.recibidoRxN} RX pagadas con dinero del mes${d.produccionRx - d.recibidoRx >= 1 ? ` · con las pagadas con saldo a favor, total RX ${money(d.produccionRx)}` : ''}`} />
-              <Kpi icon={Package} label="Laboratorio" value={money(d.recibidoLab)} delta={v(d.recibidoLab, mp?.dinero.recibidoLab)} invertido accent="#b45309"
-                sub={`Costo de lab. pagado con dinero del mes${d.lab - d.recibidoLab >= 1 ? ` · con lo pagado con saldo a favor, total para laboratorio ${money(d.lab)}` : ''}`} />
+              <Kpi icon={Package} label="Laboratorio" value={money(d.recibidoLab)} delta={v(d.recibidoLab, mp?.dinero.recibidoLab)} accent="#b45309"
+                sub={`Carpeta Laboratorios completa (+ costo de lab. de otras prestaciones), pagado con dinero del mes${d.laboratorioTotal - d.recibidoLab >= 1 ? ` · con lo pagado con saldo a favor, total laboratorio ${money(d.laboratorioTotal)}` : ''}`} />
               <Kpi icon={PiggyBank} label="Saldo a favor" value={money(d.anticipos)} delta={v(d.anticipos, mp?.dinero.anticipos)} accent="#0891b2"
                 sub={`${d.anticiposN} abonos que los pacientes dejaron para usar después${d.saldoAFavorUsado > 0 ? ` · en el mes se usaron ${money(d.saldoAFavorUsado)} de saldo en prestaciones (eso no suma: ya se contó cuando se abonó)` : ''}`} />
               <Kpi icon={Stethoscope} label="Otros tratamientos" value={money(d.recibidoOtros)} delta={v(d.recibidoOtros, mp?.dinero.recibidoOtros)} accent="#475569"
@@ -763,7 +764,7 @@ export default function PanelDesempenoNegocio() {
               <LegendItem title="Pagado y evolucionado 100%" text="Parte de lo generado cuya prestación ya está pagada completa y evolucionada al 100%. Es lo que se puede liquidar a los doctores (misma regla que la liquidación)." />
               <LegendItem title="En proceso" text="Parte de lo generado cuya prestación todavía no está evolucionada al 100% o no está pagada completa. Pasa a 'evolucionado 100%' cuando se cumplen ambas cosas." />
               <LegendItem title="Radiografías (RX)" text="Lo pagado con dinero del mes en prestaciones de la carpeta RADIOGRAFIAS. Las promociones que incluyen una RX (ej. limpieza + bite wing) no se cuentan aquí. Las RX pagadas con saldo a favor se muestran aparte (total RX), porque esa plata entró como abono." />
-              <LegendItem title="Laboratorio" text="Parte de lo pagado con dinero del mes que corresponde al costo de laboratorio, proporcional a lo pagado: si se paga el 50% de la prestación, se cuenta el 50% de su costo de laboratorio. Lo pagado con saldo a favor se suma aparte en 'total para laboratorio'." />
+              <LegendItem title="Laboratorio" text="Todo lo pagado con dinero del mes en prestaciones de la carpeta Laboratorios (insumos, cepillos, trabajos de laboratorio, etc.). En prestaciones de otras carpetas, solo su costo de laboratorio, proporcional a lo pagado. Lo pagado con saldo a favor se muestra aparte en 'total laboratorio'. Es distinto del 'Costo para laboratorio' de la sección 2, que es solo lo que se le paga al laboratorio." />
               <LegendItem title="Saldo a favor" text="Pagos que no son de ninguna prestación: el paciente deja plata para usarla después. Cuando la usa, ese pago no vuelve a sumar al total." />
               <LegendItem title="Otros tratamientos" text="Todo lo demás pagado con dinero del mes en prestaciones (sin la parte de laboratorio ni las RX)." />
               <LegendItem title="Honorarios" text={`Parte del doctor según su % de comisión o el reparto de la prestación (100% doctor, 100% clínica o % forzado), calculada ${CONFIG.HONORARIO_SOBRE_NETO_DE_LAB ? "sobre lo pagado menos laboratorio" : "sobre el pago completo (igual que la Liquidación); si el doctor pagó el laboratorio, se le reembolsa aparte"}.`} />
