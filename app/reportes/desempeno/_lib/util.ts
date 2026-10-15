@@ -37,6 +37,9 @@ export const CONFIG = {
   // Carpetas (categorías de prestaciones) que cuentan como RX. Solo se mira la categoría, no el nombre,
   // así las promociones de limpieza con bitewing u otras prestaciones que mencionan "rx" no se cuentan como RX.
   CATEGORIAS_RX: ['RADIOGRAFIAS'],
+  // Carpetas cuyo pago completo cuenta como Laboratorio (insumos, cepillos, trabajos de laboratorio, etc.).
+  // En las demás carpetas solo cuenta como laboratorio el "costo de laboratorio" cargado en la prestación.
+  CATEGORIAS_LABORATORIO: ['LABORATORIOS', 'LABORATORIO'],
 }
 
 export const MESES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
@@ -133,6 +136,8 @@ export const normalizar = (v: any) => String(v || '').normalize('NFD').replace(/
 // ¿Es una radiografía? Solo si la prestación está en la carpeta RADIOGRAFIAS
 const CATEGORIAS_RX_NORM = CONFIG.CATEGORIAS_RX.map(c => normalizar(c))
 export const esRx = (categoria: any) => CATEGORIAS_RX_NORM.includes(normalizar(categoria))
+const CATEGORIAS_LAB_NORM = CONFIG.CATEGORIAS_LABORATORIO.map(c => normalizar(c))
+export const esCarpetaLab = (categoria: any) => CATEGORIAS_LAB_NORM.includes(normalizar(categoria))
 
 export const esSaldoAFavor = (pago: any) => normalizar(pago?.metodo_pago).includes('saldo')
 export const esCitaWeb = (cita: any) => normalizar(cita?.motivo).includes('online')
