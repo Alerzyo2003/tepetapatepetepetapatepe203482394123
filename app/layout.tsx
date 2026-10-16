@@ -9,7 +9,7 @@ import {
   LayoutGrid, Stethoscope, Package, Beaker, Calculator,
   DoorOpen, BadgeDollarSign, Library, FileSignature, Ban,
   FileText, TrendingUp, FileSpreadsheet, ChevronRight,
-  Loader2, User, UserCheck, Building2, Menu, X, ChevronDown, Circle
+  Loader2, User, UserCheck, Building2, Menu, X, ChevronDown, Circle, Target
 } from 'lucide-react'
 import Link from 'next/link'
 import './globals.css'
@@ -160,6 +160,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     { href: '/agenda', label: 'Agenda', icon: <Calendar size={20}/>, roles: ['ADMIN', 'RECEPCIONISTA', 'DENTISTA', 'ASISTENTE'] },
     { href: '/pacientes', label: 'Pacientes', icon: <Users size={20}/>, roles: ['ADMIN', 'RECEPCIONISTA', 'DENTISTA', 'ASISTENTE'] },
     { href: '/cajas', label: 'Cajas', icon: <Briefcase size={20}/>, roles: ['ADMIN', 'RECEPCIONISTA'] },
+    { href: '/seguimiento', label: 'Seguimiento', icon: <Target size={20}/>, roles: ['ADMIN', 'RECEPCIONISTA'] },
     { href: '/perfil', label: 'Perfil', icon: <User size={20}/>, roles: ['ADMIN', 'RECEPCIONISTA', 'DENTISTA', 'ASISTENTE'] },
   ]
 
