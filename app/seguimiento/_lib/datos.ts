@@ -2,7 +2,7 @@
 // Si existen las funciones de seguimiento_rapido.sql, las búsquedas pesadas se hacen dentro de Supabase y se
 // descarga solo el resultado. Si no existen, se usa el método anterior (funciona igual, pero descarga más).
 import { supabase } from '@/lib/supabase'
-import { cargarPorCobrar, fetchPorIds, type FilaPorCobrar } from '@/app/reportes/desempeno/_lib/consultas'
+import { fetchPorIds } from '@/app/reportes/desempeno/_lib/consultas'
 import { CONFIG } from './config'
 import { fechaISO, inicioDelDia, normalizar, sumarDias, sumarMeses } from './util'
 
@@ -54,6 +54,53 @@ async function traerTodo(armar: (conConteo: boolean) => any, pagina = 1000): Pro
     filas.push(...(r.data || []))
   }
   return filas
+}
+
+// ── Saldos por cobrar: prestaciones realizadas que no están pagadas completas, por presupuesto ──
+// Mismo cálculo que el Panel de Desempeño: usa la vista v_deuda_realizada si existe; si no, lo calcula aquí.
+export interface FilaPorCobrar {
+  id: string // presupuesto_id
+  paciente_id: string
+  nombre_tratamiento: string | null
+  especialista_id: string | null
+  realizado: number
+  pagado: number
+  saldo: number
+  items: { profesional_id: string | null; saldo: number }[]
+}
+
+async function cargarPorCobrar(): Promise<FilaPorCobrar[]> {
+  try {
+    const filas = await traerTodo(c => supabase.from('v_deuda_realizada')
+      .select('id, paciente_id, nombre_tratamiento, especialista_id, realizado, pagado, saldo, items', c ? { count: 'exact' } : undefined).order('id'))
+    return filas.map(f => ({
+      ...f, realizado: Number(f.realizado || 0), pagado: Number(f.pagado || 0), saldo: Number(f.saldo || 0),
+      items: (f.items || []).map((i: any) => ({ profesional_id: i.profesional_id || null, saldo: Number(i.saldo || 0) })),
+    }))
+  } catch {
+    const items = await traerTodo(c => supabase.from('presupuesto_items')
+      .select('presupuesto_id, precio_pactado, abonado, estado, profesional_id', c ? { count: 'exact' } : undefined)
+      .or(ESTADOS_HECHO).order('id'))
+    const grupos: Record<string, FilaPorCobrar> = {}
+    for (const it of items) {
+      const estado = String(it.estado || '').toLowerCase().trim()
+      if (!it.presupuesto_id || estado.includes('cancel') || estado.includes('anul')) continue
+      const pactado = Number(it.precio_pactado || 0)
+      const abonado = Number(it.abonado || 0)
+      const saldo = Math.max(0, pactado - abonado)
+      const g = (grupos[it.presupuesto_id] ||= { id: it.presupuesto_id, paciente_id: '', nombre_tratamiento: null, especialista_id: null, realizado: 0, pagado: 0, saldo: 0, items: [] })
+      g.realizado += pactado
+      g.pagado += Math.min(abonado, pactado)
+      g.saldo += saldo
+      if (saldo > 0) g.items.push({ profesional_id: it.profesional_id || null, saldo })
+    }
+    const conSaldo = Object.values(grupos).filter(g => g.saldo >= 1000)
+    const planes = await fetchPorIds('presupuestos', 'id, paciente_id, nombre_tratamiento, especialista_id, estado', conSaldo.map(g => g.id))
+    const porId = Object.fromEntries(planes.map(p => [p.id, p]))
+    return conSaldo
+      .filter(g => porId[g.id]?.paciente_id && !String(porId[g.id].estado || '').toLowerCase().includes('anul'))
+      .map(g => ({ ...g, paciente_id: porId[g.id].paciente_id, nombre_tratamiento: porId[g.id].nombre_tratamiento, especialista_id: porId[g.id].especialista_id }))
+  }
 }
 
 async function rpc(nombre: string, params: Record<string, any>): Promise<any[]> {
