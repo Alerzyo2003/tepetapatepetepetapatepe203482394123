@@ -368,10 +368,10 @@ export default function PanelDesempenoNegocio() {
               <Kpi icon={Package} label="Laboratorio" value={money(d.recibidoLab)} delta={v(d.recibidoLab, mp?.dinero.recibidoLab)} accent="#b45309"
                 sub={<>Pagos de la carpeta Laboratorios con dinero del mes (y el costo de laboratorio de prestaciones de otras carpetas)
                   {d.laboratorioTotal - d.recibidoLab >= 1 && <><br />Además, {money(d.laboratorioTotal - d.recibidoLab)} pagados con saldo a favor (no suman: ya se contaron como abono).</>}</>} />
-              <Kpi icon={PiggyBank} label="Abonos a saldo a favor" value={money(d.anticipos)} delta={v(d.anticipos, mp?.dinero.anticipos)} accent="#0891b2"
+              <Kpi icon={PiggyBank} label="Ingreso Saldo a Favor" value={money(d.anticipos)} delta={v(d.anticipos, mp?.dinero.anticipos)} accent="#0891b2"
                 sub={<>{d.anticiposN} pagos que entraron a caja sin asignarse a un tratamiento: el paciente los deja para usarlos después.
                   {d.saldoAFavorUsado > 0 && <><br />En el mes se usaron {money(d.saldoAFavorUsado)} de saldo (abonado este mes o antes) para pagar tratamientos: eso no suma, porque no es plata nueva.</>}</>} />
-              <Kpi icon={Stethoscope} label="Otros tratamientos" value={money(d.recibidoOtros)} delta={v(d.recibidoOtros, mp?.dinero.recibidoOtros)} accent="#475569"
+              <Kpi icon={Stethoscope} label="Prestaciones Clinicas Evolucionadas" value={money(d.recibidoOtros)} delta={v(d.recibidoOtros, mp?.dinero.recibidoOtros)} accent="#475569"
                 sub="Pagos con dinero del mes a tratamientos de las demás carpetas (ortodoncia, operatoria, endodoncia, cirugía, convenios, etc.)." />
             </div>
             {d.recaudacion > 0 && (
