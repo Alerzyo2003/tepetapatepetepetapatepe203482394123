@@ -92,6 +92,30 @@ export default function AgendaPage() {
   // Refresco silencioso por realtime
   useEffect(() => { if (realtimeTrigger > 0) fetchCitasAgenda(); }, [realtimeTrigger]);
 
+  // Llegada desde otra página (ej. Panel de Seguimiento):
+  //   /agenda?agendar=<paciente_id>&motivo=...&doctor=<user_id>  → abre "Agendar" con el paciente listo
+  //   /agenda?abrir=buscarHora                                    → abre "Buscar hora"
+  useEffect(() => {
+    if (cargandoPagina) return;
+    const params = new URLSearchParams(window.location.search);
+    const pacienteId = params.get('agendar');
+    const abrir = params.get('abrir');
+    if (!pacienteId && !abrir) return;
+    const motivo = params.get('motivo') || undefined;
+    const doctor = params.get('doctor');
+    ['agendar', 'motivo', 'doctor', 'abrir'].forEach(k => params.delete(k));
+    const resto = params.toString();
+    window.history.replaceState(null, '', window.location.pathname + (resto ? `?${resto}` : ''));
+    if (abrir === 'buscarHora') { setModal('buscarHora'); return; }
+    if (!pacienteId) return;
+    (async () => {
+      const { data: paciente, error } = await supabase.from('pacientes').select('*').eq('id', pacienteId).maybeSingle();
+      if (error || !paciente) { toast.error('No se encontró el paciente para agendar'); return; }
+      const doctorActivo = doctor && profesionales.some(p => p.user_id === doctor) ? doctor : undefined;
+      abrirAgendar({ paciente, motivo, profesionalId: doctorActivo });
+    })();
+  }, [cargandoPagina]);
+
   // ─────────────────────────────────────────────────────────────
   // Datos
   // ─────────────────────────────────────────────────────────────
