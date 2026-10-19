@@ -185,12 +185,12 @@ export const construirMensajeResena = (cita: any, profesionales?: Profesional[])
   const doctor = profesionales ? buscarDoctor(profesionales, cita.profesional_id) : undefined;
   const conQuien = doctor ? ` con el/la Dr(a). ${doctor.nombre} ${doctor.apellido}` : '';
 
-  return `Hola ${nombre} 😊 ¡Gracias por atenderte${conQuien} en Clínica Dignidad!\n\n`
+  return `Hola ${nombre} ¡Gracias por atenderte${conQuien} en Clínica Dignidad!\n\n`
     + `¿Nos regalas 30 segundos? Tu opinión en Google ayuda a que más vecinos de La Pintana encuentren un dentista de confianza:\n`
-    + `👉 ${URL_RESENA_GOOGLE}\n\n`
+    +  ${URL_RESENA_GOOGLE}\n\n`
     + `Basta con tocar las estrellas y, si quieres, contar en una frase cómo te atendimos.\n\n`
     + `Si algo no salió como esperabas, respóndenos este mensaje: queremos saberlo para mejorar.\n\n`
-    + `¡Gracias por confiar en nosotros! 💙🦷`;
+    + `¡Gracias por confiar en nosotros! `;
 };
 // ─────────────────────────────────────────────────────────────
 // Reglas clínicas
