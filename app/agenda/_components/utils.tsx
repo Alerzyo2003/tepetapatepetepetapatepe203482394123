@@ -126,10 +126,22 @@ export const telefonoWA = (tel?: string | null): string | null => {
   if (n.length === 8) return `569${n}`;
   return n;
 };
+// Guarda la pestaña de WhatsApp Web para reutilizarla: cada mensaje nuevo se carga en la misma pestaña
+let ventanaWhatsApp: Window | null = null;
+
 export const abrirWhatsApp = (tel: string | null | undefined, mensaje?: string) => {
   const num = telefonoWA(tel);
   if (!num) { toast.error('El paciente no tiene un teléfono válido registrado'); return false; }
-  window.open(mensaje ? `https://wa.me/${num}?text=${encodeURIComponent(mensaje)}` : `https://wa.me/${num}`, '_blank');
+
+  const texto = mensaje ? `&text=${encodeURIComponent(mensaje)}` : '';
+  const url = `https://web.whatsapp.com/send?phone=${num}${texto}`;
+
+  if (ventanaWhatsApp && !ventanaWhatsApp.closed) {
+    ventanaWhatsApp.location.href = url; // carga el nuevo chat en la misma pestaña
+    ventanaWhatsApp.focus();
+  } else {
+    ventanaWhatsApp = window.open(url, 'whatsapp-clinica');
+  }
   return true;
 };
 // Formato para guardar en la ficha: +56XXXXXXXXX
@@ -187,11 +199,12 @@ export const construirMensajeResena = (cita: any, profesionales?: Profesional[])
 
   return `Hola ${nombre} ¡Gracias por atenderte${conQuien} en Clínica Dignidad!\n\n`
     + `¿Nos regalas 30 segundos? Tu opinión en Google ayuda a que más vecinos de La Pintana encuentren un dentista de confianza:\n`
-    +  ${URL_RESENA_GOOGLE}\n\n`
+    + `${URL_RESENA_GOOGLE}\n\n`
     + `Basta con tocar las estrellas y, si quieres, contar en una frase cómo te atendimos.\n\n`
     + `Si algo no salió como esperabas, respóndenos este mensaje: queremos saberlo para mejorar.\n\n`
-    + `¡Gracias por confiar en nosotros! `;
+    + `¡Gracias por confiar en nosotros!`;
 };
+
 // ─────────────────────────────────────────────────────────────
 // Reglas clínicas
 // ─────────────────────────────────────────────────────────────
