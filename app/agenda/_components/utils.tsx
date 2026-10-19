@@ -180,9 +180,18 @@ export const construirMensajeInasistencia = (cita: any, profesionales: Profesion
 export const construirMensajeCambioHora = (cita: any, fecha: string, hora: string, profesionalId: string, profesionales: Profesional[]) =>
   `Hola ${cita.pacientes?.nombre || ''}, te escribimos de Clínica Dignidad para informarte que tu cita fue cambiada para el día ${capitalizar(fechaLarga(fecha))} a las ${hora} hrs con el/la ${nombreDoctorCompleto(profesionales, profesionalId)}.\n\n📍 Dirección: ${DIRECCION_CLINICA}.\n\nPor favor confirma tu asistencia en el siguiente enlace:\n${URL_CONFIRMAR}/${cita.id}`;
 
-export const construirMensajeResena = (cita: any) =>
-  `Hola ${cita.pacientes?.nombre || ''}, esperamos que hayas tenido una excelente experiencia en tu atención en Clínica Dignidad.\n\nNos ayudaría muchísimo si pudieras dejarnos tu opinión o solo dejándonos las estrellas, es solo 1 clic:\n${URL_RESENA_GOOGLE}\n\n¡Muchas gracias por confiar en nosotros! 💙🦷`;
+export const construirMensajeResena = (cita: any, profesionales?: Profesional[]) => {
+  const nombre = cita.pacientes?.nombre || '';
+  const doctor = profesionales ? buscarDoctor(profesionales, cita.profesional_id) : undefined;
+  const conQuien = doctor ? ` con el/la Dr(a). ${doctor.nombre} ${doctor.apellido}` : '';
 
+  return `Hola ${nombre} 😊 ¡Gracias por atenderte${conQuien} en Clínica Dignidad!\n\n`
+    + `¿Nos regalas 30 segundos? Tu opinión en Google ayuda a que más vecinos de La Pintana encuentren un dentista de confianza:\n`
+    + `👉 ${URL_RESENA_GOOGLE}\n\n`
+    + `Basta con tocar las estrellas y, si quieres, contar en una frase cómo te atendimos.\n\n`
+    + `Si algo no salió como esperabas, respóndenos este mensaje: queremos saberlo para mejorar.\n\n`
+    + `¡Gracias por confiar en nosotros! 💙🦷`;
+};
 // ─────────────────────────────────────────────────────────────
 // Reglas clínicas
 // ─────────────────────────────────────────────────────────────
