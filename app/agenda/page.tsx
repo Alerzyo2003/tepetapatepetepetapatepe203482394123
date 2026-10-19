@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import {
   AlertTriangle, BellRing, Calendar as CalendarIcon, CalendarDays, ChevronLeft, ChevronRight, ClipboardList,
-  Globe, LayoutGrid, List, Loader2, Lock, Plus, Search, Users, X,
+  Globe, LayoutGrid, List, Loader2, Lock, Plus, Search, Star, Users, X,
 } from 'lucide-react'
 
 import { contarInasistencias, obtenerFinanzasPacientes, registrarAuditoria } from './_components/data'
@@ -29,6 +29,7 @@ import ModalHuerfanas from './_components/ModalHuerfanas'
 import ModalAnuladas from './_components/ModalAnuladas'
 import ModalCitasWeb from './_components/ModalCitasWeb'
 import ModalRecordatorios from './_components/ModalRecordatorios'
+import ModalResenas from './_components/ModalResenas'
 import ModalBuscarHora from './_components/ModalBuscarHora'
 import ModalHojaRuta from './_components/ModalHojaRuta'
 
@@ -65,7 +66,7 @@ export default function AgendaPage() {
   // ── Modales ──
   const [agendarConfig, setAgendarConfig] = useState<AgendarConfig | null>(null);
   const [citaPresupuesto, setCitaPresupuesto] = useState<any>(null);
-  const [modal, setModal] = useState<null | 'bloqueo' | 'huerfanas' | 'anuladas' | 'web' | 'recordatorios' | 'buscarHora' | 'hojaRuta'>(null);
+  const [modal, setModal] = useState<null | 'bloqueo' | 'huerfanas' | 'anuladas' | 'web' | 'recordatorios' | 'resenas' | 'buscarHora' | 'hojaRuta'>(null);
   const cerrarModal = () => setModal(null);
 
   const dateInputRef = useRef<HTMLInputElement>(null);
@@ -316,6 +317,11 @@ export default function AgendaPage() {
               <BellRing size={14} /> Recordar Mañana
             </button>
           )}
+          {puedeEnviarRecordatorios && (
+            <button onClick={() => setModal('resenas')} className={`${botonCabecera} border-amber-200 text-amber-600 hover:bg-amber-50`}>
+              <Star size={14} /> Pedir Reseñas
+            </button>
+          )}
           <button onClick={() => setModal('hojaRuta')} className={`${botonCabecera} border-slate-200 text-slate-600 hover:bg-slate-50`}>
             <ClipboardList className="text-[#C9A24B]" size={14} /> Hoja de Ruta
           </button>
@@ -496,6 +502,7 @@ export default function AgendaPage() {
       <ModalAnuladas abierto={modal === 'anuladas'} onClose={cerrarModal} citas={citasAnuladas} profesionales={profesionales} usuariosMap={usuariosMap} mostrarFecha={vistaAgenda === 'semana'} />
       <ModalCitasWeb abierto={modal === 'web'} onClose={cerrarModal} onCambio={fetchCitasAgenda} citas={citasOnlinePendientes} profesionales={profesionales} usuarioLogueado={usuarioLogueado} />
       <ModalRecordatorios abierto={modal === 'recordatorios' && puedeEnviarRecordatorios} onClose={cerrarModal} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} filtroEspecialista={filtroEspecialista} realtimeTrigger={realtimeTrigger} />
+      <ModalResenas abierto={modal === 'resenas' && puedeEnviarRecordatorios} onClose={cerrarModal} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} filtroEspecialista={filtroEspecialista} />
       <ModalBuscarHora abierto={modal === 'buscarHora'} onClose={cerrarModal} onElegir={agendarEnHueco} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} especialistaInicial={filtroEspecialista} />
       <ModalHojaRuta abierto={modal === 'hojaRuta'} onClose={cerrarModal} fechaInicial={getLocalDateISO(selectedDate)} especialistaInicial={filtroEspecialista} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} />
     </div>
