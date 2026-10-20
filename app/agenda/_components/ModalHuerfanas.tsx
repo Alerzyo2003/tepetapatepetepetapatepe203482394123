@@ -1,5 +1,6 @@
 'use client'
-// Citas futuras (90 días) que quedaron dentro de un bloqueo de agenda y hay que reagendar.
+// Citas futuras (90 días) que hay que reagendar: quedaron dentro de un bloqueo, fuera del horario del doctor
+// (por ejemplo, porque se eliminó o cambió un bloque de horario), sin doctor o con un doctor desactivado.
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
@@ -24,6 +25,44 @@ interface Props {
   profesionales: Profesional[];
   usuarioLogueado: string | null;
   puedeVerAgendaCompleta: boolean;
+}
+
+const minutos = (t: any) => { const [h, m] = String(t || '00:00').substring(0, 5).split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+const tramoTexto = (bloques: any[]) => bloques.map(b => `${String(b.hora_inicio).substring(0, 5)}–${String(b.hora_fin).substring(0, 5)}`).join(', ');
+
+// Por qué una cita necesita reagendarse (null = está bien)
+function motivoHuerfana(cita: any, bloqueos: any[], horarios: Record<string, any[]>, profesionales: Profesional[]): string | null {
+  if (!cita.profesional_id) return 'Sin doctor asignado';
+  const prof = profesionales.find(p => p.user_id === cita.profesional_id);
+  if (!prof) return 'Doctor desactivado';
+
+  const fecha = fechaISODeStr(cita.inicio);
+  const ini = getMinsFromDateStr(cita.inicio);
+  const fin = cita.fin ? getMinsFromDateStr(cita.fin) : ini + 15;
+
+  // 1. Dentro de un bloqueo (inasistencia, feriado, bloqueo de horas)
+  const bloqueada = bloqueos.some((b: any) => {
+    if (b.profesional_id !== prof.id || b.fecha !== fecha) return false;
+    if (!b.hora_inicio || !b.hora_fin) return true;
+    return ini < minutos(b.hora_fin) && fin > minutos(b.hora_inicio);
+  });
+  if (bloqueada) return 'Día u hora bloqueada';
+
+  // 2. Fuera del horario del doctor (solo si el doctor tiene horario configurado)
+  const suyos = horarios[cita.profesional_id] || [];
+  if (!suyos.length) return null;
+  const especiales = suyos.filter(h => h.fecha_especifica === fecha);
+  const diaSemana = new Date(`${fecha}T12:00:00`).getDay();
+  const bloques = especiales.length ? especiales : suyos.filter(h => !h.fecha_especifica && Number(h.dia_semana) === diaSemana);
+  if (!bloques.length) return 'El doctor no atiende ese día';
+  // Tramos de atención unidos (09:00–13:00 + 13:00–15:00 = 09:00–15:00)
+  const unidos: [number, number][] = [];
+  for (const [a, b] of bloques.map(h => [minutos(h.hora_inicio), minutos(h.hora_fin)] as [number, number]).sort((x, y) => x[0] - y[0])) {
+    const ult = unidos[unidos.length - 1];
+    if (ult && a <= ult[1]) ult[1] = Math.max(ult[1], b); else unidos.push([a, b]);
+  }
+  if (!unidos.some(([a, b]) => ini >= a && fin <= b)) return `Fuera del horario del doctor (atiende ${tramoTexto(bloques)})`;
+  return null;
 }
 
 export default function ModalHuerfanas({ abierto, onClose, onCambio, filtroEspecialista, profesionales, usuarioLogueado, puedeVerAgendaCompleta }: Props) {
@@ -68,24 +107,21 @@ export default function ModalHuerfanas({ abierto, onClose, onCambio, filtroEspec
       if (!futuras?.length) { setCitas([]); return; }
 
       let qBloq = supabase.from('bloqueos_agenda').select('*').gte('fecha', hoyISO).lte('fecha', limiteStr);
+      let qDispo = supabase.from('disponibilidad_profesional').select('profesional_id, dia_semana, hora_inicio, hora_fin, fecha_especifica');
       if (filtrar) {
         const prof = profesionales.find(p => p.user_id === filtroEspecialista);
         if (prof) qBloq = qBloq.eq('profesional_id', prof.id);
+        qDispo = qDispo.eq('profesional_id', filtroEspecialista);
       }
-      const { data: bloqueos } = await qBloq;
+      const [{ data: bloqueos }, { data: dispo, error: errDispo }] = await Promise.all([qBloq, qDispo]);
+      if (errDispo) throw errDispo;
 
-      setCitas(futuras.filter((cita: any) => {
-        if (!cita.profesional_id) return true;
-        const fecha = fechaISODeStr(cita.inicio);
-        const prof = profesionales.find(p => p.user_id === cita.profesional_id);
-        return bloqueos?.some((b: any) => {
-          if (b.profesional_id !== prof?.id || b.fecha !== fecha) return false;
-          if (!b.hora_inicio || !b.hora_fin) return true;
-          const cIni = new Date(cita.inicio.replace(' ', 'T')).getTime();
-          const cFin = new Date(cita.fin.replace(' ', 'T')).getTime();
-          return cIni < new Date(`${fecha}T${b.hora_fin}`).getTime() && cFin > new Date(`${fecha}T${b.hora_inicio}`).getTime();
-        });
-      }));
+      // Horarios por doctor (user_id)
+      const horarios: Record<string, any[]> = {};
+      for (const d of dispo || []) (horarios[d.profesional_id] ||= []).push(d);
+
+      const conMotivo = futuras.map((cita: any) => ({ ...cita, motivoHuerfana: motivoHuerfana(cita, bloqueos || [], horarios, profesionales) }));
+      setCitas(conMotivo.filter((c: any) => c.motivoHuerfana));
     } catch {
       toast.error('Error al escanear la agenda global');
     } finally {
@@ -214,7 +250,7 @@ export default function ModalHuerfanas({ abierto, onClose, onCambio, filtroEspec
           </div>
         ) : (
           <div className="space-y-4">
-            <p className="text-sm md:text-xs font-bold text-slate-500 mb-6">Se encontraron <span className="font-black text-amber-600">{citas.length} citas</span> afectadas por bloqueos.</p>
+            <p className="text-sm md:text-xs font-bold text-slate-500 mb-6">Se encontraron <span className="font-black text-amber-600">{citas.length} citas</span> que quedaron fuera del horario del doctor, en días bloqueados o sin doctor.</p>
             {citas.map(cita => {
               const editando = citaEnEdicion === cita.id;
               const doc = buscarDoctor(profesionales, cita.profesional_id);
@@ -234,6 +270,11 @@ export default function ModalHuerfanas({ abierto, onClose, onCambio, filtroEspec
                           {doc && (
                             <span className="text-[10px] md:text-[9px] font-bold text-slate-500 tracking-widest bg-slate-50 border border-slate-200 px-2 py-1 rounded-md uppercase">
                               Dr. {formatNombreDoctor(doc.nombre, doc.apellido)}
+                            </span>
+                          )}
+                          {cita.motivoHuerfana && (
+                            <span className="text-[10px] md:text-[9px] font-black text-amber-700 tracking-wide bg-amber-50 border border-amber-200 px-2 py-1 rounded-md">
+                              <AlertTriangle className="inline mr-1" size={11} /> {cita.motivoHuerfana}
                             </span>
                           )}
                         </div>
