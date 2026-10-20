@@ -469,8 +469,9 @@ export default function BoxConfigPage() {
         .neq('estado', 'cancelada');
 
       let cantidadAfectadas = 0;
-      if (citasFuturas && !bloque.fecha_especifica) {
+      if (citasFuturas) {
         cantidadAfectadas = citasFuturas.filter(c => {
+          if (bloque.fecha_especifica) return String(c.inicio).startsWith(bloque.fecha_especifica);
           const diaSemanaCita = new Date(c.inicio).getDay();
           return diaSemanaCita === (bloque.dia_semana === 7 ? 0 : bloque.dia_semana);
         }).length;
@@ -478,7 +479,7 @@ export default function BoxConfigPage() {
 
       if (cantidadAfectadas > 0) {
         toast.warning(
-          `Horario eliminado. PERO tienes ${cantidadAfectadas} pacientes a futuro en este día. Sus horas NO se han borrado de la agenda, pero deberías reagendarlos.`,
+          `Horario eliminado. PERO tienes ${cantidadAfectadas} pacientes a futuro en este día. Sus horas NO se han borrado: búscalos en Agenda → Huérfanas para reagendarlos.`,
           { duration: 8000, icon: <AlertCircle className="text-amber-500"/> }
         );
       } else {
