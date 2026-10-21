@@ -130,7 +130,7 @@ export async function cargarFijos(ahora: Date): Promise<DatosFijos> {
     cargarPorCobrar(),
     // Por cerrar: solo presupuestos sobre el monto mínimo, los de mayor valor primero (sin traer los 3.000+ chicos)
     supabase.from('presupuestos')
-      .select('id, paciente_id, total, total_abonado, nombre_tratamiento, created_at, especialista_id')
+      .select('id, paciente_id, total, total_abonado, nombre_tratamiento, created_at, fecha_creacion, especialista_id')
       .eq('aprobado', false).gte('total', CONFIG.MONTO_MIN_POR_CERRAR).gte('created_at', haceDias.toISOString())
       .or('total_abonado.is.null,total_abonado.eq.0')
       .order('total', { ascending: false }).limit(CONFIG.MAX_FILAS_LISTA * 2),
@@ -146,13 +146,16 @@ export async function cargarFijos(ahora: Date): Promise<DatosFijos> {
   if (sinAprobar.error) throw new Error(sinAprobar.error.message)
 
   const excluir = CONFIG.EXCLUIR_POR_CERRAR.map(normalizar)
-  const porCerrar = ((sinAprobar.data as any[]) || [])
+  const porCerrarBase = ((sinAprobar.data as any[]) || [])
     .filter(p => {
       const palabras = normalizar(p.nombre_tratamiento).split(/[^a-z0-9]+/)
       const texto = normalizar(p.nombre_tratamiento)
       return !excluir.some(x => (x.length <= 3 ? palabras.includes(x) : texto.includes(x)))
     })
     .slice(0, CONFIG.MAX_FILAS_LISTA)
+  // Hace cuánto vino cada paciente y si ya tiene hora (para filtrar por antigüedad)
+  const visitas = await cargarVisitas(porCerrarBase.map(p => p.paciente_id), ahora)
+  const porCerrar = porCerrarBase.map(p => ({ ...p, ...(visitas[p.paciente_id] || {}) }))
 
   // Pacientes atendidos hace 6–18 meses que no han vuelto ni tienen cita futura
   const conActividad = new Set(citasRecientes.map(c => c.paciente_id))
@@ -186,8 +189,45 @@ export async function cargarPacientes(ids: string[], nivel: keyof typeof CAMPOS_
   return fetchPorIds('pacientes', CAMPOS_PACIENTE[nivel], ids)
 }
 
+// Última cita atendida y próxima cita agendada de cada paciente (solo de los pacientes indicados).
+// Si falla, la lista se muestra igual y la antigüedad se calcula con la fecha del presupuesto.
+type Visitas = Record<string, { ultima_visita: string | null; proxima_cita: string | null }>
+async function cargarVisitas(ids: string[], ahora: Date): Promise<Visitas> {
+  const unicos = [...new Set(ids.filter(Boolean))]
+  const out: Visitas = {}
+  if (!unicos.length) return out
+  const texto = (v: any) => String(v || '').replace('T', ' ').slice(0, 19)
+  const dos = (n: number) => String(n).padStart(2, '0')
+  const ahoraTxt = `${fechaISO(ahora)} ${dos(ahora.getHours())}:${dos(ahora.getMinutes())}:00`
+  const lotes: string[][] = []
+  for (let i = 0; i < unicos.length; i += 150) lotes.push(unicos.slice(i, i + 150))
+  try {
+    const res = await Promise.all(lotes.flatMap(l => [
+      fetchAll((a, b) => supabase.from('citas').select('paciente_id, inicio')
+        .in('paciente_id', l).in('estado', CONFIG.ESTADOS_CITA_VINO).lte('inicio', ahoraTxt)
+        .order('id').range(a, b)),
+      fetchAll((a, b) => supabase.from('citas').select('paciente_id, inicio')
+        .in('paciente_id', l).gt('inicio', ahoraTxt).not('estado', 'in', '(cancelada,no_asiste,reprogramada)')
+        .order('id').range(a, b)),
+    ]))
+    res.forEach((filas, i) => {
+      const pasadas = i % 2 === 0
+      for (const c of filas) {
+        if (!c.paciente_id || !c.inicio) continue
+        const v = out[c.paciente_id] || (out[c.paciente_id] = { ultima_visita: null, proxima_cita: null })
+        const t = texto(c.inicio)
+        if (pasadas) { if (!v.ultima_visita || t > v.ultima_visita) v.ultima_visita = t }
+        else if (!v.proxima_cita || t < v.proxima_cita) v.proxima_cita = t
+      }
+    })
+  } catch (e) {
+    console.error('No se pudieron cargar las visitas de los presupuestos por cerrar', e)
+  }
+  return out
+}
+
 // ── Caché de datos generales en la sesión del navegador (evita volver a descargarlos al entrar de nuevo) ──
-const CLAVE_CACHE = 'panel-desempeno-fijos-v2'
+const CLAVE_CACHE = 'panel-desempeno-fijos-v3'
 export function leerFijosCache(): DatosFijos | null {
   try {
     const raw = sessionStorage.getItem(CLAVE_CACHE)
