@@ -19,6 +19,7 @@ import { exportarExcel } from './_lib/exportar'
 import {
   CONFIG, MESES, MESES_LARGOS, corteEquivalente, diasHabiles, rangoMesHasta, fechaLocal, horas, limpiarNombrePrestacion, mesAnterior, money, moneyCorto,
   nombreCompleto, porcentaje, rangoMes, ratio, variacion,
+  TRAMOS_ANTIGUEDAD, antiguedadPorCerrar, fechaCorta, fechaPresupuesto, haceTiempo, type TramoAntiguedad,
 } from './_lib/util'
 import {
   BarList, Card, EmptyState, Kpi, LegendItem, ListaContactos, MetaVentas, MiniStat, Modal, PanelDecisiones, PulseSpinner, SectionTitle, Seccion, TextoComparacion,
@@ -35,6 +36,8 @@ export default function PanelDesempenoNegocio() {
   const [filtroDoc, setFiltroDoc] = useState<string | null>(null)
   const [showLegend, setShowLegend] = useState(false)
   const [showDecisiones, setShowDecisiones] = useState(false)
+  // Filtro de "Presupuestos por cerrar" por antigüedad (desde la última visita del paciente)
+  const [tramoPorCerrar, setTramoPorCerrar] = useState<TramoAntiguedad>('todos')
 
   const [acceso, setAcceso] = useState<'verificando' | 'si' | 'no'>('verificando')
   const [fijos, setFijos] = useState<DatosFijos | null>(null)
@@ -278,12 +281,31 @@ export default function PanelDesempenoNegocio() {
     { label: 'Otros tratamientos', valor: d.recibidoOtros, color: '#94a3b8' },
   ]
 
-  const contactosPorCerrar: FilaContacto[] = listas.porCerrar.map(p => {
+  // Presupuestos por cerrar con su antigüedad (desde la última visita del paciente o, si nunca vino, desde el presupuesto)
+  const ESTILO_TRAMO: Record<Exclude<TramoAntiguedad, 'todos'>, string> = {
+    mes: 'bg-emerald-100 text-emerald-700', trimestre: 'bg-amber-100 text-amber-700',
+    anio: 'bg-orange-100 text-orange-700', antiguo: 'bg-slate-200 text-slate-600',
+  }
+  const porCerrarConAntiguedad = listas.porCerrar.map(p => ({ p, ant: antiguedadPorCerrar(p, ahora) }))
+  const conteoTramo = (t: TramoAntiguedad) => (t === 'todos' ? porCerrarConAntiguedad.length : porCerrarConAntiguedad.filter(x => x.ant.tramo === t).length)
+  const porCerrarFiltrados = porCerrarConAntiguedad.filter(x => tramoPorCerrar === 'todos' || x.ant.tramo === tramoPorCerrar)
+  const totalPorCerrarFiltrado = porCerrarFiltrados.reduce((s, x) => s + Number(x.p.total || 0), 0)
+  const contactosPorCerrar: FilaContacto[] = porCerrarFiltrados.map(({ p, ant }) => {
     const pac = pacientes[p.paciente_id]
     const trat = p.nombre_tratamiento || 'tratamiento'
+    const fPres = fechaPresupuesto(p)
+    const proxima = p.proxima_cita ? fechaLocal(p.proxima_cita) : null
+    const chips: NonNullable<FilaContacto['chips']> = [{
+      texto: ant.desdeVisita && ant.dias !== null ? `Vino ${haceTiempo(ant.dias)}` : 'Sin visitas',
+      clase: ESTILO_TRAMO[ant.tramo],
+      titulo: ant.desdeVisita ? `Última cita atendida: ${fechaCorta(fechaLocal(p.ultima_visita))}` : 'No tiene citas atendidas; la antigüedad se cuenta desde la fecha del presupuesto',
+    }]
+    if (fPres) chips.push({ texto: `Presup. ${fechaCorta(fPres)}`, clase: 'bg-slate-100 text-slate-500', titulo: 'Fecha del presupuesto' })
+    if (proxima && !Number.isNaN(proxima.getTime())) chips.push({ texto: `Hora ${fechaCorta(proxima).slice(0, 5)}`, clase: 'bg-sky-100 text-sky-700', titulo: `Ya tiene una cita agendada el ${fechaCorta(proxima)}` })
     return {
       id: p.id, nombre: nombreCompleto(pac), monto: Number(p.total || 0), telefono: pac?.telefono,
-      detalle: `${trat} · ${Math.max(0, Math.round((ahora.getTime() - new Date(p.created_at).getTime()) / 86400000))} días`,
+      detalle: trat,
+      chips,
       mensaje: `Hola ${pac?.nombre || ''}, te saludamos de Clínica Dignidad. Queríamos saber si tienes alguna duda sobre tu presupuesto de ${trat}. Tenemos facilidades de pago y podemos agendar tu primera sesión cuando te acomode. ¡Quedamos atentos!`,
     }
   })
@@ -667,9 +689,24 @@ export default function PanelDesempenoNegocio() {
                 <MiniStat label="Días hasta el primer pago" value={m.comercial.diasAprobacion === null ? '—' : `${Math.round(m.comercial.diasAprobacion * 10) / 10} días`} />
               </Card>
               <Card>
-                <SectionTitle icon={AlertTriangle} label="Presupuestos por cerrar" extra={<span className="text-sm font-black text-amber-600 tabular-nums">{money(listas.totalPorCerrar)}</span>} />
-                <p className="text-[11px] text-slate-500 mb-3">Últimos {CONFIG.DIAS_PRESUPUESTO_POR_CERRAR} días, desde {money(CONFIG.MONTO_MIN_POR_CERRAR)}, sin aprobar ni abonar (sin radiografías ni evaluaciones). Ordenados por valor.</p>
-                <ListaContactos filas={contactosPorCerrar} vacio="No hay presupuestos pendientes." />
+                <SectionTitle icon={AlertTriangle} label="Presupuestos por cerrar" extra={<span className="text-sm font-black text-amber-600 tabular-nums">{money(totalPorCerrarFiltrado)}</span>} />
+                <p className="text-[11px] text-slate-500 mb-3">Cargados en los últimos {CONFIG.DIAS_PRESUPUESTO_POR_CERRAR} días, desde {money(CONFIG.MONTO_MIN_POR_CERRAR)}, sin aprobar ni abonar (sin radiografías ni evaluaciones). Ordenados por valor.</p>
+                <div className="mb-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Última visita del paciente</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {TRAMOS_ANTIGUEDAD.map(t => {
+                      const n = conteoTramo(t.id)
+                      const activo = tramoPorCerrar === t.id
+                      return (
+                        <button key={t.id} type="button" onClick={() => setTramoPorCerrar(t.id)} disabled={!n && !activo}
+                          className={`px-2 py-1 rounded-md text-[10px] font-bold border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${activo ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                          {t.texto} <span className={activo ? 'text-slate-300' : 'text-slate-400'}>{n}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+                <ListaContactos filas={contactosPorCerrar} vacio={tramoPorCerrar === 'todos' ? 'No hay presupuestos pendientes.' : 'No hay presupuestos en este rango.'} />
               </Card>
               <Card>
                 <SectionTitle icon={DollarSign} label="Saldos por cobrar" extra={<span className="text-sm font-black text-amber-600 tabular-nums">{money(listas.totalPorCobrar)}</span>} />
@@ -781,7 +818,7 @@ export default function PanelDesempenoNegocio() {
               <LegendItem title="Valor de una hora de sillón" text="Generado ÷ horas agendadas ya transcurridas (sin contar ausencias). Sirve para estimar cuánto vale llenar una hora libre." />
               <LegendItem title="Tasa de ausencia" text="Citas marcadas como 'No asistió' ÷ citas que ya debían ocurrir (sin anuladas)." />
               <LegendItem title="Conversión" text="Presupuestos creados en el mes que ya fueron aprobados o tienen abonos." />
-              <LegendItem title="Presupuestos por cerrar" text={`Presupuestos de los últimos ${CONFIG.DIAS_PRESUPUESTO_POR_CERRAR} días sin aprobar ni abonar.`} />
+              <LegendItem title="Presupuestos por cerrar" text={`Presupuestos cargados en los últimos ${CONFIG.DIAS_PRESUPUESTO_POR_CERRAR} días sin aprobar ni abonar. El filtro "Última visita" cuenta desde la última cita atendida del paciente; si nunca ha venido, desde la fecha del presupuesto.`} />
               <LegendItem title="Pacientes para recontactar" text={`Atendidos hace ${CONFIG.MESES_INACTIVO_DESDE} a ${CONFIG.MESES_INACTIVO_HASTA} meses sin ninguna cita posterior.`} />
               <LegendItem title="Tasa de retorno" text="Pacientes atendidos este mes cuya ficha se creó antes del mes." />
               <LegendItem title="Qué hacer este mes" text="Recomendaciones automáticas. El potencial es una estimación para priorizar, no una promesa." />
