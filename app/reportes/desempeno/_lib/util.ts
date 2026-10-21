@@ -28,6 +28,9 @@ export const CONFIG = {
   EXCLUIR_POR_CERRAR: ['radiograf', 'rx', 'panoramica', 'scanner', 'cbct', 'evaluacion', 'consulta', 'certificado'],
   // Estados de cita que cuentan como "el paciente vino" (para la antigüedad de los presupuestos por cerrar)
   ESTADOS_CITA_VINO: ['atendido', 'atendiendose', 'en_espera'],
+  // Días en que se cargaron los datos del sistema anterior (Dentalink). Un presupuesto con esa fecha
+  // no tiene su fecha real: se muestra como "Sistema anterior" en vez de con la fecha de la carga.
+  FECHAS_CARGA_SISTEMA_ANTERIOR: ['2026-08-24'],
   // Máximo de filas que se traen para cada lista de contacto (ahorra transferencia de datos)
   MAX_FILAS_LISTA: 150,
   // Minutos que se reutilizan los datos generales antes de volver a pedirlos a Supabase
@@ -82,15 +85,17 @@ export function leerFecha(v: any): Date | null {
 
 // ── Antigüedad de los presupuestos por cerrar ──
 // Se mide desde la última vez que el paciente vino a la clínica (cita atendida).
-// Si nunca vino, desde la fecha del presupuesto (la más antigua entre fecha_creacion y created_at:
-// los presupuestos traídos de otro sistema pueden tener created_at del día en que se cargaron).
-export type TramoAntiguedad = 'todos' | 'mes' | 'trimestre' | 'anio' | 'antiguo'
+// Si nunca vino, desde la fecha del presupuesto (la más antigua entre fecha_creacion y created_at).
+// Los presupuestos traídos del sistema anterior quedaron con la fecha del día en que se cargaron
+// (CONFIG.FECHAS_CARGA_SISTEMA_ANTERIOR): esa no es su fecha real, así que van aparte en "Sistema anterior".
+export type TramoAntiguedad = 'todos' | 'mes' | 'trimestre' | 'anio' | 'antiguo' | 'anterior'
 export const TRAMOS_ANTIGUEDAD: { id: TramoAntiguedad; texto: string }[] = [
   { id: 'todos', texto: 'Todos' },
   { id: 'mes', texto: 'Hasta 1 mes' },
   { id: 'trimestre', texto: '1 a 3 meses' },
   { id: 'anio', texto: '3 a 12 meses' },
   { id: 'antiguo', texto: 'Más de 1 año' },
+  { id: 'anterior', texto: 'Sistema anterior' },
 ]
 
 export function fechaPresupuesto(p: any): Date | null {
@@ -98,12 +103,25 @@ export function fechaPresupuesto(p: any): Date | null {
   return fechas.length ? new Date(Math.min(...fechas.map(d => d.getTime()))) : null
 }
 
-export function antiguedadPorCerrar(p: any, ahora: Date): { dias: number | null; desdeVisita: boolean; tramo: Exclude<TramoAntiguedad, 'todos'> } {
+// true si la fecha del presupuesto es solo el día en que se cargó desde el sistema anterior
+export function esCargaSistemaAnterior(p: any): boolean {
+  const f = fechaPresupuesto(p)
+  if (!f) return false
+  return [fechaISO(f), f.toISOString().slice(0, 10)].some(d => CONFIG.FECHAS_CARGA_SISTEMA_ANTERIOR.includes(d))
+}
+
+export function antiguedadPorCerrar(p: any, ahora: Date): {
+  dias: number | null; desdeVisita: boolean; sistemaAnterior: boolean; tramo: Exclude<TramoAntiguedad, 'todos'>
+} {
   const visita = p?.ultima_visita ? fechaLocal(p.ultima_visita) : null
-  const ref = visita && !Number.isNaN(visita.getTime()) ? visita : fechaPresupuesto(p)
+  const hayVisita = !!visita && !Number.isNaN(visita.getTime())
+  const sistemaAnterior = esCargaSistemaAnterior(p)
+  // Sin visitas y con la fecha de la carga: no se sabe cuándo se hizo el presupuesto
+  if (!hayVisita && sistemaAnterior) return { dias: null, desdeVisita: false, sistemaAnterior, tramo: 'anterior' }
+  const ref = hayVisita ? visita : fechaPresupuesto(p)
   const dias = ref ? Math.max(0, Math.floor((ahora.getTime() - ref.getTime()) / 86400000)) : null
   const tramo = dias === null || dias > 365 ? 'antiguo' : dias <= 30 ? 'mes' : dias <= 90 ? 'trimestre' : 'anio'
-  return { dias, desdeVisita: !!visita, tramo }
+  return { dias, desdeVisita: hayVisita, sistemaAnterior, tramo }
 }
 
 export function haceTiempo(dias: number): string {
