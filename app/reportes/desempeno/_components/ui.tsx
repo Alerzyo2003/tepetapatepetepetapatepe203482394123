@@ -133,7 +133,10 @@ export function LegendItem({ title, text }: { title: string; text: string }) {
 }
 
 // ── Lista de pacientes con botón de WhatsApp ──
-export interface FilaContacto { id: string; nombre: string; detalle: string; monto?: number; telefono?: string | null; mensaje: string }
+export interface FilaContacto {
+  id: string; nombre: string; detalle: string; monto?: number; telefono?: string | null; mensaje: string
+  chips?: { texto: string; clase: string; titulo?: string }[] // etiquetas cortas junto al nombre
+}
 
 export function ListaContactos({ filas, vacio, total }: { filas: FilaContacto[]; vacio: string; total?: number }) {
   const [verTodos, setVerTodos] = useState(false)
@@ -147,6 +150,13 @@ export function ListaContactos({ filas, vacio, total }: { filas: FilaContacto[];
             <div className="min-w-0">
               <p className="text-xs font-bold text-slate-800 truncate">{f.nombre}</p>
               <p className="text-[10px] text-slate-400 truncate">{f.detalle}</p>
+              {!!f.chips?.length && (
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {f.chips.map(c => (
+                    <span key={c.texto} title={c.titulo} className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${c.clase}`}>{c.texto}</span>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {f.monto !== undefined && <span className="text-sm font-black text-amber-600 tabular-nums">{money(f.monto)}</span>}
