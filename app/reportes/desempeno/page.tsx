@@ -284,7 +284,7 @@ export default function PanelDesempenoNegocio() {
   // Presupuestos por cerrar con su antigüedad (desde la última visita del paciente o, si nunca vino, desde el presupuesto)
   const ESTILO_TRAMO: Record<Exclude<TramoAntiguedad, 'todos'>, string> = {
     mes: 'bg-emerald-100 text-emerald-700', trimestre: 'bg-amber-100 text-amber-700',
-    anio: 'bg-orange-100 text-orange-700', antiguo: 'bg-slate-200 text-slate-600',
+    anio: 'bg-orange-100 text-orange-700', antiguo: 'bg-slate-200 text-slate-600', anterior: 'bg-violet-100 text-violet-700',
   }
   const porCerrarConAntiguedad = listas.porCerrar.map(p => ({ p, ant: antiguedadPorCerrar(p, ahora) }))
   const conteoTramo = (t: TramoAntiguedad) => (t === 'todos' ? porCerrarConAntiguedad.length : porCerrarConAntiguedad.filter(x => x.ant.tramo === t).length)
@@ -298,9 +298,13 @@ export default function PanelDesempenoNegocio() {
     const chips: NonNullable<FilaContacto['chips']> = [{
       texto: ant.desdeVisita && ant.dias !== null ? `Vino ${haceTiempo(ant.dias)}` : 'Sin visitas',
       clase: ESTILO_TRAMO[ant.tramo],
-      titulo: ant.desdeVisita ? `Última cita atendida: ${fechaCorta(fechaLocal(p.ultima_visita))}` : 'No tiene citas atendidas; la antigüedad se cuenta desde la fecha del presupuesto',
+      titulo: ant.desdeVisita ? `Última cita atendida: ${fechaCorta(fechaLocal(p.ultima_visita))}`
+        : ant.sistemaAnterior ? 'No ha venido desde el cambio de sistema' : 'No tiene citas atendidas; la antigüedad se cuenta desde la fecha del presupuesto',
     }]
-    if (fPres) chips.push({ texto: `Presup. ${fechaCorta(fPres)}`, clase: 'bg-slate-100 text-slate-500', titulo: 'Fecha del presupuesto' })
+    if (ant.sistemaAnterior) {
+      chips.push({ texto: 'Sistema anterior', clase: ESTILO_TRAMO.anterior,
+        titulo: `Presupuesto traído del sistema anterior${fPres ? ` (cargado el ${fechaCorta(fPres)})` : ''}; su fecha original no quedó guardada` })
+    } else if (fPres) chips.push({ texto: `Presup. ${fechaCorta(fPres)}`, clase: 'bg-slate-100 text-slate-500', titulo: 'Fecha del presupuesto' })
     if (proxima && !Number.isNaN(proxima.getTime())) chips.push({ texto: `Hora ${fechaCorta(proxima).slice(0, 5)}`, clase: 'bg-sky-100 text-sky-700', titulo: `Ya tiene una cita agendada el ${fechaCorta(proxima)}` })
     return {
       id: p.id, nombre: nombreCompleto(pac), monto: Number(p.total || 0), telefono: pac?.telefono,
@@ -818,7 +822,7 @@ export default function PanelDesempenoNegocio() {
               <LegendItem title="Valor de una hora de sillón" text="Generado ÷ horas agendadas ya transcurridas (sin contar ausencias). Sirve para estimar cuánto vale llenar una hora libre." />
               <LegendItem title="Tasa de ausencia" text="Citas marcadas como 'No asistió' ÷ citas que ya debían ocurrir (sin anuladas)." />
               <LegendItem title="Conversión" text="Presupuestos creados en el mes que ya fueron aprobados o tienen abonos." />
-              <LegendItem title="Presupuestos por cerrar" text={`Presupuestos cargados en los últimos ${CONFIG.DIAS_PRESUPUESTO_POR_CERRAR} días sin aprobar ni abonar. El filtro "Última visita" cuenta desde la última cita atendida del paciente; si nunca ha venido, desde la fecha del presupuesto.`} />
+              <LegendItem title="Presupuestos por cerrar" text={`Presupuestos cargados en los últimos ${CONFIG.DIAS_PRESUPUESTO_POR_CERRAR} días sin aprobar ni abonar. El filtro "Última visita" cuenta desde la última cita atendida del paciente; si nunca ha venido, desde la fecha del presupuesto. "Sistema anterior": presupuestos traídos en el cambio de sistema, de pacientes que no han venido desde entonces (no se sabe la fecha original).`} />
               <LegendItem title="Pacientes para recontactar" text={`Atendidos hace ${CONFIG.MESES_INACTIVO_DESDE} a ${CONFIG.MESES_INACTIVO_HASTA} meses sin ninguna cita posterior.`} />
               <LegendItem title="Tasa de retorno" text="Pacientes atendidos este mes cuya ficha se creó antes del mes." />
               <LegendItem title="Qué hacer este mes" text="Recomendaciones automáticas. El potencial es una estimación para priorizar, no una promesa." />
