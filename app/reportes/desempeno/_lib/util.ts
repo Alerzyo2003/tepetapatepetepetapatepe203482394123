@@ -26,6 +26,8 @@ export const CONFIG = {
   MONTO_MIN_POR_CERRAR: 150000,
   // Palabras que excluyen un presupuesto de "por cerrar" aunque supere el monto
   EXCLUIR_POR_CERRAR: ['radiograf', 'rx', 'panoramica', 'scanner', 'cbct', 'evaluacion', 'consulta', 'certificado'],
+  // Estados de cita que cuentan como "el paciente vino" (para la antigüedad de los presupuestos por cerrar)
+  ESTADOS_CITA_VINO: ['atendido', 'atendiendose', 'en_espera'],
   // Máximo de filas que se traen para cada lista de contacto (ahorra transferencia de datos)
   MAX_FILAS_LISTA: 150,
   // Minutos que se reutilizan los datos generales antes de volver a pedirlos a Supabase
@@ -68,6 +70,50 @@ export const fechaISO = (d: Date) => `${d.getFullYear()}-${dos(d.getMonth() + 1)
 
 // Columnas "timestamp without time zone" (citas, atenciones) vienen como hora local sin zona
 export const fechaLocal = (s: string) => new Date(String(s).replace(' ', 'T').replace(/(\.\d+)?(Z|[+-]\d\d:?\d\d)$/, ''))
+export const fechaCorta = (d: Date) => d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: '2-digit' })
+
+// Fecha de una columna con zona horaria o solo fecha ("2025-03-12", "2025-03-12 10:00:00+00", ISO...). null si no es válida.
+export function leerFecha(v: any): Date | null {
+  if (!v) return null
+  const s = String(v).trim().replace(' ', 'T')
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T12:00:00`) : new Date(s.replace(/(T[\d:.]+[+-]\d\d)$/, '$1:00'))
+  return Number.isNaN(d.getTime()) || d.getFullYear() < 2000 ? null : d
+}
+
+// ── Antigüedad de los presupuestos por cerrar ──
+// Se mide desde la última vez que el paciente vino a la clínica (cita atendida).
+// Si nunca vino, desde la fecha del presupuesto (la más antigua entre fecha_creacion y created_at:
+// los presupuestos traídos de otro sistema pueden tener created_at del día en que se cargaron).
+export type TramoAntiguedad = 'todos' | 'mes' | 'trimestre' | 'anio' | 'antiguo'
+export const TRAMOS_ANTIGUEDAD: { id: TramoAntiguedad; texto: string }[] = [
+  { id: 'todos', texto: 'Todos' },
+  { id: 'mes', texto: 'Hasta 1 mes' },
+  { id: 'trimestre', texto: '1 a 3 meses' },
+  { id: 'anio', texto: '3 a 12 meses' },
+  { id: 'antiguo', texto: 'Más de 1 año' },
+]
+
+export function fechaPresupuesto(p: any): Date | null {
+  const fechas = [leerFecha(p?.fecha_creacion), leerFecha(p?.created_at)].filter((d): d is Date => !!d)
+  return fechas.length ? new Date(Math.min(...fechas.map(d => d.getTime()))) : null
+}
+
+export function antiguedadPorCerrar(p: any, ahora: Date): { dias: number | null; desdeVisita: boolean; tramo: Exclude<TramoAntiguedad, 'todos'> } {
+  const visita = p?.ultima_visita ? fechaLocal(p.ultima_visita) : null
+  const ref = visita && !Number.isNaN(visita.getTime()) ? visita : fechaPresupuesto(p)
+  const dias = ref ? Math.max(0, Math.floor((ahora.getTime() - ref.getTime()) / 86400000)) : null
+  const tramo = dias === null || dias > 365 ? 'antiguo' : dias <= 30 ? 'mes' : dias <= 90 ? 'trimestre' : 'anio'
+  return { dias, desdeVisita: !!visita, tramo }
+}
+
+export function haceTiempo(dias: number): string {
+  if (dias <= 0) return 'hoy'
+  if (dias === 1) return 'ayer'
+  if (dias < 30) return `hace ${dias} días`
+  if (dias < 365) { const m = Math.max(1, Math.round(dias / 30.4)); return `hace ${m} ${m === 1 ? 'mes' : 'meses'}` }
+  const a = Math.floor(dias / 365)
+  return `hace ${a} ${a === 1 ? 'año' : 'años'}`
+}
 export const minsDeHora = (h: string | null | undefined) => {
   if (!h) return 0
   const [hh, mm] = h.split(':').map(Number)
