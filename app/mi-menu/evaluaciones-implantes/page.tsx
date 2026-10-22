@@ -50,6 +50,7 @@ export default function EvaluacionesImplantesPage() {
   const [etapa, setEtapa] = useState<FiltroEtapa>('seguir')
   const [busqueda, setBusqueda] = useState('')
   const [doctor, setDoctor] = useState('')
+  const [tipo, setTipo] = useState<'' | 'implante' | 'otro'>('') // qué se presupuestó después de la evaluación
   const [orden, setOrden] = useState<Orden>('prioridad')
   const [ocultarContactados, setOcultarContactados] = useState(true)
   const [mostrar, setMostrar] = useState(CONFIG.FILAS_POR_PAGINA)
@@ -91,7 +92,7 @@ export default function EvaluacionesImplantesPage() {
   }, [periodo])
 
   useEffect(() => { if (acceso === 'si') cargar() }, [acceso, cargar])
-  useEffect(() => { setMostrar(CONFIG.FILAS_POR_PAGINA) }, [etapa, busqueda, doctor, orden, ocultarContactados, periodo])
+  useEffect(() => { setMostrar(CONFIG.FILAS_POR_PAGINA) }, [etapa, busqueda, doctor, tipo, orden, ocultarContactados, periodo])
   // Nombres de quien anotó cada contacto (si el permiso lo permite)
   useEffect(() => {
     if (acceso !== 'si') return
@@ -114,14 +115,15 @@ export default function EvaluacionesImplantesPage() {
 
   const todas = useMemo(() => (datos?.filas || []).map(f => ({ f, o: aOportunidad(f, ahora) })), [datos, ahora])
 
-  // Doctor y búsqueda (sirven para los indicadores y los contadores)
+  // Doctor, tipo de presupuesto y búsqueda (sirven para los indicadores y los contadores)
   const base = useMemo(() => {
     const termino = normalizar(busqueda)
     const digitos = busqueda.replace(/\D/g, '')
-    return todas.filter(({ o }) => {
+    return todas.filter(({ f, o }) => {
       const p = pacientes[o.pacienteId]
       if (p === null || p?.activo === false) return false // ficha borrada o paciente deshabilitado
       if (doctor && !o.doctores.includes(doctor)) return false
+      if (tipo && (!f.tratamientos.length || (tipo === 'implante') !== f.conImplante)) return false
       if (termino) {
         const texto = normalizar(`${p?.nombre || ''} ${p?.apellido || ''} ${p?.rut || ''}`)
         const numeros = `${String(p?.rut || '').replace(/\D/g, '')} ${String(p?.telefono || '').replace(/\D/g, '')}`
@@ -129,7 +131,7 @@ export default function EvaluacionesImplantesPage() {
       }
       return true
     })
-  }, [todas, pacientes, doctor, busqueda])
+  }, [todas, pacientes, doctor, tipo, busqueda])
 
   const contactado = useCallback((o: Oportunidad) => contactos !== null && !!contactoVigente(LISTA_EVAL, porPaciente.get(o.pacienteId), hoyISO), [contactos, porPaciente, hoyISO])
   const sinContactados = useMemo(() => base.filter(({ o }) => !(ocultarContactados && contactado(o))), [base, ocultarContactados, contactado])
@@ -155,12 +157,14 @@ export default function EvaluacionesImplantesPage() {
   const n = (e: EtapaEval) => base.filter(x => x.f.etapa === e).length
   const evaluados = base.filter(x => x.f.eventos.some(ev => ev.estado === 'vino')).length
   const cerraron = n('cerrado') + n('en_tratamiento')
+  const sinImplante = (e: EtapaEval) => base.filter(x => x.f.etapa === e && !x.f.conImplante).length
+  const cerraronImplante = base.filter(x => (x.f.etapa === 'cerrado' || x.f.etapa === 'en_tratamiento') && x.f.conImplante).length
   const montoPresupuestado = base.filter(x => x.f.etapa === 'presupuestado').reduce((s, x) => s + x.f.presupuesto, 0)
   const kpis: { id: FiltroEtapa; titulo: string; valor: string; sub: string; color: string }[] = [
     { id: 'todas', titulo: 'Pacientes evaluados', valor: String(evaluados), sub: `${base.length} con evaluación registrada`, color: 'text-slate-800' },
     { id: 'sin_presupuesto', titulo: 'Sin presupuesto', valor: String(n('sin_presupuesto')), sub: 'se evaluaron y no tienen presupuesto', color: 'text-rose-600' },
-    { id: 'presupuestado', titulo: 'Presupuesto sin cerrar', valor: moneyCorto(montoPresupuestado), sub: `${n('presupuestado')} ${n('presupuestado') === 1 ? 'paciente' : 'pacientes'}`, color: 'text-[#8A6D2F]' },
-    { id: 'cerrado', titulo: 'Cerraron', valor: evaluados ? `${Math.round((cerraron / evaluados) * 100)}%` : '—', sub: `${cerraron} aprobaron, abonaron o empezaron`, color: 'text-emerald-600' },
+    { id: 'presupuestado', titulo: 'Presupuesto sin cerrar', valor: moneyCorto(montoPresupuestado), sub: `${n('presupuestado')} ${n('presupuestado') === 1 ? 'paciente' : 'pacientes'}${sinImplante('presupuestado') ? ` · ${sinImplante('presupuestado')} sin implante` : ''}`, color: 'text-[#8A6D2F]' },
+    { id: 'cerrado', titulo: 'Cerraron', valor: evaluados ? `${Math.round((cerraron / evaluados) * 100)}%` : '—', sub: `${cerraron} aprobaron, abonaron o empezaron${cerraron ? ` · ${cerraronImplante} con implante` : ''}`, color: 'text-emerald-600' },
     { id: 'no_vino', titulo: 'No vinieron', valor: String(n('no_vino')), sub: 'faltaron o anularon la evaluación', color: 'text-amber-600' },
     { id: 'agendada', titulo: 'Agendadas', valor: String(n('agendada')), sub: 'evaluaciones por venir', color: 'text-sky-600' },
   ]
@@ -200,10 +204,10 @@ export default function EvaluacionesImplantesPage() {
   const exportar = () => {
     const titulo = etapa === 'todas' ? 'Todas' : etapa === 'seguir' ? 'Por seguir' : etapaEval(etapa).texto
     descargarXlsx(`evaluaciones-implantes-${hoyISO}.xlsx`, [{
-      nombre: 'Evaluaciones de implantes', columnasPesos: [9, 10], anchos: [14, 16, 18, 40, 30, 13, 15, 22, 24, 14, 14, 22, 32, 60],
+      nombre: 'Evaluaciones de implantes', columnasPesos: [11, 12], anchos: [14, 16, 18, 40, 30, 13, 15, 22, 30, 40, 12, 14, 14, 22, 32, 60],
       filas: [
         [`Evaluaciones de implantes · ${PERIODOS.find(p => p.id === periodo)?.texto} · ${titulo}${doctor ? ` · ${nombreDoctor([doctor])}` : ''}`],
-        ['Fecha evaluación', 'Estado', 'Origen', 'Detalle', 'Paciente', 'RUT', 'Teléfono', 'Doctor', 'En qué quedó', 'Presupuesto implantes', 'Abonado', 'Próxima hora', 'Último contacto', 'Mensaje sugerido'],
+        ['Fecha evaluación', 'Estado', 'Origen', 'Detalle', 'Paciente', 'RUT', 'Teléfono', 'Doctor', 'En qué quedó', 'Tratamiento presupuestado', '¿Incluye implante?', 'Presupuesto', 'Abonado', 'Próxima hora', 'Último contacto', 'Mensaje sugerido'],
         ...filas.map(({ f, o }) => {
           const p = pacientes[o.pacienteId]
           const c = ultimoContacto(LISTA_EVAL, porPaciente.get(o.pacienteId))
@@ -212,7 +216,7 @@ export default function EvaluacionesImplantesPage() {
             f.principal.fecha.toLocaleDateString('es-CL'), f.principal.estado === 'vino' ? 'Vino' : f.principal.estado === 'agendada' ? 'Agendada' : f.principal.estado === 'anulo' ? 'Anuló' : 'No vino',
             f.principal.origen === 'cita' ? 'Cita' : f.principal.origen === 'prestacion' ? 'Prestación' : 'Atención directa',
             o.detalle, nombrePaciente(p), p?.rut || '', p?.telefono || '', nombreDoctor(o.doctores), o.etapa,
-            f.presupuesto || '', f.abonado || '', prox ? fechaConHora(prox.inicio) : '',
+            f.tratamientos.join(', '), f.tratamientos.length ? (f.conImplante ? 'Sí' : 'No') : '', f.presupuesto || '', f.abonado || '', prox ? fechaConHora(prox.inicio) : '',
             c ? `${textoResultado(c.resultado)} ${String(c.created_at).slice(0, 10)}${c.nota ? ` · ${c.nota}` : ''}` : '', o.mensaje(p),
           ]
         }),
@@ -296,7 +300,7 @@ export default function EvaluacionesImplantesPage() {
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-3">
                   <p className="text-xs text-slate-500 flex gap-2">
                     <Info size={14} className="shrink-0 mt-0.5 text-slate-400" />
-                    <span>Cuenta las citas cuyo motivo dice <b>implante</b> y <b>evaluación</b> (o valoración, primera consulta, diagnóstico, planificación) y las prestaciones de evaluación de implantes cargadas. &quot;Por seguir&quot; deja fuera las evaluaciones agendadas y a quienes ya empezaron el implante.</span>
+                    <span>Cuenta las citas cuyo motivo dice <b>implante</b> y <b>evaluación</b> (o valoración, primera consulta, diagnóstico, planificación) y las prestaciones de evaluación de implantes cargadas. En qué quedó se mide con <b>cualquier presupuesto</b> hecho después de la evaluación, aunque sea de otro tratamiento (sale como &quot;sin implante&quot;). &quot;Por seguir&quot; deja fuera las evaluaciones agendadas y a quienes ya empezaron.</span>
                   </p>
                   {siguiente && (
                     <button type="button" onClick={() => enviarWhatsApp(siguiente.o)} disabled={!!enCurso}
@@ -329,6 +333,11 @@ export default function EvaluacionesImplantesPage() {
                   <select value={doctor} onChange={e => setDoctor(e.target.value)} className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:border-[#C9A24B]">
                     <option value="">Todos los doctores</option>
                     {doctoresActivos.map(p => <option key={p.user_id} value={p.user_id}>{`${p.nombre} ${p.apellido}`}</option>)}
+                  </select>
+                  <select value={tipo} onChange={e => setTipo(e.target.value as '' | 'implante' | 'otro')} className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:border-[#C9A24B]">
+                    <option value="">Cualquier presupuesto</option>
+                    <option value="implante">Presupuesto con implante</option>
+                    <option value="otro">Otro tratamiento (sin implante)</option>
                   </select>
                   <select value={orden} onChange={e => setOrden(e.target.value as Orden)} className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 outline-none focus:border-[#C9A24B]">
                     <option value="prioridad">Primero a quién escribir</option>
