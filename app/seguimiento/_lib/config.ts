@@ -23,8 +23,14 @@ export const CONFIG = {
     palabrasEvaluacion: ['EVAL', 'VALORA', 'PRIMERA', 'DIAGN', 'CONSULTA', 'PLANIFICA'],
     // Período que se muestra al abrir la página
     mesesPorDefecto: 6,
-    // Cuenta como presupuesto de esa evaluación lo creado desde N días antes de la primera evaluación
-    diasPresupuestoAntes: 90,
+    // Qué presupuesto cuenta como resultado de la evaluación (cualquier tratamiento, no solo implantes):
+    // los presupuestos creados desde N días antes de la primera evaluación...
+    diasPresupuestoAntes: 3,
+    // ...y si incluye implante, desde N días antes (a veces el presupuesto de implante se hace antes de la cita)
+    diasPresupuestoImplanteAntes: 90,
+    // Prestaciones que no cuentan como "tratamiento presupuestado" (exámenes, evaluaciones, certificados)
+    // Palabras de 3 letras o menos tienen que aparecer como palabra completa (RX)
+    noEsTratamiento: ['RADIOGRAF', 'RX', 'PANORAMICA', 'SCANNER', 'CBCT', 'EVAL', 'VALORA', 'CONSULTA', 'DIAGN', 'CERTIFICADO', 'PLANIFICA'],
   },
 
   // ── Implantes ──
