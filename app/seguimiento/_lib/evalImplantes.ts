@@ -1,6 +1,7 @@
 // Evaluaciones de implantes: quién se evaluó y en qué quedó.
 // Una evaluación es una cita cuyo motivo dice evaluación + implante, o una prestación de evaluación de implantes
 // cargada (en un presupuesto o como atención directa). Las palabras se ajustan en config.ts → EVAL_IMPLANTES.
+// El resultado es el presupuesto que se hizo después, sea de implante o de otro tratamiento (prótesis, puente, etc.).
 import { supabase } from '@/lib/supabase'
 import { CONFIG, type IdLista } from './config'
 import type { Oportunidad, Tono } from './reglas'
@@ -16,7 +17,7 @@ export const ETAPAS_EVAL: { id: EtapaEval; texto: string; tono: Tono; prioridad:
   { id: 'no_vino', texto: 'No vino a la evaluación', tono: 'ambar', prioridad: 70, seguir: true },
   { id: 'cerrado', texto: 'Aprobó o abonó', tono: 'verde', prioridad: 50, seguir: true },
   { id: 'agendada', texto: 'Evaluación agendada', tono: 'azul', prioridad: 30, seguir: false },
-  { id: 'en_tratamiento', texto: 'Ya empezó el implante', tono: 'gris', prioridad: 10, seguir: false },
+  { id: 'en_tratamiento', texto: 'Ya empezó el tratamiento', tono: 'gris', prioridad: 10, seguir: false },
 ]
 export const etapaEval = (id: EtapaEval) => ETAPAS_EVAL.find(e => e.id === id)!
 
@@ -33,9 +34,10 @@ export interface FilaEval {
   eventos: EventoEval[]   // del más reciente al más antiguo
   principal: EventoEval   // la última evaluación a la que vino (si no vino a ninguna, la última)
   etapa: EtapaEval
-  presupuesto: number     // valor de las prestaciones de implante presupuestadas después de evaluarse
+  presupuesto: number     // valor de lo presupuestado después de evaluarse (cualquier tratamiento)
   abonado: number
-  tratamientos: string[]  // nombres de esas prestaciones
+  tratamientos: string[]  // nombres de esas prestaciones (primero las de implante)
+  conImplante: boolean    // false: se presupuestó otro tratamiento, sin implante
 }
 
 export interface DatosEval {
@@ -50,6 +52,15 @@ export interface DatosEval {
 const fechaLocal = (d: Date) => `${fechaISO(d)} 00:00:00` // las citas se guardan en hora local sin zona
 const tiene = (texto: any, palabras: string[]) => { const t = normalizar(texto); return palabras.some(p => t.includes(normalizar(p))) }
 export const esEvaluacionImplante = (texto: any) => tiene(texto, E.palabrasImplante) && tiene(texto, E.palabrasEvaluacion)
+const esImplante = (it: any) => tiene(nombreItem(it), CONFIG.IMPLANTES.palabras)
+// Exámenes, evaluaciones y certificados no cuentan como tratamiento presupuestado
+const NO_TRATAMIENTO = E.noEsTratamiento.map(normalizar)
+const esTratamiento = (it: any) => {
+  const t = normalizar(nombreItem(it))
+  if (!t) return false
+  const palabras = t.split(/[^A-Z0-9]+/)
+  return !NO_TRATAMIENTO.some(x => (x.length <= 3 ? palabras.includes(x) : t.includes(x)))
+}
 const filtroOr = (columna: string, palabras: string[]) => palabras.map(p => `${columna}.ilike.*${normalizar(p).replace(/[^A-Z0-9]/g, '')}*`).join(',')
 const lotes = <T,>(a: T[], n = 150) => { const out: T[][] = []; for (let i = 0; i < a.length; i += n) out.push(a.slice(i, i + n)); return out }
 
@@ -145,13 +156,21 @@ export async function cargarEvaluaciones(desde: Date | null, ahora: Date): Promi
   }
 
   const ids = [...eventos.keys()]
-  const implOr = filtroOr('nombre_prestacion', CONFIG.IMPLANTES.palabras)
+  // Fecha desde la que se mira el presupuesto de cada paciente (su primera evaluación a la que vino)
+  const primeraEval = new Map<string, Date>()
+  for (const [pac, evs] of eventos) {
+    const vino = evs.filter(e => e.estado === 'vino')
+    const base = vino.length ? vino : evs
+    primeraEval.set(pac, new Date(Math.min(...base.map(e => e.fecha.getTime()))))
+  }
+  const masAntigua = ids.length ? new Date(Math.min(...[...primeraEval.values()].map(d => d.getTime()))) : ahora
+  const desdePlanes = sumarDias(masAntigua, -Math.max(E.diasPresupuestoAntes, E.diasPresupuestoImplanteAntes))
   const ahoraLocal = `${fechaISO(ahora)} ${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}:00`
-  const [itemsImpl, futuras] = await Promise.all([
-    // Prestaciones de implante (cirugía, corona sobre implante, etc.) de esos pacientes: el presupuesto y si ya empezó
+  const [itemsPac, futuras] = await Promise.all([
+    // Todo lo presupuestado a esos pacientes desde sus evaluaciones (implante u otro tratamiento)
     intentar('presupuestos', async () => (await Promise.all(lotes(ids).map(l => traerTodo(c => supabase.from('presupuesto_items')
       .select('id, nombre_prestacion, estado, progreso, precio_pactado, abonado, presupuestos!inner(id, paciente_id, aprobado, created_at, fecha_creacion)', conteo(c))
-      .in('presupuestos.paciente_id', l).or(implOr).order('id'))))).flat(), [] as any[]),
+      .in('presupuestos.paciente_id', l).gte('presupuestos.created_at', desdePlanes.toISOString()).order('id'))))).flat(), [] as any[]),
     intentar('horas agendadas', async () => (await Promise.all(lotes(ids).map(l => traerTodo(c => supabase.from('citas')
       .select('id, paciente_id, inicio, estado, motivo, profesional_id', conteo(c))
       .in('paciente_id', l).gte('inicio', ahoraLocal).not('estado', 'in', `(${CONFIG.ESTADOS_CITA_INACTIVA.join(',')})`).order('id'))))).flat(), [] as any[]),
@@ -162,12 +181,12 @@ export async function cargarEvaluaciones(desde: Date | null, ahora: Date): Promi
     const actual = proximas.get(c.paciente_id)
     if (!actual || String(c.inicio) < String(actual.inicio)) proximas.set(c.paciente_id, c)
   }
-  const implPorPaciente = new Map<string, any[]>()
-  for (const it of itemsImpl) {
+  const itemsPorPaciente = new Map<string, any[]>()
+  for (const it of itemsPac) {
     const pac = it.presupuestos?.paciente_id
-    if (!pac || itemAnulado(it) || esEvaluacionImplante(nombreItem(it))) continue
-    const a = implPorPaciente.get(pac)
-    if (a) a.push(it); else implPorPaciente.set(pac, [it])
+    if (!pac || itemAnulado(it) || !esTratamiento(it)) continue
+    const a = itemsPorPaciente.get(pac)
+    if (a) a.push(it); else itemsPorPaciente.set(pac, [it])
   }
 
   const filas: FilaEval[] = []
@@ -175,14 +194,17 @@ export async function cargarEvaluaciones(desde: Date | null, ahora: Date): Promi
     evs.sort((a, b) => b.fecha.getTime() - a.fecha.getTime())
     const vino = evs.filter(e => e.estado === 'vino')
     const principal = vino[0] || evs[0]
-    const primera = (vino.length ? vino[vino.length - 1] : principal).fecha
-    const limite = sumarDias(primera, -E.diasPresupuestoAntes)
-    const items = (implPorPaciente.get(pac) || []).filter(it => {
+    const primera = primeraEval.get(pac) || principal.fecha
+    const desdeOtro = sumarDias(primera, -E.diasPresupuestoAntes)
+    const desdeImplante = sumarDias(primera, -E.diasPresupuestoImplanteAntes)
+    const items = (itemsPorPaciente.get(pac) || []).filter(it => {
+      const desde = esImplante(it) ? desdeImplante : desdeOtro
       const f = fechaPlan(it.presupuestos)
-      return !f || f >= limite || (fechaEvolucion(it)?.getTime() || 0) >= limite.getTime()
+      return !f || f >= desde || (fechaEvolucion(it)?.getTime() || 0) >= desde.getTime()
     })
     const presupuesto = items.reduce((s, it) => s + Number(it.precio_pactado || 0), 0)
     const abonado = items.reduce((s, it) => s + Number(it.abonado || 0), 0)
+    const conImplante = items.some(esImplante)
     const etapa: EtapaEval =
       items.some(itemIniciado) ? 'en_tratamiento'
         : items.length && (abonado > 0 || items.some(it => it.presupuestos?.aprobado === true)) ? 'cerrado'
@@ -190,7 +212,8 @@ export async function cargarEvaluaciones(desde: Date | null, ahora: Date): Promi
             : vino.length ? 'sin_presupuesto'
               : evs.some(e => e.estado === 'agendada') ? 'agendada'
                 : 'no_vino'
-    filas.push({ pacienteId: pac, eventos: evs, principal, etapa, presupuesto, abonado, tratamientos: [...new Set(items.map(nombreItem))] })
+    const tratamientos = [...new Set([...items.filter(esImplante), ...items.filter(it => !esImplante(it))].map(nombreItem))]
+    filas.push({ pacienteId: pac, eventos: evs, principal, etapa, presupuesto, abonado, tratamientos, conImplante })
   }
   return { filas, profesionales, proximas, errores, cargadoEn: Date.now() }
 }
@@ -209,28 +232,31 @@ export function aOportunidad(f: FilaEval, ahora: Date): Oportunidad {
   const FIRMA = 'te saludamos de Clínica Dignidad'
   const mensajes: Record<EtapaEval, (pac: any) => string> = {
     sin_presupuesto: pac => `${hola(pac)}, ${FIRMA}. ¿Cómo has estado después de tu evaluación de implantes del ${fechaTxt}? Queremos ayudarte con el siguiente paso: te podemos explicar el presupuesto y las facilidades de pago. ¿Te acomoda que lo conversemos?`,
-    presupuestado: pac => `${hola(pac)}, ${FIRMA}. ¿Pudiste revisar tu presupuesto de implantes? Tenemos facilidades de pago y podemos agendar tu cirugía cuando te acomode. ¿Tienes alguna duda que te podamos resolver?`,
+    presupuestado: pac => `${hola(pac)}, ${FIRMA}. ¿Pudiste revisar tu presupuesto${f.conImplante ? ' de implantes' : ''}? Tenemos facilidades de pago y podemos agendar ${f.conImplante ? 'tu cirugía' : 'tu primera sesión'} cuando te acomode. ¿Tienes alguna duda que te podamos resolver?`,
     no_vino: pac => `${hola(pac)}, ${FIRMA}. Te esperábamos para tu evaluación de implantes del ${fechaTxt}. ¿Quieres que te agendemos una nueva hora? Así revisamos tu caso y te explicamos las alternativas.`,
-    cerrado: pac => `${hola(pac)}, ${FIRMA}. Tu plan de implantes ya está listo. ¿Coordinamos la fecha para comenzar?`,
+    cerrado: pac => `${hola(pac)}, ${FIRMA}. Tu plan de tratamiento ya está listo. ¿Coordinamos la fecha para comenzar?`,
     agendada: pac => `${hola(pac)}, ${FIRMA}. Te recordamos tu evaluación de implantes del ${fechaTxt}. ¡Te esperamos!`,
-    en_tratamiento: pac => `${hola(pac)}, ${FIRMA}. ¿Cómo has estado con tu tratamiento de implantes? Cualquier duda, aquí estamos.`,
+    en_tratamiento: pac => `${hola(pac)}, ${FIRMA}. ¿Cómo has estado con tu tratamiento? Cualquier duda, aquí estamos.`,
   }
   const motivos: Record<EtapaEval, string> = {
     sin_presupuesto: 'PRESENTACION PRESUPUESTO IMPLANTES', presupuestado: 'PRESENTACION PRESUPUESTO IMPLANTES',
-    no_vino: 'EVALUACION IMPLANTES', cerrado: 'CIRUGIA IMPLANTE', agendada: '', en_tratamiento: 'CONTROL IMPLANTE',
+    no_vino: 'EVALUACION IMPLANTES', cerrado: f.conImplante ? 'CIRUGIA IMPLANTE' : 'INICIO TRATAMIENTO', agendada: '', en_tratamiento: 'CONTROL',
   }
+  if (!f.conImplante) motivos.presupuestado = 'PRESENTACION PRESUPUESTO'
+  const tieneBudget = f.etapa === 'presupuestado' || f.etapa === 'cerrado' || f.etapa === 'en_tratamiento'
+  const lista = f.tratamientos.slice(0, 3).join(', ') + (f.tratamientos.length > 3 ? '…' : '')
   const recencia = dias === null ? 0 : Math.max(0, 9 - Math.floor(Math.abs(dias) / 30)) // más reciente, más arriba dentro de la etapa
   return {
     clave: `${LISTA_EVAL}:${f.pacienteId}`,
     lista: LISTA_EVAL,
     pacienteId: f.pacienteId,
-    detalle: `${p.texto || 'Evaluación de implantes'} (${ORIGEN[p.origen]})${f.eventos.length > 1 ? ` · ${f.eventos.length} registros` : ''}${f.tratamientos.length ? ` · ${f.tratamientos.slice(0, 2).join(', ')}${f.tratamientos.length > 2 ? '…' : ''}` : ''}`,
-    etapa: et.texto,
+    detalle: `${p.texto || 'Evaluación de implantes'} (${ORIGEN[p.origen]})${f.eventos.length > 1 ? ` · ${f.eventos.length} registros` : ''}${lista ? ` → presupuesto: ${lista}` : ''}`,
+    etapa: tieneBudget && !f.conImplante ? `${et.texto} · sin implante` : et.texto,
     tono: et.tono,
     prioridad: et.prioridad + recencia,
     fechaTexto: cuando,
     monto: f.presupuesto,
-    montoTexto: f.presupuesto ? (f.abonado > 0 ? `abonado ${money(f.abonado)}` : 'presupuesto de implantes') : '',
+    montoTexto: f.presupuesto ? (f.abonado > 0 ? `abonado ${money(f.abonado)}` : f.conImplante ? 'presupuesto con implante' : 'presupuesto sin implante') : '',
     doctores: [...new Set([p.profesionalId, ...f.eventos.map(e => e.profesionalId)].filter((x): x is string => !!x))],
     motivo: motivos[f.etapa],
     mensaje: mensajes[f.etapa],
