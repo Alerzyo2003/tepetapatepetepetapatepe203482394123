@@ -15,6 +15,18 @@ export const CONFIG = {
   // Estados de prestación que cuentan como realizada (mismo criterio que la ficha de tratamiento)
   ESTADOS_ITEM_REALIZADO: ['realizado', 'atendido', 'terminado', 'finalizado', 'completado'],
 
+  // ── Evaluaciones de implantes (página "Evaluaciones de implantes") ──
+  EVAL_IMPLANTES: {
+    // Una cita (por su motivo) o una prestación cargada es "evaluación de implantes" si dice implante
+    // y además alguna de las palabras de evaluación (sin tildes; basta con el comienzo de la palabra)
+    palabrasImplante: ['IMPLANT'],
+    palabrasEvaluacion: ['EVAL', 'VALORA', 'PRIMERA', 'DIAGN', 'CONSULTA', 'PLANIFICA'],
+    // Período que se muestra al abrir la página
+    mesesPorDefecto: 6,
+    // Cuenta como presupuesto de esa evaluación lo creado desde N días antes de la primera evaluación
+    diasPresupuestoAntes: 90,
+  },
+
   // ── Implantes ──
   IMPLANTES: {
     palabras: ['IMPLANT', 'FIXTURE', 'OSEOINTEGR'],
