@@ -261,6 +261,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                               {['RECEPCIONISTA', 'DENTISTA', 'ADMIN'].includes(perfil?.rol) && (
                                 <SidebarSubLink href="/mi-menu/aranceles" label="Ver Aranceles" onClick={() => setMobileMenuOpen(false)} />
                               )}
+
+                              {/* Recepcionistas y Admins: seguimiento de las evaluaciones de implantes */}
+                              {['RECEPCIONISTA', 'ADMIN'].includes(perfil?.rol) && (
+                                <SidebarSubLink href="/mi-menu/evaluaciones-implantes" label="Evaluaciones de implantes" onClick={() => setMobileMenuOpen(false)} />
+                              )}
                               
                             </div>
                           </motion.div>
