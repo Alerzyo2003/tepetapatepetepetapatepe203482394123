@@ -33,6 +33,21 @@ export const CONFIG = {
     noEsTratamiento: ['RADIOGRAF', 'RX', 'PANORAMICA', 'SCANNER', 'CBCT', 'EVAL', 'VALORA', 'CONSULTA', 'DIAGN', 'CERTIFICADO', 'PLANIFICA'],
   },
 
+  // ── Presupuestos sin aprobar (página de Mi menú) ──
+  SIN_APROBAR: {
+    // Período y monto mínimo con que se abre la página
+    mesesPorDefecto: 6,
+    montoMinimoPorDefecto: 50_000,
+    // Presupuestos que son solo exámenes o evaluaciones no se muestran (si TODAS sus prestaciones dicen esto)
+    // Palabras de 3 letras o menos tienen que aparecer como palabra completa (RX)
+    noEsTratamiento: ['RADIOGRAF', 'RX', 'PANORAMICA', 'SCANNER', 'CBCT', 'EVAL', 'VALORA', 'CONSULTA', 'DIAGN', 'CERTIFICADO', 'BITEWING', 'RETROALV'],
+    // Días en que se cargaron los datos de Dentalink: si un presupuesto tiene esa fecha y no se encontró
+    // su fecha original, va aparte en "Sistema anterior"
+    fechasCargaSistemaAnterior: ['2026-08-24'],
+    // Si el paciente aprobó o abonó otro presupuesto desde N días antes de este, se asume que eligió esa alternativa
+    diasAlternativa: 1,
+  },
+
   // ── Implantes ──
   IMPLANTES: {
     palabras: ['IMPLANT', 'FIXTURE', 'OSEOINTEGR'],
