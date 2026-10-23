@@ -16,6 +16,7 @@ import {
 import { calcularMetricas, historialMensual } from './_lib/metricas'
 import { generarDecisiones } from './_lib/decisiones'
 import { exportarExcel } from './_lib/exportar'
+import { mensajePresupuesto } from '@/lib/mensajes'
 import {
   CONFIG, MESES, MESES_LARGOS, corteEquivalente, diasHabiles, rangoMesHasta, fechaLocal, horas, limpiarNombrePrestacion, mesAnterior, money, moneyCorto,
   nombreCompleto, porcentaje, rangoMes, ratio, variacion,
@@ -310,7 +311,7 @@ export default function PanelDesempenoNegocio() {
       id: p.id, nombre: nombreCompleto(pac), monto: Number(p.total || 0), telefono: pac?.telefono,
       detalle: trat,
       chips,
-      mensaje: `Hola ${pac?.nombre || ''}, te saludamos de Clínica Dignidad. Queríamos saber si tienes alguna duda sobre tu presupuesto de ${trat}. Tenemos facilidades de pago y podemos agendar tu primera sesión cuando te acomode. ¡Quedamos atentos!`,
+      mensaje: mensajePresupuesto(pac?.nombre, p.nombre_tratamiento, ant.sistemaAnterior || !fPres ? null : Math.floor((ahora.getTime() - fPres.getTime()) / 86400000)),
     }
   })
   const contactosPorCobrar: FilaContacto[] = listas.porCobrar.slice(0, CONFIG.MAX_FILAS_LISTA).map(p => {
