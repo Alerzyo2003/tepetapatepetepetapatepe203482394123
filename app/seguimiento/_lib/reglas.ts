@@ -2,6 +2,7 @@
 import { URL_AGENDAR_ONLINE, URL_RESENA_GOOGLE } from '@/app/agenda/_components/utils'
 import { CONFIG, type IdLista } from './config'
 import type { DatosBase, DatosVivos } from './datos'
+import { mensajePresupuesto } from '@/lib/mensajes'
 import {
   aFecha, coincide, DIA_MS, diasDesde, fechaEvolucion, fechaItem, fechaLargaTexto, fechaPlan, haceTexto, inicioDelDia,
   itemAnulado, itemIniciado, itemRealizado, money, nombreItemNorm, normalizar, pieza, primerNombre, saldoItem, sumarDias, sumarMeses, textoPiezas,
@@ -277,7 +278,7 @@ function extracciones(c: Contexto): Oportunidad[] {
       doctores: unicos(sinReponer.map(h => h.item.profesional_id)),
       motivo: monto > 0 ? 'INICIO REHABILITACION' : 'EVALUACION IMPLANTE / PROTESIS',
       mensaje: monto > 0
-        ? p => `${hola(p)}, ${FIRMA} 🦷. Te escribimos porque ya tienes presupuestado el tratamiento para reponer la pieza que se extrajo. Si quieres, agendamos para comenzar y te contamos las facilidades de pago. ¿Qué días te acomodan?`
+        ? p => `${hola(p)}, ${FIRMA} 🦷. Te escribimos para hacer seguimiento al tratamiento para reponer la pieza que se extrajo. Es importante no postergarlo para cuidar tu salud oral. ¿Te acomoda que te busquemos una hora?`
         : p => `${hola(p)}, ${FIRMA} 🦷. Han pasado unos meses desde tu extracción y queríamos contarte que ya puedes recuperar esa pieza con un implante o una prótesis. Reponerla te ayuda a masticar mejor y evita que los dientes vecinos se muevan. ¿Te agendamos una evaluación?`,
     })
   }
@@ -454,7 +455,7 @@ function porCerrar(c: Contexto): Oportunidad[] {
       monto: Number(ref.total || 0), montoTexto: planes.length > 1 ? `el mayor de ${planes.length} presupuestos` : 'presupuesto',
       doctores: unicos(planes.map(p => doctorDePlan(c, p))),
       motivo: `INICIO ${trat}`.toUpperCase(),
-      mensaje: p => `${hola(p)}, ${FIRMA}. Queríamos saber si tienes alguna duda sobre tu presupuesto de ${String(trat).toLowerCase()}. Tenemos facilidades de pago y podemos agendar tu primera sesión cuando te acomode. ¡Quedamos atentos!`,
+      mensaje: p => mensajePresupuesto(primerNombre(p), trat, dias),
     })
   }
   return out
