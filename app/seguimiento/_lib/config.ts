@@ -172,7 +172,7 @@ export const LISTAS: DefLista[] = [
   {
     id: 'extracciones', grupo: 'Seguimiento clínico', titulo: 'Extracciones sin reponer', ocultarConHora: true,
     descripcion: 'Se sacaron piezas (sin contar muelas del juicio ni dientes de leche) y no se ha hecho implante ni prótesis.',
-    consejo: 'Ofrece una evaluación para implante o prótesis. Si ya está presupuestado, recuérdale el valor y las facilidades de pago.',
+    consejo: 'Ofrece una evaluación para implante o prótesis. Si ya está presupuestado, resuelve sus dudas; si pregunta por el pago, explícale las formas de pago (cuotas con tarjeta, por etapas o abonos).',
   },
   {
     id: 'ortodoncia', grupo: 'Seguimiento clínico', titulo: 'Ortodoncia sin control', ocultarConHora: true,
@@ -192,7 +192,7 @@ export const LISTAS: DefLista[] = [
   {
     id: 'por_cerrar', grupo: 'Ventas', titulo: 'Presupuestos por cerrar', ocultarConHora: true,
     descripcion: 'Presupuestos recientes que el paciente no ha aprobado ni abonado.',
-    consejo: 'Llama en los primeros 7 días. Resuelve dudas, ofrece pago en cuotas o empezar por la etapa más urgente.',
+    consejo: 'Llama en los primeros 7 días y resuelve dudas. Si pregunta por el pago: cuotas con tarjeta, por etapas o abonos (cada prestación se hace pagada completa).',
   },
   {
     id: 'evaluados', grupo: 'Ventas', titulo: 'Evaluados sin presupuesto', ocultarConHora: true,
