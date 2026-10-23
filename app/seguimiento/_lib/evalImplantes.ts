@@ -5,6 +5,7 @@
 import { supabase } from '@/lib/supabase'
 import { CONFIG, type IdLista } from './config'
 import type { Oportunidad, Tono } from './reglas'
+import { mensajePresupuesto } from '@/lib/mensajes'
 import { aFecha, fechaCorta, fechaEvolucion, fechaISO, fechaPlan, haceTexto, diasDesde, itemAnulado, itemIniciado, money, nombreItem, normalizar, primerNombre, sumarDias } from './util'
 
 const E = CONFIG.EVAL_IMPLANTES
@@ -231,8 +232,8 @@ export function aOportunidad(f: FilaEval, ahora: Date): Oportunidad {
   const hola = (pac: any) => (primerNombre(pac) ? `Hola ${primerNombre(pac)}` : 'Hola')
   const FIRMA = 'te saludamos de Clínica Dignidad'
   const mensajes: Record<EtapaEval, (pac: any) => string> = {
-    sin_presupuesto: pac => `${hola(pac)}, ${FIRMA}. ¿Cómo has estado después de tu evaluación de implantes del ${fechaTxt}? Queremos ayudarte con el siguiente paso: te podemos explicar el presupuesto y las facilidades de pago. ¿Te acomoda que lo conversemos?`,
-    presupuestado: pac => `${hola(pac)}, ${FIRMA}. ¿Pudiste revisar tu presupuesto${f.conImplante ? ' de implantes' : ''}? Tenemos facilidades de pago y podemos agendar ${f.conImplante ? 'tu cirugía' : 'tu primera sesión'} cuando te acomode. ¿Tienes alguna duda que te podamos resolver?`,
+    sin_presupuesto: pac => `${hola(pac)}, ${FIRMA}. Te escribimos para hacer seguimiento a tu evaluación de implantes del ${fechaTxt}. Es importante no postergar el tratamiento para cuidar tu salud oral. ¿Te acomoda que te busquemos una hora para ver los siguientes pasos?`,
+    presupuestado: pac => mensajePresupuesto(primerNombre(pac), f.conImplante ? 'implantes' : f.tratamientos[0], dias),
     no_vino: pac => `${hola(pac)}, ${FIRMA}. Te esperábamos para tu evaluación de implantes del ${fechaTxt}. ¿Quieres que te agendemos una nueva hora? Así revisamos tu caso y te explicamos las alternativas.`,
     cerrado: pac => `${hola(pac)}, ${FIRMA}. Tu plan de tratamiento ya está listo. ¿Coordinamos la fecha para comenzar?`,
     agendada: pac => `${hola(pac)}, ${FIRMA}. Te recordamos tu evaluación de implantes del ${fechaTxt}. ¡Te esperamos!`,
