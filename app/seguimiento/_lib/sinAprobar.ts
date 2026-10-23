@@ -4,6 +4,7 @@
 import { supabase } from '@/lib/supabase'
 import { CONFIG, type IdLista } from './config'
 import type { Oportunidad, Tono } from './reglas'
+import { mensajePresupuestoAntiguo, mensajePresupuestoReciente } from '@/lib/mensajes'
 import { aFecha, diasDesde, fechaCorta, fechaISO, haceTexto, itemAnulado, itemIniciado, money, nombreItem, normalizar, primerNombre, sumarDias, sumarMeses } from './util'
 
 const S = CONFIG.SIN_APROBAR
@@ -234,8 +235,6 @@ export function aOportunidad(f: FilaSA, ahora: Date, userDeProfesional: Map<stri
     : p.fecha ? `Presupuestado ${haceTexto(f.dias)} (${fechaCorta(p.fecha)})` : 'Sin fecha'
   const visita = f.ultimaVisita ? `vino ${haceTexto(diasDesde(f.ultimaVisita, ahora))}` : 'sin visitas en 2 años'
   const reciente = f.etapa === 'nuevo' || f.etapa === 'seguimiento'
-  const hola = (pac: any) => (primerNombre(pac) ? `Hola ${primerNombre(pac)}` : 'Hola')
-  const FIRMA = 'te saludamos de Clínica Dignidad'
   const especialista = p.especialistaId ? userDeProfesional.get(p.especialistaId) : undefined
   const recencia = f.dias === null ? 0 : Math.max(0, 9 - Math.floor(f.dias / 15))
   return {
@@ -252,7 +251,7 @@ export function aOportunidad(f: FilaSA, ahora: Date, userDeProfesional: Map<stri
     doctores: [...new Set([especialista, ...p.profesionales].filter((x): x is string => !!x))],
     motivo: 'PRESENTACION PRESUPUESTO',
     mensaje: reciente
-      ? pac => `${hola(pac)}, ${FIRMA}. Queríamos saber si tienes alguna duda sobre tu presupuesto de ${tratTexto}. Tenemos facilidades de pago y podemos agendar tu primera sesión cuando te acomode. ¡Quedamos atentos!`
-      : pac => `${hola(pac)}, ${FIRMA}. Hace un tiempo te entregamos un presupuesto de ${tratTexto}. ¿Te gustaría retomarlo? Podemos revisar tu caso nuevamente y contarte las facilidades de pago que tenemos.`,
+      ? pac => mensajePresupuestoReciente(primerNombre(pac), tratTexto)
+      : pac => mensajePresupuestoAntiguo(primerNombre(pac), tratTexto),
   }
 }
