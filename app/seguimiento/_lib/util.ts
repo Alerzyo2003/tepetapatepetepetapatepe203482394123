@@ -80,10 +80,22 @@ export function telefonoWA(tel: any): string | null {
   if (n.length === 8) return `569${n}`
   return n.length >= 10 ? n : null
 }
+let ventanaWhatsApp: Window | null = null
 export function abrirWhatsApp(tel: any, mensaje: string): boolean {
   const num = telefonoWA(tel)
   if (!num) return false
-  window.open(`https://wa.me/${num}?text=${encodeURIComponent(mensaje)}`, '_blank')
+  const texto = encodeURIComponent(mensaje)
+  if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+    window.open(`https://wa.me/${num}?text=${texto}`, '_blank')
+    return true
+  }
+  const url = `https://web.whatsapp.com/send?phone=${num}&text=${texto}`
+  if (ventanaWhatsApp && !ventanaWhatsApp.closed) {
+    ventanaWhatsApp.location.href = url // carga el nuevo chat en la misma pestaña
+    ventanaWhatsApp.focus()
+  } else {
+    ventanaWhatsApp = window.open(url, 'whatsapp-clinica')
+  }
   return true
 }
 
