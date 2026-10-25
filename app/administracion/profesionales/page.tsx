@@ -1,7 +1,9 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { crearCuentaStaff, actualizarCuentaStaff, eliminarCuentaStaff } from '../actions' 
+import { crearCuentaStaff, actualizarCuentaStaff, eliminarCuentaStaff, obtenerResumenSuscripcion } from '../actions'
+import Link from 'next/link'
+import { ROLES_STAFF, NOMBRE_ROL, type RolStaff } from '@/lib/planes'
 // 1. IMPORTAMOS CREATEPORTAL
 import { createPortal } from 'react-dom'
 import { 
@@ -20,6 +22,8 @@ export default function GestionStaffPage() {
   const [guardando, setGuardando] = useState(false)
   const [editandoUser, setEditandoUser] = useState<any>(null)
   const [busqueda, setBusqueda] = useState('')
+  // Cupos del plan por rol (null = sin plan configurado / sin límites)
+  const [cupos, setCupos] = useState<Record<RolStaff, { usados: number, limite: number | null }> | null>(null)
 
   // 2. ESTADO PARA LOS PORTALS (Asegurar que carga en el cliente)
   const [isMounted, setIsMounted] = useState(false)
@@ -60,6 +64,8 @@ export default function GestionStaffPage() {
           setStaff(staffMapeado)
       }
       if (esps) setEspecialidades(esps)
+      const resumen = await obtenerResumenSuscripcion()
+      if (!('error' in resumen) && resumen.planId) setCupos(resumen.cupos)
     } catch (error) {
       console.error("Error al cargar datos:", error)
     } finally {
@@ -134,6 +140,15 @@ export default function GestionStaffPage() {
     setForm(initialState);
   }
 
+  // Texto junto a cada rol del selector: cuántos cupos quedan en el plan
+  const etiquetaCupo = (rol: RolStaff) => {
+    const c = cupos?.[rol]
+    if (!c || c.limite === null) return ''
+    if (editandoUser?.rol === rol) return ''
+    const libres = c.limite - c.usados
+    return libres > 0 ? ` (${libres} disponible${libres === 1 ? '' : 's'})` : ' (sin cupos)'
+  }
+
   // Utilidades para los colores de las tarjetas
   const getRoleColors = (rol: string) => {
     switch (rol) {
@@ -198,6 +213,20 @@ export default function GestionStaffPage() {
             </button>
           </div>
         </header>
+
+        {cupos && (
+          <Link href="/administracion/suscripcion" className="flex flex-wrap gap-3">
+            {ROLES_STAFF.map(rol => {
+              const { usados, limite } = cupos[rol]
+              const lleno = limite !== null && usados >= limite
+              return (
+                <span key={rol} className={`px-4 py-2 rounded-full border text-[10px] font-black uppercase tracking-widest bg-white ${lleno ? 'border-red-200 text-red-500' : 'border-slate-200 text-slate-500'}`}>
+                  {NOMBRE_ROL[rol]}: {usados} / {limite ?? '∞'}
+                </span>
+              )
+            })}
+          </Link>
+        )}
 
         {cargando ? (
            <div className="flex justify-center py-20"><Loader2 className="animate-spin text-[#C9A24B]" size={40}/></div>
@@ -297,10 +326,10 @@ export default function GestionStaffPage() {
                       value={form.rol} 
                       onChange={(e) => setForm({...form, rol: e.target.value})}
                     >
-                      <option value="ASISTENTE">Asistente Dental</option>
-                      <option value="RECEPCIONISTA">Recepcionista</option>
-                      <option value="DENTISTA">Dentista / Especialista</option>
-                      <option value="ADMIN">Administrador General</option>
+                      <option value="ASISTENTE">Asistente Dental{etiquetaCupo('ASISTENTE')}</option>
+                      <option value="RECEPCIONISTA">Recepcionista{etiquetaCupo('RECEPCIONISTA')}</option>
+                      <option value="DENTISTA">Dentista / Especialista{etiquetaCupo('DENTISTA')}</option>
+                      <option value="ADMIN">Administrador General{etiquetaCupo('ADMIN')}</option>
                     </select>
                   </div>
 

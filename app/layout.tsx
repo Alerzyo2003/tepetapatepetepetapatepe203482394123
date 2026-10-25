@@ -317,6 +317,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                               
                               <GroupTitle title="Clínica" />
                               <SidebarSubLink href="/administracion/profesionales" label="Personal" onClick={() => setMobileMenuOpen(false)} />
+                              <SidebarSubLink href="/administracion/suscripcion" label="Suscripción" onClick={() => setMobileMenuOpen(false)} />
                               <SidebarSubLink href="/administracion/especialidades" label="Especialidades" onClick={() => setMobileMenuOpen(false)} />
                               <SidebarSubLink href="/administracion/convenios" label="Convenios" onClick={() => setMobileMenuOpen(false)} />
                               <SidebarSubLink href="/administracion/box" label="Gestión de Box" onClick={() => setMobileMenuOpen(false)} />

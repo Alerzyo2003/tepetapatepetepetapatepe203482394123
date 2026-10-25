@@ -2,6 +2,8 @@
 import { type CookieOptions, createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { supabaseAdmin } from '@/lib/admin'
+import { ROLES_STAFF, limiteRol, type RolStaff } from '@/lib/planes'
+import { leerSuscripcion, contarUsoPorRol, validarCupo } from '@/lib/suscripcion'
 
 const VIRTUAL_DOMAIN = '@dentapro.com' // Dominio virtual para correos de staff
 
@@ -40,6 +42,9 @@ export async function crearCuentaProfesional(formData: any) {
   try {
     await verificarAdmin()
     const { nombre, apellido, username, password, especialidad_id, rol, rut } = formData;
+    if (!ROLES_STAFF.includes(rol)) return { error: 'Rol no válido' };
+    const sinCupo = await validarCupo(rol);
+    if (sinCupo) return { error: sinCupo };
     const nombreCompleto = `${nombre} ${apellido}`;
     const cleanUsername = username.trim().toLowerCase().replace(/[^a-z0-9.]/g, "");
     const virtualEmail = `${cleanUsername}${VIRTUAL_DOMAIN}`;
@@ -76,6 +81,13 @@ export async function actualizarCuentaProfesional(id: string, userId: string, fo
   try {
     await verificarAdmin()
     const { nombre, apellido, especialidad_id, rol, rut } = formData;
+    if (!ROLES_STAFF.includes(rol)) return { error: 'Rol no válido' };
+    // Cambiar a otro rol ocupa un cupo de ese rol en el plan
+    const { data: actual } = await supabaseAdmin.from('perfiles').select('rol').eq('id', userId).maybeSingle()
+    if (actual?.rol !== rol) {
+      const sinCupo = await validarCupo(rol);
+      if (sinCupo) return { error: sinCupo };
+    }
     const nombreCompleto = `${nombre} ${apellido}`
     
     // El 'userId' es el ID de la tabla Auth de Supabase
@@ -151,6 +163,28 @@ export async function eliminarCuentaProfesional(idOrUserId: string, secondaryId?
   } catch (err: any) {
     console.error("Error en eliminarCuentaProfesional:", err.message);
     return { error: err.message }
+  }
+}
+
+// --- SUSCRIPCIÓN: plan actual y cupos usados por rol (para la página de Suscripción y la de Personal) ---
+export async function obtenerResumenSuscripcion() {
+  try {
+    await verificarAdmin()
+    const [sus, uso] = await Promise.all([leerSuscripcion(), contarUsoPorRol()])
+    const cupos = Object.fromEntries(ROLES_STAFF.map(rol => [rol, {
+      usados: uso[rol],
+      limite: sus ? limiteRol(sus.plan, rol, sus.cuposExtra) : null,
+    }])) as Record<RolStaff, { usados: number, limite: number | null }>
+    return {
+      planId: sus?.plan.id ?? null,
+      estado: sus?.estado ?? null,
+      ciclo: sus?.ciclo ?? null,
+      venceEl: sus?.venceEl ?? null,
+      cuposExtra: sus?.cuposExtra ?? {},
+      cupos,
+    }
+  } catch (err: any) {
+    return { error: err.message as string }
   }
 }
 
