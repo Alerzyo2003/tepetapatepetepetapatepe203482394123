@@ -46,6 +46,10 @@ export default function GestionStaffPage() {
 
   async function fetchData() {
     setCargando(true)
+    // Los cupos se cargan aparte para no demorar la lista (contar cuentas activas es más lento)
+    obtenerResumenSuscripcion().then(resumen => {
+      if (!('error' in resumen) && resumen.planId) setCupos(resumen.cupos)
+    })
     try {
       const { data: perfiles } = await supabase.from('perfiles').select('*').order('rol')
       const { data: esps } = await supabase.from('especialidades').select('*').order('nombre')
@@ -64,8 +68,6 @@ export default function GestionStaffPage() {
           setStaff(staffMapeado)
       }
       if (esps) setEspecialidades(esps)
-      const resumen = await obtenerResumenSuscripcion()
-      if (!('error' in resumen) && resumen.planId) setCupos(resumen.cupos)
     } catch (error) {
       console.error("Error al cargar datos:", error)
     } finally {
