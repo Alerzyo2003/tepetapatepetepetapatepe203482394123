@@ -504,7 +504,7 @@ export default function DetalleTratamientoPage() {
   }
 
   async function fetchAuxiliares() {
-    const { data: profs } = await supabase.from('profesionales').select('user_id, nombre, apellido').eq('activo', true);
+    const { data: profs } = await supabase.from('profesionales').select('id, user_id, nombre, apellido').eq('activo', true);
     if (profs) setProfesionales(profs);
     
     const { data: { session } } = await supabase.auth.getSession();
@@ -1234,12 +1234,26 @@ export default function DetalleTratamientoPage() {
 
     setGuardandoEvolucion(true);
     try {
-      const { error: evoError } = await supabase.from('evoluciones').insert([{ 
+      // La evolución guarda qué prestaciones se evolucionaron (se ven en la Ficha de Evoluciones)
+      const prestacionesEvo = acciones.filter(a => itemIds.includes(a.id)).map(a => ({
+          id: a.id, nombre: a.display_nombre, pieza: a.diente_id ?? null, cara: a.cara || null, zona: a.zona || null, avance
+      }));
+      const especialista = profesionales.find(p => p.user_id === doctorId);
+      const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idURL);
+      const evolucionBase: any = { 
           paciente_id: pacienteId, 
           profesional_id: doctorId, 
+          especialista_id: especialista?.id || null,
+          creado_por: usuarioLogueado?.id || null,
           descripcion_procedimiento: notaClinica.trim(),
           observaciones: `Evolución de ${itemIds.length} prestacion(es) al ${avance}% en presupuesto ${idURL}` 
-      }]);
+      };
+      let { error: evoError } = await supabase.from('evoluciones')
+        .insert([{ ...evolucionBase, presupuesto_id: esUuid ? idURL : null, prestaciones: prestacionesEvo }]);
+      // Si todavía no se ejecutó evoluciones_prestaciones.sql (faltan esas columnas), se guarda igual sin ellas
+      if (evoError && /prestaciones|presupuesto_id/i.test(evoError.message || '')) {
+        ({ error: evoError } = await supabase.from('evoluciones').insert([evolucionBase]));
+      }
       if (evoError) throw evoError;
 
       const nombresPrestaciones = acciones
