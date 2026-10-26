@@ -2,6 +2,7 @@
 import { Clock, Phone, Timer, Activity, CheckCircle2, Ban, Trash2, RefreshCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Profesional } from './types'
+import { variarMensaje } from '@/lib/mensajes'
 
 // ─────────────────────────────────────────────────────────────
 // Colores de marca
@@ -180,17 +181,17 @@ export const construirMensajeRecordatorio = (citasPac: any[], profesionales: Pro
     m += `Por favor confirma tu asistencia en estos enlaces:\n`;
     citasPac.forEach(c => { m += `${horaDeStr(c.inicio)} hrs: ${URL_CONFIRMAR}/${c.id}\n`; });
   }
-  return m;
+  return variarMensaje(m);
 };
 
 export const construirMensajeInasistencia = (cita: any, profesionales: Profesional[]) => {
   const fechaISO = fechaISODeStr(cita.inicio);
   const cuando = fechaISO === getLocalDateISO(new Date()) ? 'Hoy' : `El ${fechaLarga(fechaISO)}`;
-  return `Hola ${cita.pacientes?.nombre || ''}, te escribimos de Clínica Dignidad. ${cuando} te esperábamos a las ${horaDeStr(cita.inicio)} hrs para tu cita con el/la ${nombreDoctorCompleto(profesionales, cita.profesional_id)} y no pudiste asistir.\n\nEntendemos que pueden surgir imprevistos 🙂 ¿Te gustaría que te busquemos una nueva hora? Respóndenos este mensaje y te ayudamos a reagendar.\n\n¡Saludos! 🦷`;
+  return variarMensaje(`Hola ${cita.pacientes?.nombre || ''}, te escribimos de Clínica Dignidad. ${cuando} te esperábamos a las ${horaDeStr(cita.inicio)} hrs para tu cita con el/la ${nombreDoctorCompleto(profesionales, cita.profesional_id)} y no pudiste asistir.\n\nEntendemos que pueden surgir imprevistos 🙂 ¿Te gustaría que te busquemos una nueva hora? Respóndenos este mensaje y te ayudamos a reagendar.\n\n¡Saludos! 🦷`);
 };
 
 export const construirMensajeCambioHora = (cita: any, fecha: string, hora: string, profesionalId: string, profesionales: Profesional[]) =>
-  `Hola ${cita.pacientes?.nombre || ''}, te escribimos de Clínica Dignidad para informarte que tu cita fue cambiada para el día ${capitalizar(fechaLarga(fecha))} a las ${hora} hrs con el/la ${nombreDoctorCompleto(profesionales, profesionalId)}.\n\n📍 Dirección: ${DIRECCION_CLINICA}.\n\nPor favor confirma tu asistencia en el siguiente enlace:\n${URL_CONFIRMAR}/${cita.id}`;
+  variarMensaje(`Hola ${cita.pacientes?.nombre || ''}, te escribimos de Clínica Dignidad para informarte que tu cita fue cambiada para el día ${capitalizar(fechaLarga(fecha))} a las ${hora} hrs con el/la ${nombreDoctorCompleto(profesionales, profesionalId)}.\n\n📍 Dirección: ${DIRECCION_CLINICA}.\n\nPor favor confirma tu asistencia en el siguiente enlace:\n${URL_CONFIRMAR}/${cita.id}`);
 
 export const construirMensajeResena = (cita: any, profesionales?: Profesional[]) => {
   const nombre = cita.pacientes?.nombre || '';
