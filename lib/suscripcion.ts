@@ -2,8 +2,9 @@ import { supabaseAdmin } from '@/lib/admin'
 import { ROLES_STAFF, NOMBRE_ROL, obtenerPlan, limiteRol, type Plan, type RolStaff } from '@/lib/planes'
 
 // Solo para el servidor: lee la suscripción de la clínica y cuenta los usuarios activos por rol.
-// La suscripción vive en la tabla 'suscripcion' (una sola fila, ver supabase/suscripcion.sql).
-// Si la tabla aún no existe o está vacía, la app funciona sin límites (como antes).
+// Si la clínica está conectada al portal central (PORTAL_URL + PORTAL_LICENCIA), el plan viene de ahí y se
+// guarda en la tabla local 'suscripcion' como respaldo por si el portal no responde.
+// Sin portal, se usa solo la tabla local (ver supabase/suscripcion.sql). Sin tabla, la app no tiene límites.
 
 export type EstadoSuscripcion = 'PRUEBA' | 'ACTIVA' | 'VENCIDA' | 'SUSPENDIDA'
 
@@ -13,11 +14,56 @@ export interface Suscripcion {
   ciclo: 'MENSUAL' | 'ANUAL'
   venceEl: string | null
   cuposExtra: Partial<Record<RolStaff, number>>
+  cobroAutomatico: boolean
+}
+
+export const conectadaAlPortal = () => !!(process.env.PORTAL_URL && process.env.PORTAL_LICENCIA)
+
+export async function llamarPortal(ruta: string, init: RequestInit = {}) {
+  return fetch(`${process.env.PORTAL_URL!.replace(/\/$/, '')}${ruta}`, {
+    ...init,
+    headers: { Authorization: `Bearer ${process.env.PORTAL_LICENCIA}`, 'Content-Type': 'application/json', ...(init.headers || {}) },
+    cache: 'no-store',
+    signal: AbortSignal.timeout(8000),
+  })
+}
+
+// El plan se consulta al portal como máximo una vez por minuto
+let cachePortal: { fila: any; hasta: number } | null = null
+
+async function leerDelPortal(): Promise<any | null> {
+  if (!conectadaAlPortal()) return null
+  if (cachePortal && cachePortal.hasta > Date.now()) return cachePortal.fila
+  let fila: any
+  try {
+    const res = await llamarPortal('/api/licencia')
+    if (res.status === 401 || res.status === 404) {
+      // Licencia revocada o clínica desactivada en el portal
+      fila = { estado: 'SUSPENDIDA' }
+    } else if (res.ok) {
+      const d = await res.json()
+      fila = { plan: d.plan, estado: d.estado, ciclo: d.ciclo, vence_el: d.vence_el, cupos_extra: d.cupos_extra, cobro_automatico: d.cobro_automatico }
+    } else {
+      return null
+    }
+  } catch {
+    return null // portal caído: se usa el último plan guardado
+  }
+  const { cobro_automatico, ...paraGuardar } = fila
+  await supabaseAdmin.from('suscripcion').upsert({ id: 1, ...paraGuardar, actualizado_el: new Date().toISOString() })
+  const { data } = await supabaseAdmin.from('suscripcion').select('*').eq('id', 1).maybeSingle()
+  const completa = data ? { ...data, cobro_automatico: !!cobro_automatico } : null
+  cachePortal = { fila: completa, hasta: Date.now() + 60_000 }
+  return completa
 }
 
 export async function leerSuscripcion(): Promise<Suscripcion | null> {
-  const { data, error } = await supabaseAdmin.from('suscripcion').select('*').eq('id', 1).maybeSingle()
-  if (error || !data) return null
+  let data = await leerDelPortal()
+  if (!data) {
+    const local = await supabaseAdmin.from('suscripcion').select('*').eq('id', 1).maybeSingle()
+    if (local.error || !local.data) return null
+    data = local.data
+  }
   const plan = obtenerPlan(data.plan)
   if (!plan) return null
 
@@ -34,6 +80,7 @@ export async function leerSuscripcion(): Promise<Suscripcion | null> {
     ciclo: data.ciclo === 'ANUAL' ? 'ANUAL' : 'MENSUAL',
     venceEl: data.vence_el || null,
     cuposExtra: data.cupos_extra || {},
+    cobroAutomatico: !!data.cobro_automatico,
   }
 }
 

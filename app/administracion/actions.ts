@@ -3,7 +3,7 @@ import { type CookieOptions, createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { supabaseAdmin } from '@/lib/admin'
 import { ROLES_STAFF, limiteRol, type RolStaff } from '@/lib/planes'
-import { leerSuscripcion, contarUsoPorRol, validarCupo } from '@/lib/suscripcion'
+import { leerSuscripcion, contarUsoPorRol, validarCupo, conectadaAlPortal, llamarPortal } from '@/lib/suscripcion'
 
 const VIRTUAL_DOMAIN = '@dentapro.com' // Dominio virtual para correos de staff
 
@@ -181,8 +181,24 @@ export async function obtenerResumenSuscripcion() {
       ciclo: sus?.ciclo ?? null,
       venceEl: sus?.venceEl ?? null,
       cuposExtra: sus?.cuposExtra ?? {},
+      cobroAutomatico: sus?.cobroAutomatico ?? false,
+      pagosEnLinea: conectadaAlPortal(),
       cupos,
     }
+  } catch (err: any) {
+    return { error: err.message as string }
+  }
+}
+
+// Pide al portal central el link de pago de Mercado Pago para el plan elegido
+export async function iniciarPagoPlan(planId: string, ciclo: 'MENSUAL' | 'ANUAL', email: string): Promise<{ url?: string, error?: string }> {
+  try {
+    await verificarAdmin()
+    if (!conectadaAlPortal()) return { error: 'Esta clínica aún no tiene habilitado el pago en línea' }
+    const res = await llamarPortal('/api/checkout', { method: 'POST', body: JSON.stringify({ plan: planId, ciclo, email }) })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok || !data.url) return { error: data.error || 'No se pudo iniciar el pago' }
+    return { url: data.url }
   } catch (err: any) {
     return { error: err.message as string }
   }

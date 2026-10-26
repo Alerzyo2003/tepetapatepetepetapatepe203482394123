@@ -1,8 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { obtenerResumenSuscripcion } from '../actions'
+import { obtenerResumenSuscripcion, iniciarPagoPlan } from '../actions'
 import { PLANES, ROLES_STAFF, NOMBRE_ROL, PRECIO_CUPO_EXTRA, formatoCLP, conIVA, type RolStaff } from '@/lib/planes'
-import { Crown, Check, Loader2, AlertTriangle, ShieldCheck, Stethoscope, Activity, UserCircle } from 'lucide-react'
+import { Crown, Check, Loader2, AlertTriangle, ShieldCheck, Stethoscope, Activity, UserCircle, CreditCard, Mail, Clock } from 'lucide-react'
 import { toast } from 'sonner'
 
 type Resumen = Exclude<Awaited<ReturnType<typeof obtenerResumenSuscripcion>>, { error: string }>
@@ -29,8 +29,12 @@ export default function SuscripcionPage() {
   const [resumen, setResumen] = useState<Resumen | null>(null)
   const [cargando, setCargando] = useState(true)
   const [anual, setAnual] = useState(false)
+  const [email, setEmail] = useState('')
+  const [pagando, setPagando] = useState<string | null>(null)
+  const [volvioDePago, setVolvioDePago] = useState(false)
 
   useEffect(() => {
+    setVolvioDePago(new URLSearchParams(window.location.search).get('pago') === 'retorno')
     obtenerResumenSuscripcion().then(res => {
       if ('error' in res) toast.error('No se pudo cargar la suscripción: ' + res.error)
       else {
@@ -40,6 +44,16 @@ export default function SuscripcionPage() {
       setCargando(false)
     })
   }, [])
+
+  // Lleva a Mercado Pago (a través del portal central) para pagar el plan con cobro automático
+  const pagar = async (planId: string) => {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return toast.error('Ingresa el correo con el que pagarás en Mercado Pago')
+    setPagando(planId)
+    const res = await iniciarPagoPlan(planId, anual ? 'ANUAL' : 'MENSUAL', email.trim())
+    if (res.url) { window.location.href = res.url; return }
+    toast.error(res.error || 'No se pudo iniciar el pago')
+    setPagando(null)
+  }
 
   const planActual = PLANES.find(p => p.id === resumen?.planId)
   const estado = resumen?.estado ? ESTADO_LABEL[resumen.estado] : null
@@ -70,6 +84,16 @@ export default function SuscripcionPage() {
           <div className="flex justify-center py-20"><Loader2 className="animate-spin text-[#C9A24B]" size={40}/></div>
         ) : (
           <>
+            {volvioDePago && (
+              <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-3xl p-5 flex items-center gap-3 text-sm font-bold">
+                <Clock size={20}/> Recibimos tu autorización de pago. El plan se actualiza apenas Mercado Pago confirme el cobro (puede tardar unos minutos).
+              </div>
+            )}
+            {resumen?.cobroAutomatico && (
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-3xl p-5 flex items-center gap-3 text-sm font-bold">
+                <CreditCard size={20}/> Cobro automático activo con Mercado Pago: el plan se renueva solo en cada periodo.
+              </div>
+            )}
             {(resumen?.estado === 'VENCIDA' || resumen?.estado === 'SUSPENDIDA') && (
               <div className="bg-red-50 border border-red-200 text-red-700 rounded-3xl p-5 flex items-center gap-3 text-sm font-bold">
                 <AlertTriangle size={20}/> La suscripción no está vigente: no se pueden crear cuentas nuevas hasta renovarla.
@@ -121,6 +145,15 @@ export default function SuscripcionPage() {
                 </div>
               </div>
 
+              {resumen?.pagosEnLinea && (
+                <label className="bg-white border border-slate-200 rounded-full px-5 py-3 flex items-center gap-3 max-w-xl">
+                  <Mail size={16} className="text-[#C9A24B] shrink-0"/>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 shrink-0">Correo para el cobro</span>
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="pagos@tuclinica.cl"
+                    className="flex-1 min-w-0 bg-transparent outline-none text-sm font-bold text-slate-900 placeholder:text-slate-300"/>
+                </label>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
                 {PLANES.map(plan => {
                   const esActual = plan.id === planActual?.id
@@ -158,6 +191,17 @@ export default function SuscripcionPage() {
                           </li>
                         ))}
                       </ul>
+
+                      {resumen?.pagosEnLinea && (() => {
+                        const yaPagado = esActual && resumen.cobroAutomatico && (resumen.ciclo === 'ANUAL') === anual
+                        return (
+                          <button onClick={() => pagar(plan.id)} disabled={yaPagado || !!pagando}
+                            className={`mt-6 w-full py-3.5 rounded-2xl text-[11px] font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${yaPagado ? 'bg-emerald-50 text-emerald-700' : 'bg-[#0A111F] text-white hover:bg-[#1a2538] disabled:opacity-50'}`}>
+                            {pagando === plan.id ? <Loader2 size={14} className="animate-spin"/> : yaPagado ? <Check size={14}/> : <CreditCard size={14}/>}
+                            {yaPagado ? 'Pagado con cobro automático' : esActual ? 'Pagar este plan' : 'Cambiar a este plan'}
+                          </button>
+                        )
+                      })()}
                     </div>
                   )
                 })}
