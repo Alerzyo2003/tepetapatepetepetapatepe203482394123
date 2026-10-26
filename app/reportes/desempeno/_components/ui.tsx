@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import type { Decision, Nivel } from '../_lib/decisiones'
 import { abrirWhatsApp, money, moneyCorto } from '../_lib/util'
+import { variarMensaje } from '@/lib/mensajes'
 
 export function Seccion({ id, numero, titulo, subtitulo, children }: { id: string; numero: number; titulo: string; subtitulo?: string; children: ReactNode }) {
   return (
@@ -161,7 +162,7 @@ export function ListaContactos({ filas, vacio, total }: { filas: FilaContacto[];
             <div className="flex items-center gap-2 shrink-0">
               {f.monto !== undefined && <span className="text-sm font-black text-amber-600 tabular-nums">{money(f.monto)}</span>}
               <button type="button" title="Escribir por WhatsApp"
-                onClick={() => { if (!abrirWhatsApp(f.telefono, f.mensaje)) toast.error('El paciente no tiene un teléfono válido') }}
+                onClick={() => { if (!abrirWhatsApp(f.telefono, variarMensaje(f.mensaje))) toast.error('El paciente no tiene un teléfono válido') }}
                 className="rounded-lg p-2 text-emerald-600 hover:bg-emerald-50 disabled:opacity-30" disabled={!f.telefono}>
                 <MessageCircle size={16} />
               </button>
