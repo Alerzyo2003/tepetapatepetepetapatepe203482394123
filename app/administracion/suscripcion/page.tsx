@@ -47,7 +47,7 @@ export default function SuscripcionPage() {
 
   // Lleva a Mercado Pago (a través del portal central) para pagar el plan con cobro automático
   const pagar = async (planId: string) => {
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return toast.error('Ingresa el correo con el que pagarás en Mercado Pago')
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return toast.error('Ingresa el correo de tu cuenta de Mercado Pago')
     setPagando(planId)
     const res = await iniciarPagoPlan(planId, anual ? 'ANUAL' : 'MENSUAL', email.trim())
     if (res.url) { window.location.href = res.url; return }
@@ -148,8 +148,8 @@ export default function SuscripcionPage() {
               {resumen?.pagosEnLinea && (
                 <label className="bg-white border border-slate-200 rounded-full px-5 py-3 flex items-center gap-3 max-w-xl">
                   <Mail size={16} className="text-[#C9A24B] shrink-0"/>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 shrink-0">Correo para el cobro</span>
-                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="pagos@tuclinica.cl"
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 shrink-0">Correo de tu cuenta Mercado Pago</span>
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="el correo con que entras a Mercado Pago"
                     className="flex-1 min-w-0 bg-transparent outline-none text-sm font-bold text-slate-900 placeholder:text-slate-300"/>
                 </label>
               )}
