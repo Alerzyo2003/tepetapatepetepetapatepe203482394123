@@ -18,6 +18,7 @@ import { calcularOcupacion } from './_lib/agenda'
 import { contactoVigente, fechaVolver, indexarContactos, textoResultado, ultimoContacto, type Contacto } from './_lib/contactos'
 import { exportarSeguimiento } from './_lib/exportar'
 import { abrirWhatsApp, aFecha, fechaConHora, fechaISO, money, nombrePaciente, normalizar, telefonoWA } from './_lib/util'
+import { variarMensaje } from '@/lib/mensajes'
 import Fila from './_components/Fila'
 import ModalResultado from './_components/ModalResultado'
 import PanelAgenda from './_components/PanelAgenda'
@@ -207,7 +208,7 @@ export default function SeguimientoPage() {
 
   const enviarWhatsApp = (f: Oportunidad) => {
     const p = pacientes[f.pacienteId]
-    if (!abrirWhatsApp(p?.telefono, f.mensaje(p))) { toast.error('El paciente no tiene un teléfono válido'); return }
+    if (!abrirWhatsApp(p?.telefono, variarMensaje(f.mensaje(p)))) { toast.error('El paciente no tiene un teléfono válido'); return }
     setEnCurso(f)
   }
   const confirmarEnvio = (ok: boolean) => {
