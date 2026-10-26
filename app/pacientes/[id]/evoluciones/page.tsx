@@ -8,10 +8,57 @@ import {
   Stethoscope, Plus, Save, X, Loader2, 
   Clipboard, Trash2, Edit3, 
   Printer, EyeOff, User, Calendar, Clock,
-  Bold, Italic, Underline, Highlighter, Eraser, List
+  Bold, Italic, Underline, Highlighter, Eraser, List, CheckCircle2
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
+
+// ── Prestaciones de cada evolución ──
+// Las evoluciones hechas desde el presupuesto guardan la lista en la columna "prestaciones".
+// Las anteriores (o si esa columna no existe) se reconstruyen con la fecha de evolución (EvoFec)
+// que queda en cada prestación del presupuesto indicado en "observaciones".
+type PrestacionEvo = { id?: string; nombre: string; pieza?: number | string | null; cara?: string | null; zona?: string | null; avance?: number | null }
+const RE_AUTO = /^Evolución de (\d+) prestacion\(es\) al (\d+)% en presupuesto (\S+)/i
+const RE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const metaItem = (item: any, clave: string) => {
+  const m = `${item?.nombre_prestacion || ''} | ${item?.observacion || ''}`.match(new RegExp(`${clave}:\\s*([^|]+)`))
+  return m ? m[1].trim() : null
+}
+const fechaMs = (v: any) => { const t = new Date(String(v || '').replace(' ', 'T')).getTime(); return Number.isNaN(t) ? null : t }
+
+async function reconstruirPrestaciones(evs: any[]): Promise<Record<string, PrestacionEvo[]>> {
+  const pendientes = evs.filter(ev => !(Array.isArray(ev.prestaciones) && ev.prestaciones.length) && RE_AUTO.test(ev.observaciones || ''))
+  const presupuestos = [...new Set(pendientes.map(ev => (ev.observaciones || '').match(RE_AUTO)![3]).filter(id => RE_UUID.test(id)))]
+  if (!presupuestos.length) return {}
+  const { data: items, error } = await supabase.from('presupuesto_items')
+    .select('id, presupuesto_id, nombre_prestacion, observacion, diente_id, cara, zona')
+    .in('presupuesto_id', presupuestos)
+  if (error || !items) return {}
+  const out: Record<string, PrestacionEvo[]> = {}
+  const VENTANA = 15 * 60 * 1000 // la prestación se marca en el mismo momento en que se guarda la evolución
+  for (const item of items) {
+    const evo = fechaMs(metaItem(item, 'EvoFec'))
+    if (evo === null) continue
+    const evoDoc = metaItem(item, 'EvoDoc')
+    let mejor: any = null, dif = Infinity
+    for (const ev of pendientes) {
+      const m = (ev.observaciones || '').match(RE_AUTO)!
+      if (m[3] !== item.presupuesto_id) continue
+      if (evoDoc && ev.profesional_id && evoDoc !== ev.profesional_id) continue
+      const d = Math.abs((fechaMs(ev.fecha_registro) ?? Infinity) - evo)
+      if (d < dif) { dif = d; mejor = ev }
+    }
+    if (!mejor || dif > VENTANA) continue
+    const avance = Number((mejor.observaciones || '').match(RE_AUTO)![2])
+    ;(out[mejor.id] ||= []).push({
+      id: item.id, nombre: String(item.nombre_prestacion || '').split('|')[0].trim() || 'Prestación',
+      pieza: item.diente_id ?? null, cara: item.cara || metaItem(item, 'Cara'), zona: item.zona || metaItem(item, 'Zona'), avance,
+    })
+  }
+  return out
+}
+const textoPrestacion = (p: PrestacionEvo) =>
+  `${p.nombre}${p.pieza ? ` · pieza ${p.pieza}` : ''}${p.cara ? ` · cara ${p.cara}` : ''}${!p.pieza && p.zona ? ` · ${p.zona}` : ''}${p.avance != null ? ` · ${p.avance}%` : ''}`
 
 export default function EvolucionesPage() {
   const { id: paciente_id } = useParams()
@@ -24,6 +71,8 @@ export default function EvolucionesPage() {
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
   
+  const [profsPorUser, setProfsPorUser] = useState<Record<string, any>>({})
+  const [reconstruidas, setReconstruidas] = useState<Record<string, PrestacionEvo[]>>({})
   const [verAnuladas, setVerAnuladas] = useState(false)
   const [soloMias, setSoloMisEvoluciones] = useState(false)
   const [guardando, setGuardando] = useState(false)
@@ -85,7 +134,13 @@ export default function EvolucionesPage() {
         .eq('paciente_id', paciente_id)
         .order('fecha_registro', { ascending: false })
       
-      if (!error) setEvoluciones(data || [])
+      if (!error) {
+        setEvoluciones(data || [])
+        // Doctor de las evoluciones que no tienen especialista (las guardadas desde el presupuesto)
+        const { data: profs } = await supabase.from('profesionales').select('id, user_id, nombre, apellido')
+        if (profs) setProfsPorUser(Object.fromEntries(profs.filter((p: any) => p.user_id).map((p: any) => [p.user_id, p])))
+        setReconstruidas(await reconstruirPrestaciones(data || []))
+      }
     } catch (err) {
       console.error(err)
     } finally {
@@ -233,10 +288,12 @@ export default function EvolucionesPage() {
   
   const imprimirEvolucion = (ev: any) => {
     // [código de imprimirEvolucion original...]
-    const prof = ev.profesionales;
-    const creador = ev.creador_nombre;
     const descripcion = ev.descripcion_limpia;
-    const responsable = prof ? `Dr/a. ${prof.nombre} ${prof.apellido}` : creador || 'Sistema';
+    const responsable = ev.responsable || 'Sistema';
+    const escapar = (t: string) => t.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
+    const prestacionesHtml = (ev.prestaciones_evo || []).length
+      ? `<p><strong>Prestaciones evolucionadas:</strong></p><ul>${ev.prestaciones_evo.map((p: PrestacionEvo) => `<li>${escapar(textoPrestacion(p))}</li>`).join('')}</ul>`
+      : ev.resumen_auto ? `<p><strong>Prestaciones evolucionadas:</strong> ${ev.resumen_auto.cantidad} al ${ev.resumen_auto.avance}%</p>` : '';
 
     const isHtml = /<[a-z][\s\S]*>/i.test(descripcion);
     const contenidoImprimir = isHtml ? descripcion : descripcion.replace(/\n/g, '<br/>');
@@ -262,6 +319,7 @@ export default function EvolucionesPage() {
           <p><strong>Responsable:</strong> ${responsable}</p>
           <hr/>
           <div style="margin-top: 20px; line-height: 1.6;">${contenidoImprimir}</div>
+          ${prestacionesHtml ? `<hr/><div style="margin-top: 12px;">${prestacionesHtml}</div>` : ''}
         </body>
       </html>
     `);
@@ -290,7 +348,18 @@ export default function EvolucionesPage() {
                .replace(/^\[REGISTRADO POR: .*?\]\n\n/, '');
         }
     }
-    return { ...ev, creador_nombre: creadorNombre, descripcion_limpia: descripcionLimpia };
+    const auto = (ev.observaciones || '').match(RE_AUTO);
+    const prestacionesEvo: PrestacionEvo[] = Array.isArray(ev.prestaciones) && ev.prestaciones.length ? ev.prestaciones : (reconstruidas[ev.id] || []);
+    const profPorUser = !ev.profesionales && ev.profesional_id ? profsPorUser[ev.profesional_id] : null;
+    return {
+      ...ev, creador_nombre: creadorNombre, descripcion_limpia: descripcionLimpia,
+      prestaciones_evo: prestacionesEvo,
+      resumen_auto: auto ? { cantidad: Number(auto[1]), avance: Number(auto[2]) } : null,
+      notas_internas: auto ? '' : ev.observaciones,
+      responsable: ev.profesionales ? `Dr/a. ${ev.profesionales.nombre} ${ev.profesionales.apellido}`
+        : profPorUser ? `Dr/a. ${profPorUser.nombre} ${profPorUser.apellido}` : creadorNombre || 'Sistema',
+      inicial: ev.profesionales?.nombre?.[0] || profPorUser?.nombre?.[0] || creadorNombre?.split(' ').map((n: string) => n[0]).join('') || 'S',
+    };
   });
 
   const evolucionesFiltradas = evolucionesProcesadas.filter(ev => {
@@ -362,8 +431,6 @@ export default function EvolucionesPage() {
             </motion.div>
           ) : (
             evolucionesFiltradas.map((ev) => {
-              const prof = ev.profesionales as any;
-              const creador = ev.creador_nombre;
               const esAdmin = sessionUserProfile?.rol === 'ADMIN';
               const esCreadorOriginal = ev.creado_por === sessionUser?.id;
               const puedeModificar = true;
@@ -413,10 +480,29 @@ export default function EvolucionesPage() {
                         dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(ev.descripcion_limpia || '') }}
                     />
 
-                    {ev.observaciones && puedeModificar && (
+                    {(ev.prestaciones_evo.length > 0 || ev.resumen_auto) && (
+                      <div className="mt-4 pt-4 border-t border-slate-200/60">
+                        <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest block mb-2">Prestaciones evolucionadas</span>
+                        {ev.prestaciones_evo.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {ev.prestaciones_evo.map((p: PrestacionEvo, i: number) => (
+                              <span key={p.id || i} className="inline-flex items-center gap-1.5 text-[10px] font-bold text-slate-700 bg-white border border-slate-200 rounded-lg px-2.5 py-1 shadow-sm">
+                                <CheckCircle2 size={12} className="text-emerald-500 shrink-0" /> {textoPrestacion(p)}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500">
+                            {ev.resumen_auto.cantidad} {ev.resumen_auto.cantidad === 1 ? 'prestación' : 'prestaciones'} al {ev.resumen_auto.avance}% ({ev.resumen_auto.cantidad === 1 ? 'se volvió' : 'se volvieron'} a evolucionar después, por eso no se muestra el detalle)
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {ev.notas_internas && puedeModificar && (
                       <div className="mt-4 pt-4 border-t border-slate-200/60">
                         <span className="text-[9px] font-black text-amber-500 uppercase tracking-widest block mb-1">Notas Internas:</span>
-                        <p className="text-xs text-slate-500 italic">{ev.observaciones}</p>
+                        <p className="text-xs text-slate-500 italic">{ev.notas_internas}</p>
                       </div>
                     )}
                   </div>
@@ -425,10 +511,10 @@ export default function EvolucionesPage() {
                     <span className="text-[7px] font-black text-slate-300 uppercase tracking-[0.2em] block mb-1">Responsable Clínico</span>
                     <div className="flex items-center gap-2 bg-slate-100 px-3.5 py-1.5 rounded-full border border-slate-200/60">
                         <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-[8px] text-white font-black uppercase shadow-sm">
-                          {prof?.nombre?.[0] || creador?.split(' ').map((n: string) => n[0]).join('') || 'S'}
+                          {ev.inicial}
                         </div>
                         <span className="text-[9px] font-black text-slate-700 uppercase italic">
-                          {prof ? `Dr/a. ${prof.nombre} ${prof.apellido}` : creador || 'Sistema'}
+                          {ev.responsable}
                         </span>
                     </div>
                   </div>
