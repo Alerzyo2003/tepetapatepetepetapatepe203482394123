@@ -834,7 +834,11 @@ export default function DetalleTratamientoPage() {
             detalles: `Canceló la prestación "${item.display_nombre}" (ID: ${item.id}). ${movido > 0 ? `Se movieron $${movido.toLocaleString('es-CL')} a saldo a favor.` : ''}`
         }]);
 
-        setAcciones(prev => prev.map(a => a.id === item.id ? { ...a, estado: 'cancelada', abonado: 0 } : a));
+        // Lo que queda abonado en la prestación (normalmente 0) se lee de la base para no dejar montos viejos en pantalla
+        const { data: itemDb } = await supabase.from('presupuesto_items').select('abonado').eq('id', item.id).maybeSingle();
+        const abonadoQueda = Number(itemDb?.abonado || 0);
+        setAcciones(prev => prev.map(a => a.id === item.id ? { ...a, estado: 'cancelada', abonado: abonadoQueda, display_abonado: abonadoQueda, display_saldo: Number(a.display_pactado || 0) - abonadoQueda } : a));
+        if (movido > 0) refrescarSaldoPaciente();
         toast.success("Prestación anulada correctamente.");
 
     } catch (err: any) { toast.error("Error al anular la prestación: " + err.message); } finally { setProcesandoId(null); }
@@ -850,6 +854,12 @@ export default function DetalleTratamientoPage() {
     if (!error) { setOdontogramaEstado(nuevoEstado); toast.info("Eliminado"); }
   };
 
+  const refrescarSaldoPaciente = async () => {
+    if (!presupuestoData?.paciente_id) return;
+    const { data } = await supabase.from('pacientes').select('saldo_a_favor').eq('id', presupuestoData.paciente_id).maybeSingle();
+    if (data) setPacienteInfo((prev: any) => prev ? { ...prev, saldo_a_favor: data.saldo_a_favor } : prev);
+  };
+
   const eliminarPrestacionLocal = async (id: string, tempId: string) => {
     const item = acciones.find(a => a.id === id || a.tempId === tempId);
     if (!item) return;
@@ -857,8 +867,85 @@ export default function DetalleTratamientoPage() {
     if (item.avance > 0 || item.progreso > 0) {
       return toast.error("No se puede eliminar un tratamiento que ya ha sido iniciado.");
     }
-    if (Number(item.abonado || item.display_abonado || 0) > 0) {
-      return toast.error("Esta prestación tiene pagos.", { description: "Usa “Anular” para cancelarla: sus pagos pasan al saldo a favor del paciente." });
+
+    // Prestación guardada en el presupuesto: si tiene pagos, primero pasan al saldo a favor del paciente
+    // (igual que "Anular") y después se borra.
+    if (id && item.presupuesto_id) {
+        const pesos = (n: number) => `$${n.toLocaleString('es-CL')}`;
+        let movido = 0;
+        setProcesandoId(id);
+        try {
+            const [{ data: pagosItem, error: errPagos }, { data: itemDb, error: errItem }] = await Promise.all([
+                supabase.from('pagos').select('id, monto, estado').eq('item_id', id),
+                supabase.from('presupuesto_items').select('abonado').eq('id', id).maybeSingle(),
+            ]);
+            if (errPagos) throw errPagos;
+            if (errItem) throw errItem;
+            const pagos = pagosItem || [];
+            const montoPagos = pagos.filter((p: any) => p.estado !== 'Anulado').reduce((s: number, p: any) => s + Number(p.monto || 0), 0);
+            const abonoSinPago = Math.max(0, Number(itemDb?.abonado || 0) - montoPagos);
+
+            const mensaje = `¿Estás seguro de que quieres eliminar la prestación "${item.display_nombre}"? Esta acción no se puede deshacer.` +
+                (montoPagos > 0 ? `\n\nTiene ${pesos(montoPagos)} en pagos: ese dinero pasará a la Billetera Virtual (Saldo a Favor) del paciente y seguirá contado en la caja del día en que se cobró.` : '') +
+                (abonoSinPago > 0 ? `\n\nAdemás figura con ${pesos(abonoSinPago)} abonados que no tienen un pago registrado en el sistema (por ejemplo, abonos traídos de Dentalink). Ese monto NO pasa al saldo a favor: se quita del presupuesto junto con la prestación.` : '');
+            if (!window.confirm(mensaje)) return;
+
+            // 1) Pagos vigentes → saldo a favor del paciente (misma función que usa "Anular")
+            if (montoPagos > 0) {
+                const { data: resultado, error: errCancelar } = await supabase.rpc('cancelar_prestacion', {
+                    p_item_id: String(id),
+                    p_motivo: `Prestación "${item.display_nombre}" eliminada`,
+                });
+                if (errCancelar) throw errCancelar;
+                movido = Number((resultado as any)?.pasado_a_saldo || 0);
+            }
+
+            // 2) Los pagos anulados siguen apuntando a la prestación y la base no deja borrarla: se sueltan
+            if (pagos.length > 0) {
+                const { error: errSoltar } = await supabase.from('pagos').update({ item_id: null }).eq('item_id', id);
+                if (errSoltar) throw errSoltar;
+            }
+
+            // 3) Borrar (se pide de vuelta la fila para confirmar que de verdad se borró)
+            const { data: borrados, error } = await supabase.from('presupuesto_items').delete().eq('id', id).select('id');
+            if (error) throw error;
+            if (!borrados || borrados.length === 0) throw new Error('Tu usuario no tiene permiso para eliminar prestaciones.');
+
+            // 4) El abono sin pago registrado se descuenta del total abonado del presupuesto
+            if (abonoSinPago > 0) {
+                const { data: pres } = await supabase.from('presupuestos').select('total_abonado').eq('id', item.presupuesto_id).maybeSingle();
+                if (pres) await supabase.from('presupuestos').update({ total_abonado: Math.max(0, Number(pres.total_abonado || 0) - abonoSinPago) }).eq('id', item.presupuesto_id);
+            }
+
+            setAcciones(prev => prev.filter(a => a.id !== id));
+
+            await supabase.from('auditoria_clinica').insert([{
+                usuario_id: usuarioLogueado?.id,
+                accion: 'DELETE / PRESTACIÓN',
+                tabla: movido > 0 ? 'presupuesto_items, pagos, pacientes' : 'presupuesto_items',
+                detalles: `Eliminó la prestación "${item.display_nombre}" (ID: ${item.id}) del presupuesto #${idURL} del paciente ${pacienteInfo?.nombre} ${pacienteInfo?.apellido}.` +
+                    (movido > 0 ? ` Se movieron ${pesos(movido)} a saldo a favor.` : '') +
+                    (abonoSinPago > 0 ? ` Se quitaron ${pesos(abonoSinPago)} abonados sin pago registrado.` : '')
+            }]);
+
+            if (movido > 0) {
+                refrescarSaldoPaciente();
+                toast.success("Prestación eliminada.", { description: `${pesos(movido)} pasaron al saldo a favor del paciente.` });
+            } else {
+                toast.info("Acción eliminada del presupuesto.");
+            }
+        } catch (err: any) {
+            const yaAnulada = movido > 0 ? ` La prestación quedó anulada y sus pagos (${pesos(movido)}) ya están en el saldo a favor.` : '';
+            if (err?.code === '23503') {
+                toast.error("No se pudo eliminar la prestación.", { description: `Está incluida en una liquidación de un doctor u otro registro que la usa.${yaAnulada}` });
+            } else {
+                toast.error("Error al eliminar la prestación.", { description: `${err?.message || ''}${yaAnulada}` });
+            }
+            if (movido > 0) { refrescarSaldoPaciente(); fetchDatosFinales(); }
+        } finally {
+            setProcesandoId(null);
+        }
+        return;
     }
 
     if (!window.confirm(`¿Estás seguro de que quieres eliminar la prestación "${item.display_nombre}"? Esta acción no se puede deshacer.`)) {
@@ -866,26 +953,8 @@ export default function DetalleTratamientoPage() {
     }
 
     if (id) {
-        if (item.presupuesto_id) {
-            const { error } = await supabase.from('presupuesto_items').delete().eq('id', id);
-            if (!error) { 
-                setAcciones(prev => prev.filter(a => a.id !== id)); 
-                
-                await supabase.from('auditoria_clinica').insert([{
-                    usuario_id: usuarioLogueado?.id,
-                    accion: 'DELETE / PRESTACIÓN',
-                    tabla: 'presupuesto_items',
-                    detalles: `Eliminó la prestación "${item.display_nombre}" (ID: ${item.id}) del presupuesto #${idURL} del paciente ${pacienteInfo?.nombre} ${pacienteInfo?.apellido}.`
-                }]);
-
-                toast.info("Acción eliminada del presupuesto."); 
-            } else {
-                toast.error("Error al eliminar la prestación.");
-            }
-        } else {
-            setAcciones(prev => prev.filter(a => a.tempId !== tempId)); 
-            toast.info("Acción importada quitada de la vista (no se elimina de la base de datos de origen).");
-        }
+        setAcciones(prev => prev.filter(a => a.tempId !== tempId));
+        toast.info("Acción importada quitada de la vista (no se elimina de la base de datos de origen).");
     } else {
         setAcciones(prev => prev.filter(a => a.tempId !== tempId)); toast.info("Acción quitada de la vista");
     }
@@ -2231,7 +2300,7 @@ Presupuestado: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr. ${pr
                                         <Ban size={14}/>
                                       </button>
                                     )}
-                                    <button onClick={() => eliminarPrestacionLocal(item.id, item.tempId)} disabled={item.avance > 0} className="text-red-400 hover:text-red-600 transition-colors p-2 bg-white rounded-lg border border-slate-100 shadow-sm disabled:text-slate-300 disabled:cursor-not-allowed disabled:hover:bg-white" title={item.avance > 0 ? "No se puede eliminar un tratamiento iniciado" : "Eliminar Prestación"}>
+                                    <button onClick={() => eliminarPrestacionLocal(item.id, item.tempId)} disabled={item.avance > 0} className="text-red-400 hover:text-red-600 transition-colors p-2 bg-white rounded-lg border border-slate-100 shadow-sm disabled:text-slate-300 disabled:cursor-not-allowed disabled:hover:bg-white" title={item.avance > 0 ? "No se puede eliminar un tratamiento iniciado" : Number(item.display_abonado || 0) > 0 ? "Eliminar Prestación (sus pagos pasan a Saldo a Favor)" : "Eliminar Prestación"}>
                                       <Trash2 size={14}/>
                                     </button>
                                   </>
