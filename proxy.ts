@@ -61,8 +61,14 @@ export async function proxy(request: NextRequest) {
   }
 
   // 3. Protección de administración (Solo ADMIN)
+  // El rol se lee de app_metadata, que solo puede cambiar el servidor (lo sincroniza un trigger desde 'perfiles').
+  // user_metadata NO sirve para esto: el propio usuario puede editarlo desde el navegador.
   if (claims && pathname.startsWith('/administracion')) {
-    const userRol = (claims.user_metadata as any)?.rol;
+    let userRol = (claims.app_metadata as any)?.rol;
+    if (!userRol) {
+      const { data: perfil } = await supabase.from('perfiles').select('rol').eq('id', claims.sub).maybeSingle()
+      userRol = perfil?.rol
+    }
 
     if (userRol !== 'ADMIN') {
       // Sin permiso: a la agenda (el layout muestra el aviso)

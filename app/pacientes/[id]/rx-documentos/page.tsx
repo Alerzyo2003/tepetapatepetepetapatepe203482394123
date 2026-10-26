@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { firmarUrls, borrarArchivos } from '@/lib/archivos'
 import {
   FileText, Upload, Trash2, Loader2,
   X, Save, Calendar, FileType, Maximize2,
@@ -63,14 +64,8 @@ export default function DocumentosPage() {
 
   // Firma en una sola llamada las URLs del archivo y de su miniatura
   async function conUrlsFirmadas(docs: any[]) {
-    const rutas = Array.from(new Set(docs.flatMap(d => [d.url_archivo, d.url_miniatura])
-      .filter((r: any) => r && !String(r).startsWith('http'))))
-    const firmadas: Record<string, string> = {}
-    if (rutas.length) {
-      const { data: urls } = await supabase.storage.from('pacientes_docs').createSignedUrls(rutas as string[], 3600)
-      ;(urls || []).forEach((u: any) => { if (u.path && u.signedUrl) firmadas[u.path] = u.signedUrl })
-    }
-    const url = (r: any) => (!r ? null : String(r).startsWith('http') ? r : firmadas[r] || null)
+    const firmadas = await firmarUrls(docs.flatMap(d => [d.url_archivo, d.url_miniatura]))
+    const url = (r: any) => (r ? firmadas[r] || null : null)
     return docs.map(d => ({ ...d, signedUrl: url(d.url_archivo), miniUrl: url(d.url_miniatura) }))
   }
 
@@ -83,10 +78,7 @@ export default function DocumentosPage() {
 
   // Borra del almacenamiento los archivos de documentos eliminados (si falla, no bloquea)
   async function borrarDelStorage(docs: any[]) {
-    const rutas = docs.flatMap(d => [d.url_archivo, d.url_miniatura]).filter((r: any) => r && !String(r).startsWith('http'))
-    if (!rutas.length) return
-    const { error } = await supabase.storage.from('pacientes_docs').remove(rutas)
-    if (error) console.warn('No se pudieron borrar los archivos del almacenamiento:', error.message)
+    await borrarArchivos(docs.flatMap(d => [d.url_archivo, d.url_miniatura]))
   }
 
   async function fetchDocumentos() {

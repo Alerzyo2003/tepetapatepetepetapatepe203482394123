@@ -89,7 +89,7 @@ export default function GestionStaffPage() {
 
     if (esNuevo) {
         if (!form.username.trim()) return toast.error("El usuario es obligatorio");
-        if (!form.password.trim()) return toast.error("La contraseña es obligatoria");
+        if (form.password.length < 8) return toast.error("La contraseña debe tener al menos 8 caracteres");
         const usernameRegex = /^[a-z0-9.]+$/;
         if (!usernameRegex.test(form.username)) {
             return toast.error("Usuario: solo minúsculas, números y puntos.");
@@ -352,7 +352,7 @@ export default function GestionStaffPage() {
                     <div className="space-y-4 bg-[#FBF8F2] p-6 rounded-3xl border border-[#C9A24B]/20 shadow-sm text-left">
                       <p className="text-[10px] font-black text-[#8A6D2F] uppercase tracking-widest flex items-center gap-2 mb-1 text-left"><KeyRound size={12}/> Credenciales de Acceso</p>
                       <Input label="Usuario (Para ingresar)" value={form.username} icon={<AtSign size={14}/>} onChange={(v:any) => setForm({...form, username: v.toLowerCase().replace(/\s+/g, '')})} />
-                      <Input label="Contraseña" value={form.password} type="password" icon={<Lock size={14}/>} onChange={(v:any) => setForm({...form, password: v})} />
+                      <Input label="Contraseña (mínimo 8 caracteres)" value={form.password} type="password" icon={<Lock size={14}/>} onChange={(v:any) => setForm({...form, password: v})} />
                     </div>
                   )}
 

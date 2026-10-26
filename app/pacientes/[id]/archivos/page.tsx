@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
+import { BUCKET_PACIENTES, firmarUrls, borrarArchivos } from '@/lib/archivos'
 import { 
   UploadCloud, ImageIcon, FileText, Trash2, 
   ExternalLink, Loader2, Plus, X, Search,
@@ -84,7 +85,9 @@ export default function PacienteArchivosPage() {
         .order('fecha_subida', { ascending: false })
       
       if (error) throw error
-      setArchivos(data || [])
+      // Los archivos son privados: se muestran con links temporales
+      const firmadas = await firmarUrls((data || []).map(d => d.url_archivo))
+      setArchivos((data || []).map(d => ({ ...d, verUrl: firmadas[d.url_archivo] || null })))
     } catch (err) {
       console.error(err)
     } finally {
@@ -111,19 +114,16 @@ export default function PacienteArchivosPage() {
       const fileExt = file.name.split('.').pop()
       const fileName = `${id}/${Date.now()}.${fileExt}`
       const { error: storageError } = await supabase.storage
-        .from('documentos_pacientes')
+        .from(BUCKET_PACIENTES)
         .upload(fileName, file)
 
       if (storageError) throw storageError
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('documentos_pacientes')
-        .getPublicUrl(fileName)
-
+      // Se guarda la ruta interna (no un link público): el archivo solo se ve con sesión iniciada
       const nuevoArchivoData = {
         paciente_id: id,
         nombre_archivo: file.name,
-        url_archivo: publicUrl,
+        url_archivo: fileName,
         tipo_archivo: file.type,
         titulo: file.name.split('.')[0].toUpperCase(),
         descripcion: ''
@@ -158,10 +158,7 @@ export default function PacienteArchivosPage() {
     }
 
     try {
-      const path = archivo.url_archivo.split('documentos_pacientes/').pop()
-      if (path) {
-        await supabase.storage.from('documentos_pacientes').remove([path])
-      }
+      await borrarArchivos([archivo.url_archivo, archivo.url_miniatura])
       await supabase.from('documentos_pacientes').delete().eq('id', archivo.id)
       
       // REGISTRAR AUDITORÍA AL ELIMINAR
@@ -285,11 +282,11 @@ export default function PacienteArchivosPage() {
                 <div className="aspect-video bg-slate-50 relative overflow-hidden flex items-center justify-center shrink-0">
                   {(arc.tipo_archivo || '').includes('image') ? (
                     <img 
-                      src={arc.url_archivo} 
+                      src={arc.verUrl || undefined} 
                       alt={arc.titulo} 
                       referrerPolicy="no-referrer"
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 cursor-pointer"
-                      onClick={() => setModalImagen(arc.url_archivo)}
+                      onClick={() => setModalImagen(arc.verUrl)}
                     />
                   ) : (
                     <div className="flex flex-col items-center gap-2">
@@ -301,11 +298,11 @@ export default function PacienteArchivosPage() {
                   {/* OVERLAY ACTIONS */}
                   <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-sm px-2">
                     {(arc.tipo_archivo || '').includes('image') && (
-                      <button onClick={() => setModalImagen(arc.url_archivo)} className="p-2.5 bg-white rounded-xl text-slate-900 hover:bg-blue-600 hover:text-white transition-all" title="Ver imagen">
+                      <button onClick={() => setModalImagen(arc.verUrl)} className="p-2.5 bg-white rounded-xl text-slate-900 hover:bg-blue-600 hover:text-white transition-all" title="Ver imagen">
                         <Eye size={16} />
                       </button>
                     )}
-                    <a href={arc.url_archivo} target="_blank" rel="noopener noreferrer" className="p-2.5 bg-white rounded-xl text-slate-900 hover:bg-blue-600 hover:text-white transition-all" title="Descargar">
+                    <a href={arc.verUrl || undefined} target="_blank" rel="noopener noreferrer" className="p-2.5 bg-white rounded-xl text-slate-900 hover:bg-blue-600 hover:text-white transition-all" title="Descargar">
                       <Download size={16} />
                     </a>
                     

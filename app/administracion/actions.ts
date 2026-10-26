@@ -43,6 +43,7 @@ export async function crearCuentaProfesional(formData: any) {
     await verificarAdmin()
     const { nombre, apellido, username, password, especialidad_id, rol, rut } = formData;
     if (!ROLES_STAFF.includes(rol)) return { error: 'Rol no válido' };
+    if (!password || String(password).length < 8) return { error: 'La contraseña debe tener al menos 8 caracteres' };
     const sinCupo = await validarCupo(rol);
     if (sinCupo) return { error: sinCupo };
     const nombreCompleto = `${nombre} ${apellido}`;
@@ -53,7 +54,9 @@ export async function crearCuentaProfesional(formData: any) {
       email: virtualEmail,
       password: password,
       email_confirm: true,
-      user_metadata: { nombre_completo: nombreCompleto, rol: rol, username: cleanUsername, rut: rut }
+      // El rol va en app_metadata (no editable por el usuario); el trigger de 'perfiles' lo mantiene al día
+      app_metadata: { rol },
+      user_metadata: { nombre_completo: nombreCompleto, username: cleanUsername, rut: rut }
     })
     if (authError) return { error: `Error Auth: ${authError.message}` };
     authUserId = authData.user.id;
@@ -96,7 +99,8 @@ export async function actualizarCuentaProfesional(id: string, userId: string, fo
     }).eq('id', userId)
     
     await supabaseAdmin.auth.admin.updateUserById(userId, {
-      user_metadata: { nombre_completo: nombreCompleto, rol: rol, rut: rut }
+      app_metadata: { rol },
+      user_metadata: { nombre_completo: nombreCompleto, rut: rut }
     });
 
     if (rol === 'DENTISTA') {
