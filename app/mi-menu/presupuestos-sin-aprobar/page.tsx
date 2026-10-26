@@ -16,6 +16,7 @@ import { contactoVigente, fechaVolver, indexarContactos, textoResultado, ultimoC
 import { ETAPAS_SA, LISTA_SIN_APROBAR, aOportunidad, cargarSinAprobar, etapaSA, nombrePresupuesto, type DatosSA, type EtapaSA, type FilaSA } from '@/app/seguimiento/_lib/sinAprobar'
 import type { Oportunidad } from '@/app/seguimiento/_lib/reglas'
 import { abrirWhatsApp, fechaConHora, fechaISO, money, nombrePaciente, normalizar, sumarMeses, telefonoWA } from '@/app/seguimiento/_lib/util'
+import { variarMensaje } from '@/lib/mensajes'
 import Fila, { CLASE_TONO } from '@/app/seguimiento/_components/Fila'
 import ModalResultado from '@/app/seguimiento/_components/ModalResultado'
 
@@ -208,7 +209,7 @@ export default function PresupuestosSinAprobarPage() {
   }
   const enviarWhatsApp = (o: Oportunidad) => {
     const p = pacientes[o.pacienteId]
-    if (!abrirWhatsApp(p?.telefono, o.mensaje(p))) { toast.error('El paciente no tiene un teléfono válido'); return }
+    if (!abrirWhatsApp(p?.telefono, variarMensaje(o.mensaje(p)))) { toast.error('El paciente no tiene un teléfono válido'); return }
     setEnCurso(o)
   }
   const confirmarEnvio = (ok: boolean) => {
