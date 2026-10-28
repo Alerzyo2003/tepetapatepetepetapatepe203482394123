@@ -1,7 +1,7 @@
 // Utilidades y constantes compartidas por la agenda (sin acceso a la base de datos)
 import { Clock, Phone, Timer, Activity, CheckCircle2, Ban, Trash2, RefreshCcw } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Profesional } from './types'
+import type { Continuidad, Profesional, SinProximaHora } from './types'
 import { variarMensaje } from '@/lib/mensajes'
 
 // ─────────────────────────────────────────────────────────────
@@ -223,6 +223,34 @@ export const requiereControl = (motivo?: string | null) => {
   if (!m || m.startsWith('CONTROL')) return false;
   return PROCEDIMIENTOS_CON_CONTROL.some(p => m.includes(p));
 };
+
+// 📅 Paciente que se iría sin próxima hora: tiene tratamiento pendiente (o un presupuesto reciente por decidir)
+// y no tiene otra cita después de esta. Solo se marca en citas de hoy o días pasados.
+export const calcularSinProximaHora = (c: any, cont: Continuidad | undefined, hoyISO: string): SinProximaHora | null => {
+  if (!cont || !c?.paciente_id || ['cancelada', 'no_asiste'].includes(c.estado)) return null;
+  if (fechaISODeStr(c.inicio) > hoyISO) return null;
+  if (cont.futuras.some(f => f.id !== c.id && f.inicio > c.inicio)) return null;
+  if (cont.pendientes > 0) {
+    const n = cont.pendientes;
+    return {
+      motivo: 'pendientes',
+      texto: `${n} ${n === 1 ? 'prestación pendiente' : 'prestaciones pendientes'}${cont.tratamiento ? ` · ${cont.tratamiento}` : ''}`,
+      sugerencia: (cont.proxima || 'Continuar tratamiento').toUpperCase(),
+      doctorId: cont.doctorId,
+    };
+  }
+  if (cont.presupuestoPorDecidir) {
+    return {
+      motivo: 'presupuesto',
+      texto: `Presupuesto por decidir · ${cont.presupuestoPorDecidir}`,
+      sugerencia: `INICIO ${cont.presupuestoPorDecidir}`.toUpperCase(),
+      doctorId: null,
+    };
+  }
+  return null;
+};
+// Paciente que ya está o estuvo en la clínica hoy (el momento de agendarle antes de que se vaya)
+export const ESTADOS_EN_CLINICA = ['en_espera', 'atendiendose', 'atendido'];
 
 // ⚠️ Palabras que se destacan como alerta médica
 export const PALABRAS_ALERTA = ['ALERG', 'ANTICOAG', 'SINTROM', 'NEOSINTROM', 'WARFARIN', 'ASPIRINA', 'CLOPIDOGREL', 'DIABET', 'HIPERTENS', 'EMBARAZ', 'CARDI', 'MARCAPASO', 'EPILEP', 'CONVULS', 'ASMA', 'VIH', 'HEPATIT', 'BIFOSFONAT', 'HEMOFIL', 'RADIOTERAP', 'QUIMIOTERAP', 'INFARTO', 'TRASPLANT', 'RENAL'];
