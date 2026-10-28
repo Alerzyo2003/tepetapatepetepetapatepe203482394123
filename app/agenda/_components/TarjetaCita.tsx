@@ -8,8 +8,8 @@ import {
 } from 'lucide-react'
 import {
   buscarDoctor, claseBadgeSemaforo, DIAS_HASTA_CONTROL, ESTADOS_CITA, estiloInasistencias, formatNombreDoctor,
-  getAvatarColorClass, getInitials, horaDeStr, MESES_INASISTENCIAS, minutosDesde, nivelSemaforo, requiereControl,
-  type NivelSemaforo,
+  ESTADOS_EN_CLINICA, getAvatarColorClass, getInitials, horaDeStr, MESES_INASISTENCIAS, minutosDesde, nivelSemaforo,
+  requiereControl, type NivelSemaforo,
 } from './utils'
 import type { Profesional } from './types'
 
@@ -23,6 +23,7 @@ export interface AccionesCita {
   onEliminar: (cita: any) => void;
   onInasistencia: (cita: any) => void;
   onControl: (cita: any) => void;
+  onProximaHora?: (cita: any) => void;   // agendar la próxima hora a un paciente con tratamiento pendiente
 }
 
 interface Comunes {
@@ -56,6 +57,7 @@ export function TarjetaCitaDia({ cita: c, index, esSobrecupo, ahoraMs, puedeVerF
   const estado = ESTADOS_CITA[c.estado] || ESTADOS_CITA.programada;
   const { min: minEspera, nivel } = semaforoDe(c, ahoraMs);
   const btn = "p-2.5 md:p-2 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 transition-colors";
+  const enClinica = ESTADOS_EN_CLINICA.includes(c.estado);
 
   return (
     <motion.div
@@ -97,6 +99,12 @@ export function TarjetaCitaDia({ cita: c, index, esSobrecupo, ahoraMs, puedeVerF
                     <AlertTriangle size={12} /> Cita de Sobrecupo
                   </span>
                 )}
+                {c.sinProximaHora && (
+                  <button type="button" onClick={() => acciones.onProximaHora?.(c)} title={`${c.sinProximaHora.texto}. Agéndale su próxima hora antes de que se vaya.`}
+                    className={`text-[10px] md:text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest flex items-center gap-1 w-max border shadow-sm bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100 ${enClinica ? 'ring-2 ring-amber-200' : ''}`}>
+                    <CalendarPlus size={12} /> Sin próxima hora
+                  </button>
+                )}
                 {c.motivo?.includes('Online') && (
                   <span className="bg-blue-50 text-blue-600 border border-blue-100 text-[10px] md:text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-widest flex items-center gap-1 w-max shadow-sm">
                     <Globe size={12} /> Agendamiento Web
@@ -124,6 +132,9 @@ export function TarjetaCitaDia({ cita: c, index, esSobrecupo, ahoraMs, puedeVerF
                   <div className="flex items-center gap-1.5 text-[11px] md:text-[10px] font-black uppercase tracking-widest mt-1 w-fit px-2 py-1 rounded-md bg-slate-50 text-slate-500 border border-slate-200">
                     <MessageSquareText size={12} /> <span>{c.motivo}</span>
                   </div>
+                )}
+                {c.sinProximaHora && (
+                  <p className="text-[11px] md:text-[10px] font-bold text-amber-700 mt-1">{c.sinProximaHora.texto} · no tiene otra hora agendada</p>
                 )}
               </div>
             </div>
@@ -173,6 +184,11 @@ export function TarjetaCitaDia({ cita: c, index, esSobrecupo, ahoraMs, puedeVerF
                 <MessageCircle size={14} /> Reagendar por WhatsApp
               </button>
             )}
+            {c.sinProximaHora && acciones.onProximaHora && (
+              <button onClick={() => acciones.onProximaHora?.(c)} className="px-3 py-2 border border-amber-300 bg-amber-50 rounded-lg text-amber-700 hover:bg-amber-100 transition-colors text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5" title={c.sinProximaHora.texto}>
+                <CalendarPlus size={14} /> Agendar próxima hora
+              </button>
+            )}
             {c.estado === 'atendido' && requiereControl(c.motivo) && (
               <button onClick={() => acciones.onControl(c)} className="px-3 py-2 border border-emerald-200 bg-emerald-50 rounded-lg text-emerald-700 hover:bg-emerald-100 transition-colors text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5" title={`Agendar control en ${DIAS_HASTA_CONTROL} días`}>
                 <CalendarPlus size={14} /> Agendar control
@@ -219,6 +235,9 @@ export function TarjetaCitaSemana({ cita: c, delay, esSobrecupo, ahoraMs, puedeV
             <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-widest inline-flex items-center gap-1 border ${estiloInasistencias(c.inasistencias)}`} title={`${c.inasistencias} inasistencias en ${MESES_INASISTENCIAS} meses`}><Ban size={8} /> {c.inasistencias}</span>
           )}
           {esSobrecupo && <span className="text-[8px] font-black bg-red-500 text-white px-1.5 py-0.5 rounded uppercase tracking-widest animate-pulse inline-flex items-center">Sobrecupo</span>}
+          {c.sinProximaHora && (
+            <span className="text-[8px] font-black bg-amber-50 text-amber-700 border border-amber-300 px-1.5 py-0.5 rounded uppercase tracking-widest inline-flex items-center gap-1" title={c.sinProximaHora.texto}><CalendarPlus size={8} /> Sin próx. hora</span>
+          )}
           {c.motivo?.includes('Online') && (
             <span className="text-[8px] font-black bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded uppercase tracking-widest inline-flex items-center gap-1"><Globe size={8} /> Web</span>
           )}
@@ -238,6 +257,7 @@ export function TarjetaCitaSemana({ cita: c, delay, esSobrecupo, ahoraMs, puedeV
         <button onClick={() => acciones.onRecordatorio(c)} className={`${btn} hover:bg-[#C9A24B]/10 hover:text-[#C9A24B]`} title="Enviar link de confirmación"><LinkIcon size={15} /></button>
         <button onClick={() => acciones.onResena(c)} className={`${btn} hover:bg-amber-100 hover:text-amber-500`} title="Pedir reseña en Google Maps"><Star size={15} /></button>
         {puedeVerFinanzas && <button onClick={() => acciones.onCaja(c)} className={`${btn} hover:bg-amber-50 hover:text-amber-600`} title="Caja/Cobrar"><Coins size={15} /></button>}
+        {c.sinProximaHora && acciones.onProximaHora && <button onClick={() => acciones.onProximaHora?.(c)} className={`${btn} text-amber-600 hover:bg-amber-100`} title={`Agendar próxima hora · ${c.sinProximaHora.texto}`}><CalendarPlus size={15} /></button>}
       </div>
     </motion.div>
   );
