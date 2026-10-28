@@ -57,3 +57,11 @@ export interface SinProximaHora {
   sugerencia: string;   // motivo sugerido para la próxima cita
   doctorId: string | null;
 }
+
+// Paciente que faltó (última inasistencia del período) y qué pasó después
+export interface Inasistencia {
+  cita: any;                       // la última cita a la que faltó (con pacientes)
+  veces: number;                   // cuántas veces faltó en el período
+  siguiente: { inicio: string; estado: string; profesional_id: string | null } | null; // primera cita después de esa falta
+  contacto: { resultado: string; created_at: string } | null;                          // último contacto registrado por la falta
+}
