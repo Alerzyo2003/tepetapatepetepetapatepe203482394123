@@ -1,7 +1,7 @@
 // Consultas a Supabase compartidas por la agenda
 import { supabase } from '@/lib/supabase'
-import { esWebPendiente, getLocalDateISO, MESES_INASISTENCIAS } from './utils'
-import type { Continuidad, FinanzasPaciente } from './types'
+import { esWebPendiente, getLocalDateISO, horaLocalAhoraISO, MESES_INASISTENCIAS } from './utils'
+import type { Continuidad, FinanzasPaciente, Inasistencia } from './types'
 
 // Suma presupuestos aprobados por paciente: total, abonado, deuda y deuda de lo ya realizado
 export async function obtenerFinanzasPacientes(pacienteIds: string[]) {
@@ -114,6 +114,54 @@ export async function obtenerContinuidad(pacienteIds: string[], desdeISO: string
     console.error('No se pudo revisar la próxima hora de los pacientes', e);
   }
   return mapa;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Inasistencias del período: quién faltó y si ya tiene (o tuvo) otra hora después
+// ─────────────────────────────────────────────────────────────
+export async function obtenerInasistencias(diasAtras: number, profesionalId: string | null): Promise<Inasistencia[]> {
+  const desde = new Date(); desde.setDate(desde.getDate() - diasAtras);
+  const desdeISO = `${getLocalDateISO(desde)}T00:00:00`;
+
+  let q = supabase.from('citas').select('*, pacientes(*)')
+    .eq('estado', 'no_asiste').gte('inicio', desdeISO).lte('inicio', horaLocalAhoraISO())
+    .order('inicio', { ascending: false }).range(0, 1999);
+  if (profesionalId) q = q.eq('profesional_id', profesionalId);
+  const { data: faltas, error } = await q;
+  if (error) throw error;
+
+  // Una fila por paciente: su última falta y cuántas veces faltó
+  const porPaciente = new Map<string, Inasistencia>();
+  (faltas || []).forEach((c: any) => {
+    if (!c.paciente_id) return;
+    const actual = porPaciente.get(c.paciente_id);
+    if (actual) actual.veces += 1;
+    else porPaciente.set(c.paciente_id, { cita: c, veces: 1, siguiente: null, contacto: null });
+  });
+  const ids = [...porPaciente.keys()];
+  if (ids.length === 0) return [];
+
+  const [despuesRes, contactosRes] = await Promise.all([
+    Promise.all(lotes(ids).map(l => supabase.from('citas').select('paciente_id, inicio, estado, profesional_id')
+      .in('paciente_id', l).gt('inicio', desdeISO).not('estado', 'in', '(cancelada,no_asiste)')
+      .order('inicio', { ascending: true }).range(0, 4999))),
+    Promise.all(lotes(ids).map(l => supabase.from('seguimiento_contactos').select('paciente_id, resultado, created_at')
+      .eq('lista', 'no_asistio').in('paciente_id', l).gte('created_at', desde.toISOString())
+      .order('created_at', { ascending: false }))),
+  ]);
+  for (const r of despuesRes) if (r.error) throw r.error;
+
+  despuesRes.flatMap(r => r.data || []).forEach((c: any) => {
+    const f = porPaciente.get(c.paciente_id);
+    if (f && !f.siguiente && String(c.inicio) > String(f.cita.inicio)) f.siguiente = { inicio: c.inicio, estado: c.estado, profesional_id: c.profesional_id };
+  });
+  // El historial de contactos es opcional (si la tabla no existe, simplemente no se muestra)
+  contactosRes.forEach(r => (r.error ? [] : r.data || []).forEach((k: any) => {
+    const f = porPaciente.get(k.paciente_id);
+    if (f && !f.contacto && String(k.created_at) >= String(f.cita.inicio).slice(0, 10)) f.contacto = { resultado: k.resultado, created_at: k.created_at };
+  }));
+
+  return [...porPaciente.values()];
 }
 
 // Cuenta las citas marcadas "No asistió" de cada paciente en los últimos 12 meses
