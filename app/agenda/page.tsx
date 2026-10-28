@@ -8,16 +8,16 @@ import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import {
-  AlertTriangle, BellRing, Calendar as CalendarIcon, CalendarDays, ChevronLeft, ChevronRight, ClipboardList,
+  AlertTriangle, BellRing, Calendar as CalendarIcon, CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, ClipboardList,
   Globe, LayoutGrid, List, Loader2, Lock, Plus, Search, Star, Users, X,
 } from 'lucide-react'
 
-import { contarInasistencias, obtenerFinanzasPacientes, registrarAuditoria } from './_components/data'
+import { contarInasistencias, obtenerContinuidad, obtenerFinanzasPacientes, registrarAuditoria } from './_components/data'
 import { configControl, configReprogramar, enviarRecordatorioIndividual, guardarEstadoCita } from './_components/acciones'
 import { useAgendaRealtime, useAvisoPacienteEspera, useReloj } from './_components/hooks'
 import AvisoPacienteEspera from './_components/AvisoPacienteEspera'
 import {
-  abrirWhatsApp, construirMensajeInasistencia, construirMensajeResena,
+  abrirWhatsApp, calcularSinProximaHora, construirMensajeInasistencia, construirMensajeResena,
   esWebPendiente, fechaISODeStr, getDiasLunesSabado, getLocalDateISO, GOLD, nombrePaciente,
 } from './_components/utils'
 import type { AgendarConfig, Hueco, Profesional } from './_components/types'
@@ -32,6 +32,7 @@ import ModalRecordatorios from './_components/ModalRecordatorios'
 import ModalResenas from './_components/ModalResenas'
 import ModalBuscarHora from './_components/ModalBuscarHora'
 import ModalHojaRuta from './_components/ModalHojaRuta'
+import ModalSinProximaHora from './_components/ModalSinProximaHora'
 
 const ROLES_AGENDA_COMPLETA = ['ADMIN', 'RECEPCIONISTA', 'ASISTENTE'];
 const ROLES_FINANZAS = ['ADMIN', 'RECEPCIONISTA'];
@@ -66,7 +67,7 @@ export default function AgendaPage() {
   // ── Modales ──
   const [agendarConfig, setAgendarConfig] = useState<AgendarConfig | null>(null);
   const [citaPresupuesto, setCitaPresupuesto] = useState<any>(null);
-  const [modal, setModal] = useState<null | 'bloqueo' | 'huerfanas' | 'anuladas' | 'web' | 'recordatorios' | 'resenas' | 'buscarHora' | 'hojaRuta'>(null);
+  const [modal, setModal] = useState<null | 'bloqueo' | 'huerfanas' | 'anuladas' | 'web' | 'recordatorios' | 'resenas' | 'buscarHora' | 'hojaRuta' | 'sinHora'>(null);
   const cerrarModal = () => setModal(null);
 
   const dateInputRef = useRef<HTMLInputElement>(null);
@@ -177,8 +178,9 @@ export default function AgendaPage() {
     const activas = data.filter((c: any) => c.estado !== 'cancelada');
     const ids = [...new Set(activas.map((c: any) => c.paciente_id).filter(Boolean))] as string[];
 
-    const [finanzas, inasistencias] = await Promise.all([obtenerFinanzasPacientes(ids), contarInasistencias(ids)]);
+    const [finanzas, inasistencias, continuidad] = await Promise.all([obtenerFinanzasPacientes(ids), contarInasistencias(ids), obtenerContinuidad(ids, desde)]);
     if (seq !== fetchSeq.current) return;
+    const hoy = getLocalDateISO(new Date());
 
     setCitasAnuladas(anuladas);
     setCitasDia(activas.map((c: any) => {
@@ -189,7 +191,10 @@ export default function AgendaPage() {
         if (fin.deuda_realizada > 0) { estadoFinanciero = 'deuda'; requiereCobroInmediato = true; }
         else if (fin.deuda <= 0) estadoFinanciero = 'saldado';
       }
-      return { ...c, finanzas: fin, estadoFinanciero, requiereCobroInmediato, inasistencias: inasistencias[c.paciente_id] || 0 };
+      return {
+        ...c, finanzas: fin, estadoFinanciero, requiereCobroInmediato, inasistencias: inasistencias[c.paciente_id] || 0,
+        sinProximaHora: calcularSinProximaHora(c, continuidad[c.paciente_id], hoy),
+      };
     }));
   }
 
@@ -250,6 +255,15 @@ export default function AgendaPage() {
     abrirAgendar(configControl(cita));
   };
 
+  // Próxima hora para un paciente con tratamiento pendiente: mismo doctor de la prestación (o de la cita) y motivo sugerido
+  const agendarProximaHora = (cita: any) => {
+    if (!cita?.pacientes) return toast.error('La cita no tiene paciente asociado');
+    const s = cita.sinProximaHora;
+    const doctor = [s?.doctorId, cita.profesional_id].find(d => d && profesionales.some(p => p.user_id === d));
+    setModal(null);
+    abrirAgendar({ paciente: cita.pacientes, profesionalId: doctor || undefined, motivo: s?.sugerencia || '' });
+  };
+
   const agendarEnHueco = (h: Hueco) => {
     setModal(null);
     abrirAgendar({ profesionalId: h.profesional_id, duracion: h.duracion, semanaInicio: h.fecha, diaSugerido: h.fecha, horas: [{ fecha: h.fecha, hora: h.hora, duracion: h.duracion }] });
@@ -257,7 +271,14 @@ export default function AgendaPage() {
 
   async function actualizarEstadoCita(cita: any, nuevoEstado: string) {
     setCitasDia(prev => prev.map(c => c.id === cita.id ? { ...c, estado: nuevoEstado } : c)); // optimista
-    await guardarEstadoCita(cita, nuevoEstado, { usuarioLogueado, profesionales, onAgendarControl: agendarControl });
+    const ok = await guardarEstadoCita(cita, nuevoEstado, { usuarioLogueado, profesionales, onAgendarControl: agendarControl });
+    // Al terminar la atención: si tiene tratamiento pendiente y no tiene otra hora, se ofrece agendarla en ese momento
+    if (ok && nuevoEstado === 'atendido' && cita.sinProximaHora) {
+      toast(`${nombrePaciente(cita.pacientes)} se va sin próxima hora`, {
+        description: cita.sinProximaHora.texto, duration: 25000,
+        action: { label: 'Agendar próxima hora', onClick: () => agendarProximaHora(cita) },
+      });
+    }
     await fetchCitasAgenda(); // si falló, esto revierte el cambio optimista
   }
 
@@ -287,7 +308,9 @@ export default function AgendaPage() {
     onEliminar: eliminarCita,
     onInasistencia: (c) => abrirWhatsApp(c.pacientes?.telefono, construirMensajeInasistencia(c, profesionales)),
     onControl: agendarControl,
+    onProximaHora: agendarProximaHora,
   };
+  const citasSinProximaHora = citasDia.filter(c => c.sinProximaHora);
 
   // ─────────────────────────────────────────────────────────────
   // Render
@@ -320,6 +343,14 @@ export default function AgendaPage() {
           {puedeEnviarRecordatorios && (
             <button onClick={() => setModal('resenas')} className={`${botonCabecera} border-amber-200 text-amber-600 hover:bg-amber-50`}>
               <Star size={14} /> Pedir Reseñas
+            </button>
+          )}
+          {puedeVerAgendaCompleta && (
+            <button onClick={() => setModal('sinHora')} className={`relative ${botonCabecera} border-amber-300 text-amber-700 hover:bg-amber-50`} title="Pacientes con tratamiento pendiente que no tienen otra hora agendada">
+              <CalendarPlus size={14} /> Sin Próxima Hora
+              {citasSinProximaHora.length > 0 && (
+                <span className="absolute -top-2 -right-2 bg-amber-500 text-white text-[10px] min-w-[1.25rem] h-5 px-1 flex items-center justify-center rounded-full font-black shadow-md">{citasSinProximaHora.length}</span>
+              )}
             </button>
           )}
           <button onClick={() => setModal('hojaRuta')} className={`${botonCabecera} border-slate-200 text-slate-600 hover:bg-slate-50`}>
@@ -504,6 +535,7 @@ export default function AgendaPage() {
       <ModalRecordatorios abierto={modal === 'recordatorios' && puedeEnviarRecordatorios} onClose={cerrarModal} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} filtroEspecialista={filtroEspecialista} realtimeTrigger={realtimeTrigger} />
       <ModalResenas abierto={modal === 'resenas' && puedeEnviarRecordatorios} onClose={cerrarModal} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} filtroEspecialista={filtroEspecialista} />
       <ModalBuscarHora abierto={modal === 'buscarHora'} onClose={cerrarModal} onElegir={agendarEnHueco} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} especialistaInicial={filtroEspecialista} />
+      <ModalSinProximaHora abierto={modal === 'sinHora'} onClose={cerrarModal} citas={citasSinProximaHora} profesionales={profesionales} onAgendar={agendarProximaHora} mostrarFecha={vistaAgenda === 'semana'} />
       <ModalHojaRuta abierto={modal === 'hojaRuta'} onClose={cerrarModal} fechaInicial={getLocalDateISO(selectedDate)} especialistaInicial={filtroEspecialista} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} />
     </div>
   );
