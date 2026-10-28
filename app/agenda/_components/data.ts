@@ -35,6 +35,14 @@ export async function obtenerFinanzasPacientes(pacienteIds: string[]) {
 // ─────────────────────────────────────────────────────────────
 const ESTADOS_ITEM_REALIZADO = ['realizado', 'atendido', 'terminado', 'completado', 'finalizado'];
 const DIAS_PRESUPUESTO_POR_DECIDIR = 45;
+// Solo cuentan tratamientos activos: presupuesto de los últimos 3 meses o con alguna evolución en los últimos 3 meses
+// (los traídos de Dentalink solo cuentan si se han evolucionado en la app en ese tiempo)
+const MESES_TRATAMIENTO_ACTIVO = 3;
+const fechaEvolucion = (it: any) => {
+  const m = String(it?.nombre_prestacion || '').match(/EvoFec:\s*([^|]+)/) || String(it?.observacion || '').match(/EvoFec:\s*([^|]+)/);
+  const t = m ? new Date(m[1].trim()).getTime() : NaN;
+  return Number.isNaN(t) ? null : t;
+};
 const lotes = <T,>(xs: T[], n = 150) => Array.from({ length: Math.ceil(xs.length / n) }, (_, i) => xs.slice(i * n, i * n + n));
 const nombreItem = (it: any) => String(it?.nombre_prestacion || '').split('|')[0].trim();
 const itemPendiente = (it: any) => {
@@ -59,7 +67,7 @@ export async function obtenerContinuidad(pacienteIds: string[], desdeISO: string
         .in('paciente_id', l).gte('inicio', `${desdeISO}T00:00:00`).not('estado', 'in', '(cancelada,no_asiste)')
         .order('inicio', { ascending: true }).range(0, 4999))),
       Promise.all(lotes(pacienteIds).map(l => supabase.from('presupuestos')
-        .select('id, paciente_id, nombre_tratamiento, aprobado, total_abonado, estado, created_at, fecha_creacion')
+        .select('id, paciente_id, id_dentalink, nombre_tratamiento, aprobado, total_abonado, estado, created_at, fecha_creacion')
         .in('paciente_id', l).range(0, 4999))),
     ]);
     for (const r of [...citasRes, ...presRes]) if (r.error) throw r.error;
@@ -70,22 +78,27 @@ export async function obtenerContinuidad(pacienteIds: string[], desdeISO: string
     const limite = Date.now() - DIAS_PRESUPUESTO_POR_DECIDIR * 86_400_000;
     const presups = presRes.flatMap(r => r.data || []).filter((p: any) => !presupuestoCerrado(p));
     const enCurso = presups.filter((p: any) => p.aprobado === true || Number(p.total_abonado || 0) > 0);
-    const porDecidir = presups.filter((p: any) => !(p.aprobado === true || Number(p.total_abonado || 0) > 0) && (fechaPresupuesto(p) ?? 0) >= limite);
+    const porDecidir = presups.filter((p: any) => !(p.aprobado === true || Number(p.total_abonado || 0) > 0) && !p.id_dentalink && (fechaPresupuesto(p) ?? 0) >= limite);
     const porId = new Map<string, any>([...enCurso, ...porDecidir].map((p: any) => [p.id, p]));
     if (porId.size === 0) return mapa;
 
     const itemsRes = await Promise.all(lotes([...porId.keys()]).map(l => supabase.from('presupuesto_items')
-      .select('presupuesto_id, nombre_prestacion, estado, progreso, profesional_id')
+      .select('presupuesto_id, nombre_prestacion, observacion, estado, progreso, profesional_id')
       .in('presupuesto_id', l).range(0, 9999)));
     for (const r of itemsRes) if (r.error) throw r.error;
 
+    const items = itemsRes.flatMap(r => r.data || []);
+    const limiteActivo = new Date(); limiteActivo.setMonth(limiteActivo.getMonth() - MESES_TRATAMIENTO_ACTIVO);
+    const conMovimiento = new Set(items.filter((it: any) => (fechaEvolucion(it) ?? 0) >= limiteActivo.getTime()).map((it: any) => it.presupuesto_id));
+    const activo = (p: any) => conMovimiento.has(p.id) || (!p.id_dentalink && (fechaPresupuesto(p) ?? 0) >= limiteActivo.getTime());
+
     const conItems = new Set<string>();
-    itemsRes.flatMap(r => r.data || []).forEach((it: any) => {
+    items.forEach((it: any) => {
       const p = porId.get(it.presupuesto_id);
       const m = p && mapa[p.paciente_id];
       if (!m || !itemPendiente(it)) return;
       conItems.add(p.id);
-      if (!enCurso.includes(p)) return;
+      if (!enCurso.includes(p) || !activo(p)) return;
       m.pendientes += 1;
       if (!m.proxima) {
         m.proxima = nombreItem(it) || null;
