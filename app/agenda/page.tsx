@@ -8,16 +8,16 @@ import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import {
-  AlertTriangle, BellRing, Calendar as CalendarIcon, CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, ClipboardList,
+  AlertTriangle, BellRing, Calendar as CalendarIcon, CalendarDays, CalendarPlus, CalendarX, ChevronLeft, ChevronRight, ClipboardList,
   Globe, LayoutGrid, List, Loader2, Lock, Plus, Search, Star, Users, X,
 } from 'lucide-react'
 
-import { contarInasistencias, obtenerContinuidad, obtenerFinanzasPacientes, registrarAuditoria } from './_components/data'
+import { contarInasistencias, obtenerContinuidad, obtenerFinanzasPacientes, obtenerInasistencias, registrarAuditoria } from './_components/data'
 import { configControl, configReprogramar, enviarRecordatorioIndividual, guardarEstadoCita } from './_components/acciones'
 import { useAgendaRealtime, useAvisoPacienteEspera, useReloj } from './_components/hooks'
 import AvisoPacienteEspera from './_components/AvisoPacienteEspera'
 import {
-  abrirWhatsApp, calcularSinProximaHora, construirMensajeInasistencia, construirMensajeResena,
+  abrirWhatsApp, calcularSinProximaHora, construirMensajeInasistencia, construirMensajeResena, duracionMinutos,
   esWebPendiente, fechaISODeStr, getDiasLunesSabado, getLocalDateISO, GOLD, nombrePaciente,
 } from './_components/utils'
 import type { AgendarConfig, Hueco, Profesional } from './_components/types'
@@ -33,6 +33,7 @@ import ModalResenas from './_components/ModalResenas'
 import ModalBuscarHora from './_components/ModalBuscarHora'
 import ModalHojaRuta from './_components/ModalHojaRuta'
 import ModalSinProximaHora from './_components/ModalSinProximaHora'
+import ModalInasistencias from './_components/ModalInasistencias'
 
 const ROLES_AGENDA_COMPLETA = ['ADMIN', 'RECEPCIONISTA', 'ASISTENTE'];
 const ROLES_FINANZAS = ['ADMIN', 'RECEPCIONISTA'];
@@ -67,8 +68,11 @@ export default function AgendaPage() {
   // ── Modales ──
   const [agendarConfig, setAgendarConfig] = useState<AgendarConfig | null>(null);
   const [citaPresupuesto, setCitaPresupuesto] = useState<any>(null);
-  const [modal, setModal] = useState<null | 'bloqueo' | 'huerfanas' | 'anuladas' | 'web' | 'recordatorios' | 'resenas' | 'buscarHora' | 'hojaRuta' | 'sinHora'>(null);
+  const [modal, setModal] = useState<null | 'bloqueo' | 'huerfanas' | 'anuladas' | 'web' | 'recordatorios' | 'resenas' | 'buscarHora' | 'hojaRuta' | 'sinHora' | 'inasistencias'>(null);
   const cerrarModal = () => setModal(null);
+  // Lista a la que se vuelve después de agendar desde ella (para seguir con el siguiente paciente)
+  const [volverA, setVolverA] = useState<null | 'sinHora' | 'inasistencias'>(null);
+  const [inasistenciasPorReagendar, setInasistenciasPorReagendar] = useState(0);
 
   const dateInputRef = useRef<HTMLInputElement>(null);
   const fetchSeq = useRef(0);
@@ -93,6 +97,16 @@ export default function AgendaPage() {
 
   // Refresco silencioso por realtime
   useEffect(() => { if (realtimeTrigger > 0) fetchCitasAgenda(); }, [realtimeTrigger]);
+
+  // Contador del botón "No Asistieron": faltaron en los últimos 30 días y aún no tienen otra hora
+  useEffect(() => {
+    if (cargandoPagina || !puedeVerAgendaCompleta) return;
+    let activo = true;
+    obtenerInasistencias(30, filtroEspecialista !== 'Todos' ? filtroEspecialista : null)
+      .then(f => { if (activo) setInasistenciasPorReagendar(f.filter(x => !x.siguiente).length); })
+      .catch(e => console.error('No se pudieron contar las inasistencias', e));
+    return () => { activo = false; };
+  }, [cargandoPagina, realtimeTrigger, filtroEspecialista, puedeVerAgendaCompleta]);
 
   // Llegada desde otra página (ej. Panel de Seguimiento):
   //   /agenda?agendar=<paciente_id>&motivo=...&doctor=<user_id>  → abre "Agendar" con el paciente listo
@@ -264,6 +278,16 @@ export default function AgendaPage() {
     abrirAgendar({ paciente: cita.pacientes, profesionalId: doctor || undefined, motivo: s?.sugerencia || '' });
   };
 
+  // Reagendar a quien no asistió: cita nueva (la inasistencia queda en el historial), mismo doctor, duración y motivo
+  const reagendarInasistencia = (cita: any) => {
+    if (!cita?.pacientes) return toast.error('La cita no tiene paciente asociado');
+    const doctor = profesionales.some(p => p.user_id === cita.profesional_id) ? cita.profesional_id : undefined;
+    const mins = duracionMinutos(cita);
+    setVolverA('inasistencias');
+    setModal(null);
+    abrirAgendar({ paciente: cita.pacientes, profesionalId: doctor, duracion: mins > 0 ? mins : 30, motivo: cita.motivo || 'REAGENDAMIENTO' });
+  };
+
   const agendarEnHueco = (h: Hueco) => {
     setModal(null);
     abrirAgendar({ profesionalId: h.profesional_id, duracion: h.duracion, semanaInicio: h.fecha, diaSugerido: h.fecha, horas: [{ fecha: h.fecha, hora: h.hora, duracion: h.duracion }] });
@@ -343,6 +367,14 @@ export default function AgendaPage() {
           {puedeEnviarRecordatorios && (
             <button onClick={() => setModal('resenas')} className={`${botonCabecera} border-amber-200 text-amber-600 hover:bg-amber-50`}>
               <Star size={14} /> Pedir Reseñas
+            </button>
+          )}
+          {puedeVerAgendaCompleta && (
+            <button onClick={() => setModal('inasistencias')} className={`relative ${botonCabecera} border-rose-200 text-rose-600 hover:bg-rose-50`} title="Pacientes que no asistieron: quiénes faltan por reagendar y quiénes ya tienen hora">
+              <CalendarX size={14} /> No Asistieron
+              {inasistenciasPorReagendar > 0 && (
+                <span className="absolute -top-2 -right-2 bg-rose-500 text-white text-[10px] min-w-[1.25rem] h-5 px-1 flex items-center justify-center rounded-full font-black shadow-md">{inasistenciasPorReagendar}</span>
+              )}
             </button>
           )}
           {puedeVerAgendaCompleta && (
@@ -520,7 +552,7 @@ export default function AgendaPage() {
       {/* MODALES */}
       <ModalAgendar
         config={agendarConfig}
-        onClose={() => setAgendarConfig(null)}
+        onClose={() => { setAgendarConfig(null); if (volverA) { setModal(volverA); setVolverA(null); } }}
         onGuardado={fetchCitasAgenda}
         profesionales={profesionales}
         usuarioLogueado={usuarioLogueado}
@@ -535,7 +567,8 @@ export default function AgendaPage() {
       <ModalRecordatorios abierto={modal === 'recordatorios' && puedeEnviarRecordatorios} onClose={cerrarModal} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} filtroEspecialista={filtroEspecialista} realtimeTrigger={realtimeTrigger} />
       <ModalResenas abierto={modal === 'resenas' && puedeEnviarRecordatorios} onClose={cerrarModal} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} filtroEspecialista={filtroEspecialista} />
       <ModalBuscarHora abierto={modal === 'buscarHora'} onClose={cerrarModal} onElegir={agendarEnHueco} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} especialistaInicial={filtroEspecialista} />
-      <ModalSinProximaHora abierto={modal === 'sinHora'} onClose={cerrarModal} citas={citasSinProximaHora} profesionales={profesionales} onAgendar={agendarProximaHora} mostrarFecha={vistaAgenda === 'semana'} />
+      <ModalSinProximaHora abierto={modal === 'sinHora'} onClose={cerrarModal} citas={citasSinProximaHora} profesionales={profesionales} onAgendar={(c) => { setVolverA('sinHora'); agendarProximaHora(c); }} mostrarFecha={vistaAgenda === 'semana'} />
+      <ModalInasistencias abierto={modal === 'inasistencias'} onClose={cerrarModal} profesionales={profesionales} usuarioLogueado={usuarioLogueado} filtroEspecialista={filtroEspecialista} onReagendar={reagendarInasistencia} />
       <ModalHojaRuta abierto={modal === 'hojaRuta'} onClose={cerrarModal} fechaInicial={getLocalDateISO(selectedDate)} especialistaInicial={filtroEspecialista} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} />
     </div>
   );
