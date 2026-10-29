@@ -364,6 +364,8 @@ export default function DetalleLiquidacionPage() {
         .map((item: any) => {
           const precioPactado = Number(item.precio_pactado || 0);
           const totalAbonado = Number(item.abonado || 0);
+          // Prestación sin costo ($0): no genera deuda ni honorario, no se lista
+          if (precioPactado <= 0) return null;
 
           // Ya está en pendientes con honorario por pagar
           if (pendientesFinal.some(p => p.tratamiento_id === item.id)) return null;
