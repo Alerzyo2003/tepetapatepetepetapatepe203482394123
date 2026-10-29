@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { filtroPalabraPaciente } from '@/lib/busquedaPacientes'
 import { 
   Search, UserPlus, Loader2, Edit3, UserCheck, UserX, 
   ChevronDown, ChevronUp, Activity, Wallet, ShieldCheck, 
@@ -176,8 +177,10 @@ export default function ClientesPage() {
       if (buscandoTexto) {
         // Se quitan caracteres que rompen la consulta (comas, paréntesis, comodines)
         const palabras = term.split(/\s+/).map(p => p.replace(/[,()*%\\]/g, '')).filter(p => p.length > 0)
+        // Sin importar tildes, diéresis ni ñ y RUT con o sin puntos
         palabras.forEach((palabra) => {
-          query = query.or(`nombre.ilike.%${palabra}%,apellido.ilike.%${palabra}%,rut.ilike.%${palabra}%`)
+          const filtro = filtroPalabraPaciente(palabra)
+          if (filtro) query = query.or(filtro)
         })
       }
 
