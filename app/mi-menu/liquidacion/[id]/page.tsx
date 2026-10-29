@@ -287,6 +287,8 @@ export default function MiDetalleLiquidacionPage() {
         .map((item: any) => {
             const precioPactado = Number(item.precio_pactado || 0);
             const totalAbonado = Number(item.abonado || 0);
+            // Prestación sin costo ($0): no genera deuda ni honorario, no se lista
+            if (precioPactado <= 0) return null;
 
             // Ignorar si ya está en los pendientes 100% liquidados para evitar duplicados
             if (pendientesFinal.some(p => p.tratamiento_id === item.id)) return null;
