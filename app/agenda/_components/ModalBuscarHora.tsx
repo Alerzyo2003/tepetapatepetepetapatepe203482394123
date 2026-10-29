@@ -1,14 +1,16 @@
 'use client'
 // "¿Cuándo hay hora?": busca los próximos huecos libres entre todos los doctores o uno específico.
 // Busca en tramos de 2 semanas (evita el límite de 1000 filas de Supabase) hasta juntar suficientes.
+// Modo reprogramar (llega una cita): muestra TODAS las horas libres del mismo doctor con la misma duración,
+// agrupadas por día, para elegir una y confirmar la reprogramación.
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import { ArrowDown, Calendar as CalendarIcon, Loader2, MessageCircle, Plus, Search, Stethoscope } from 'lucide-react'
+import { ArrowDown, Calendar as CalendarIcon, CalendarClock, CalendarDays, Loader2, MessageCircle, Plus, Search, Stethoscope } from 'lucide-react'
 import ModalShell from './ModalShell'
 import {
-  capitalizar, DURACIONES_DISPONIBLES, esWebPendiente, fechaLarga, getLocalDateISO, getMinsFromDateStr,
-  GOLD_LIGHT, minsToT, tToMins,
+  capitalizar, duracionMinutos, DURACIONES_DISPONIBLES, esWebPendiente, fechaISODeStr, fechaLarga, getLocalDateISO,
+  getMinsFromDateStr, GOLD_LIGHT, horaDeStr, minsToT, nombrePaciente, tToMins,
 } from './utils'
 import type { Hueco, Profesional } from './types'
 
@@ -16,6 +18,7 @@ const TRAMO_DIAS = 14;
 const MAX_TRAMOS = 8;            // ~4 meses
 const MAX_POR_DOCTOR_DIA = 3;
 const PASO = 5;
+const PASO_DIAS = 6;             // modo reprogramar: días con horas que se muestran por vez
 
 type Turno = 'cualquiera' | 'manana' | 'tarde';
 interface Filtro { profesional: string; duracion: number; turno: Turno; desde: string; }
@@ -28,10 +31,14 @@ interface Props {
   usuarioLogueado: string | null;
   puedeVerAgendaCompleta: boolean;
   especialistaInicial: string;
+  cita?: any | null;              // si viene: modo reprogramar esta cita
+  onCalendario?: () => void;      // modo reprogramar: abrir el calendario semanal para elegir a mano
 }
 
-export default function ModalBuscarHora({ abierto, onClose, onElegir, profesionales, usuarioLogueado, puedeVerAgendaCompleta, especialistaInicial }: Props) {
+export default function ModalBuscarHora({ abierto, onClose, onElegir, profesionales, usuarioLogueado, puedeVerAgendaCompleta, especialistaInicial, cita, onCalendario }: Props) {
   const hoyISO = getLocalDateISO(new Date());
+  const modoTodas = !!cita;
+  const paso = modoTodas ? PASO_DIAS : PASO;
   const [filtro, setFiltro] = useState<Filtro>({ profesional: 'Todos', duracion: 30, turno: 'cualquiera', desde: hoyISO });
   const [huecos, setHuecos] = useState<Hueco[]>([]);
   const [limite, setLimite] = useState(PASO);
@@ -40,12 +47,14 @@ export default function ModalBuscarHora({ abierto, onClose, onElegir, profesiona
 
   useEffect(() => {
     if (!abierto) return;
+    const doctorCita = cita?.profesional_id && profesionales.some(p => p.user_id === cita.profesional_id) ? cita.profesional_id : null;
+    const durCita = cita ? duracionMinutos(cita) : 0;
     const f: Filtro = {
-      profesional: !puedeVerAgendaCompleta ? (usuarioLogueado || 'Todos') : especialistaInicial,
-      duracion: 30, turno: 'cualquiera', desde: hoyISO,
+      profesional: !puedeVerAgendaCompleta ? (usuarioLogueado || 'Todos') : (doctorCita || especialistaInicial),
+      duracion: durCita > 0 ? durCita : 30, turno: 'cualquiera', desde: hoyISO,
     };
-    setFiltro(f); setHuecos([]); setLimite(PASO);
-    buscar(f, PASO);
+    setFiltro(f); setHuecos([]); setLimite(paso);
+    buscar(f, paso);
   }, [abierto]);
 
   async function buscar(f: Filtro, lim: number) {
@@ -87,7 +96,8 @@ export default function ModalBuscarHora({ abierto, onClose, onElegir, profesiona
         ]);
         if (bloqRes.error) throw bloqRes.error;
         if (citasRes.error) throw citasRes.error;
-        const citasTramo = (citasRes.data || []).filter((c: any) => !esWebPendiente(c));
+        // Al reprogramar, la propia cita no ocupa (se va a mover)
+        const citasTramo = (citasRes.data || []).filter((c: any) => !esWebPendiente(c) && c.id !== cita?.id);
 
         for (let d = 0; d < TRAMO_DIAS; d++) {
           const dia = new Date(ini); dia.setDate(dia.getDate() + d);
@@ -108,17 +118,20 @@ export default function ModalBuscarHora({ abierto, onClose, onElegir, profesiona
               .map((c: any) => ({ i: getMinsFromDateStr(c.inicio), f: getMinsFromDateStr(c.fin) }));
 
             const minimo = fechaISO === hoyISO ? minAhora : 0;
+            const maxDia = modoTodas ? Infinity : MAX_POR_DOCTOR_DIA;
             let tomados = 0;
             let ultimoFin = -1;
 
             for (const bloque of bloques) {
               const e = tToMins(bloque.hora_fin.substring(0, 5));
-              for (let s = tToMins(bloque.hora_inicio.substring(0, 5)); s + f.duracion <= e && tomados < MAX_POR_DOCTOR_DIA; s += 15) {
+              for (let s = tToMins(bloque.hora_inicio.substring(0, 5)); s + f.duracion <= e && tomados < maxDia; s += 15) {
                 const sFin = s + f.duracion;
                 const enTurno = f.turno === 'cualquiera' || (f.turno === 'manana' ? s < 13 * 60 : s >= 13 * 60);
                 const libre = !ocupadas.some(o => s < o.f && sFin > o.i)
                   && !bloqDia.some((b: any) => s < tToMins(b.hora_fin.substring(0, 5)) && sFin > tToMins(b.hora_inicio.substring(0, 5)));
-                if (enTurno && libre && s >= minimo && s >= ultimoFin) {
+                const mismaHoraOriginal = !!cita && fechaISO === fechaISODeStr(cita.inicio) && minsToT(s) === horaDeStr(cita.inicio) && pro.user_id === cita.profesional_id;
+                // Modo reprogramar: todas las horas posibles (pueden solaparse entre sí); normal: opciones sin solaparse
+                if (enTurno && libre && s >= minimo && (modoTodas || s >= ultimoFin) && !mismaHoraOriginal) {
                   encontrados.push({ fecha: fechaISO, hora: minsToT(s), duracion: f.duracion, profesional_id: pro.user_id, doctor: `${pro.nombre} ${pro.apellido}` });
                   tomados++;
                   ultimoFin = sFin; // las opciones de un mismo doctor no se solapan entre sí
@@ -127,7 +140,8 @@ export default function ModalBuscarHora({ abierto, onClose, onElegir, profesiona
             }
           });
         }
-        if (encontrados.length >= lim) { sinMas = false; break; }
+        const cantidad = modoTodas ? new Set(encontrados.map(h => h.fecha)).size : encontrados.length;
+        if (cantidad >= lim) { sinMas = false; break; }
       }
 
       encontrados.sort((a, b) => `${a.fecha}${a.hora}${a.doctor}`.localeCompare(`${b.fecha}${b.hora}${b.doctor}`));
@@ -143,18 +157,27 @@ export default function ModalBuscarHora({ abierto, onClose, onElegir, profesiona
 
   const cambiarFiltro = (cambios: Partial<Filtro>) => {
     const f = { ...filtro, ...cambios };
-    setFiltro(f); setLimite(PASO);
-    buscar(f, PASO);
+    setFiltro(f); setLimite(paso);
+    buscar(f, paso);
   };
 
+  // Modo reprogramar: las horas agrupadas por día (y el límite cuenta días, no horas)
+  const dias = [...new Set(huecos.map(h => h.fecha))];
+  const visibles = modoTodas ? huecos.filter(h => dias.slice(0, limite).includes(h.fecha)) : huecos.slice(0, limite);
+  const hayMas = modoTodas ? dias.length > limite || !agotada : huecos.length > limite || !agotada;
+
   const verMas = () => {
-    const nuevo = limite + PASO;
+    const nuevo = limite + paso;
     setLimite(nuevo);
-    if (huecos.length < nuevo && !agotada) buscar(filtro, nuevo);
+    const tengo = modoTodas ? dias.length : huecos.length;
+    if (tengo < nuevo && !agotada) buscar(filtro, nuevo);
   };
 
   const copiarOpciones = async () => {
-    const lista = huecos.slice(0, limite).map(h => `• ${capitalizar(fechaLarga(h.fecha))} a las ${h.hora} hrs con Dr(a). ${h.doctor}`).join('\n');
+    const lista = (modoTodas
+      ? dias.slice(0, 3).map(d => `• ${capitalizar(fechaLarga(d))}: ${huecos.filter(h => h.fecha === d).slice(0, 6).map(h => h.hora).join(', ')} hrs`)
+      : huecos.slice(0, limite).map(h => `• ${capitalizar(fechaLarga(h.fecha))} a las ${h.hora} hrs con Dr(a). ${h.doctor}`)
+    ).join('\n');
     try {
       await navigator.clipboard.writeText(`Estas son las próximas horas disponibles en Clínica Dignidad:\n\n${lista}\n\n¿Cuál te acomoda?`);
       toast.success('Opciones copiadas, puedes pegarlas en WhatsApp');
@@ -170,9 +193,11 @@ export default function ModalBuscarHora({ abierto, onClose, onElegir, profesiona
       abierto={abierto}
       onClose={onClose}
       posicion="arriba"
-      icono={<Search size={24} style={{ color: GOLD_LIGHT }} />}
-      titulo="Próxima hora libre"
-      subtitulo="Para cuando el paciente llama"
+      icono={modoTodas ? <CalendarClock size={24} style={{ color: GOLD_LIGHT }} /> : <Search size={24} style={{ color: GOLD_LIGHT }} />}
+      titulo={modoTodas ? `Reprogramar · ${nombrePaciente(cita?.pacientes)}` : 'Próxima hora libre'}
+      subtitulo={modoTodas
+        ? `Cita actual: ${capitalizar(fechaLarga(fechaISODeStr(cita.inicio), { weekday: 'short', day: 'numeric', month: 'short' }))} ${horaDeStr(cita.inicio)} · ${duracionMinutos(cita)} min`
+        : 'Para cuando el paciente llama'}
     >
       {/* Filtros */}
       <div className="px-6 md:px-8 py-4 border-b border-slate-100 bg-white grid grid-cols-2 md:grid-cols-4 gap-3 shrink-0">
@@ -186,7 +211,7 @@ export default function ModalBuscarHora({ abierto, onClose, onElegir, profesiona
         <div className="space-y-1">
           <label className={labelCls}>Duración</label>
           <select className={selectCls} value={filtro.duracion} disabled={buscando} onChange={e => cambiarFiltro({ duracion: Number(e.target.value) })}>
-            {DURACIONES_DISPONIBLES.map(d => <option key={d} value={d}>{d} min</option>)}
+            {[...new Set([...DURACIONES_DISPONIBLES, filtro.duracion])].sort((a, b) => a - b).map(d => <option key={d} value={d}>{d} min</option>)}
           </select>
         </div>
         <div className="space-y-1">
@@ -217,7 +242,31 @@ export default function ModalBuscarHora({ abierto, onClose, onElegir, profesiona
           </div>
         ) : (
           <>
-            {huecos.slice(0, limite).map((h, i) => {
+            {modoTodas && dias.slice(0, limite).map((d, i) => {
+              const delDia = huecos.filter(h => h.fecha === d);
+              const etiqueta = d === hoyISO ? 'Hoy' : d === mananaISO ? 'Mañana' : null;
+              return (
+                <div key={d} className={`bg-white p-4 rounded-2xl border shadow-sm ${i === 0 ? 'border-[#C9A24B] ring-2 ring-[#C9A24B]/15' : 'border-slate-200'}`}>
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <p className="font-black text-sm text-slate-800 capitalize leading-tight flex items-center gap-2">
+                      <CalendarDays size={15} className="text-[#C9A24B]" />
+                      {etiqueta && <span className="text-[9px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">{etiqueta}</span>}
+                      {fechaLarga(d)}
+                    </p>
+                    <span className="text-[10px] font-bold text-slate-400 shrink-0">{delDia.length} hora{delDia.length === 1 ? '' : 's'}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {delDia.map(h => (
+                      <button key={`${h.hora}-${h.profesional_id}`} onClick={() => onElegir(h)} title={`Reprogramar al ${fechaLarga(h.fecha)} a las ${h.hora} (${h.duracion} min) con Dr(a). ${h.doctor}`}
+                        className="px-3 py-2 rounded-xl border border-[#C9A24B]/40 bg-[#C9A24B]/5 text-[#8A6D2F] hover:bg-[#C9A24B] hover:text-[#0A111F] text-xs font-black tabular-nums transition-colors">
+                        {h.hora}{filtro.profesional === 'Todos' && <span className="font-bold opacity-70"> · {h.doctor.split(' ')[0]}</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            {!modoTodas && huecos.slice(0, limite).map((h, i) => {
               const etiqueta = h.fecha === hoyISO ? 'Hoy' : h.fecha === mananaISO ? 'Mañana' : null;
               return (
                 <div key={`${h.fecha}-${h.hora}-${h.profesional_id}`} className={`bg-white p-4 rounded-2xl border shadow-sm flex items-center justify-between gap-3 ${i === 0 ? 'border-[#C9A24B] ring-2 ring-[#C9A24B]/15' : 'border-slate-200'}`}>
@@ -240,18 +289,26 @@ export default function ModalBuscarHora({ abierto, onClose, onElegir, profesiona
                 </div>
               );
             })}
-            {(huecos.length > limite || !agotada) && (
+            {hayMas && (
               <button onClick={verMas} disabled={buscando} className="w-full py-3 text-[11px] font-black uppercase tracking-widest text-slate-500 hover:text-[#8A6D2F] border-2 border-dashed border-slate-200 hover:border-[#C9A24B]/50 rounded-2xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
-                {buscando ? <Loader2 size={14} className="animate-spin" /> : <ArrowDown size={14} />} Ver {PASO} más
+                {buscando ? <Loader2 size={14} className="animate-spin" /> : <ArrowDown size={14} />} {modoTodas ? `Ver ${PASO_DIAS} días más` : `Ver ${PASO} más`}
               </button>
             )}
           </>
         )}
       </div>
 
+      {modoTodas && onCalendario && (
+        <div className="px-6 md:px-8 py-3 border-t border-slate-100 bg-white shrink-0 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <p className="text-[10px] font-bold text-slate-400">Elige una hora y luego confirma la reprogramación. ¿Necesitas otra hora o un sobrecupo?</p>
+          <button onClick={onCalendario} className="px-4 py-2.5 border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 flex items-center gap-1.5">
+            <CalendarIcon size={14} /> Elegir en el calendario
+          </button>
+        </div>
+      )}
       {huecos.length > 0 && (
         <div className="px-6 md:px-8 py-4 border-t border-slate-100 bg-white shrink-0 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-[10px] font-bold text-slate-400">Máximo {MAX_POR_DOCTOR_DIA} opciones por doctor y día, sin solaparse entre sí.</p>
+          <p className="text-[10px] font-bold text-slate-400">{modoTodas ? 'Todas las horas libres del doctor con esta duración.' : `Máximo ${MAX_POR_DOCTOR_DIA} opciones por doctor y día, sin solaparse entre sí.`}</p>
           <button onClick={copiarOpciones} className="px-4 py-2.5 border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 flex items-center gap-1.5">
             <MessageCircle size={14} /> Copiar opciones para WhatsApp
           </button>
