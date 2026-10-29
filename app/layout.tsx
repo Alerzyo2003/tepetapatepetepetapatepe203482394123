@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { filtroPalabraPaciente } from '@/lib/busquedaPacientes'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Toaster, toast } from 'sonner'
 import {
@@ -103,8 +104,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     const palabras = term.trim().split(/\s+/).filter(p => p.length > 0)
     // OPTIMIZACIÓN: Esta query ya estaba bastante bien, traía solo lo necesario y con límite.
     let query = supabase.from('pacientes').select('id, nombre, apellido, rut')
+    // Sin importar tildes, diéresis ni ñ (Juan = Juán, Munoz = Muñoz) y RUT con o sin puntos
     palabras.forEach((palabra) => {
-      query = query.or(`nombre.ilike.%${palabra}%,apellido.ilike.%${palabra}%,rut.ilike.%${palabra}%`)
+      const filtro = filtroPalabraPaciente(palabra)
+      if (filtro) query = query.or(filtro)
     })
     const { data, error } = await query.limit(6)
     if (error) {
