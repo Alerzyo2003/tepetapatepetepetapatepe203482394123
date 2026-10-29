@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { filtroPalabraPaciente } from '@/lib/busquedaPacientes'
 import {
   X, Search, ChevronLeft, ChevronRight, Loader2, Clock,
   CalendarDays, Timer, UserCheck, Trash2, Activity, ClipboardList,
@@ -557,11 +558,10 @@ const handleDrop = async (e: React.DragEvent, profId: string, fecha: string, hor
     if (!term.trim()) { setPacientesEncontrados([]); return; }
     const palabras = term.trim().split(/\s+/);
     let query = supabase.from('pacientes').select('*');
+    // Sin importar tildes, diéresis ni ñ; búsqueda aproximada y RUT con o sin puntos
     palabras.forEach(palabra => {
-      const fuzzy = `%${palabra.split('').join('%')}%`;
-      const palabraRut = palabra.replace(/[^0-9kK]/gi, '').toUpperCase();
-      if (palabraRut.length > 0) query = query.or(`nombre.ilike.${fuzzy},apellido.ilike.${fuzzy},rut.ilike.%${palabraRut}%`);
-      else query = query.or(`nombre.ilike.${fuzzy},apellido.ilike.${fuzzy}`);
+      const filtro = filtroPalabraPaciente(palabra, { subsecuencia: true });
+      if (filtro) query = query.or(filtro);
     });
     const { data } = await query.limit(5); setPacientesEncontrados(data || []);
   };
