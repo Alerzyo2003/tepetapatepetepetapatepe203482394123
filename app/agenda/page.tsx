@@ -71,7 +71,9 @@ export default function AgendaPage() {
   const [modal, setModal] = useState<null | 'bloqueo' | 'huerfanas' | 'anuladas' | 'web' | 'recordatorios' | 'resenas' | 'buscarHora' | 'hojaRuta' | 'sinHora' | 'inasistencias'>(null);
   const cerrarModal = () => setModal(null);
   // Lista a la que se vuelve después de agendar desde ella (para seguir con el siguiente paciente)
-  const [volverA, setVolverA] = useState<null | 'sinHora' | 'inasistencias'>(null);
+  const [volverA, setVolverA] = useState<null | 'sinHora' | 'inasistencias' | 'buscarHora'>(null);
+  // Cita que se está reprogramando: "Buscar hora" se abre en modo reprogramar (todas las horas del mismo doctor y duración)
+  const [citaReprogramar, setCitaReprogramar] = useState<any>(null);
   const [inasistenciasPorReagendar, setInasistenciasPorReagendar] = useState(0);
 
   const dateInputRef = useRef<HTMLInputElement>(null);
@@ -262,7 +264,13 @@ export default function AgendaPage() {
     });
   };
 
-  const iniciarReprogramacion = (cita: any) => abrirAgendar(configReprogramar(cita));
+  const iniciarReprogramacion = (cita: any) => { setCitaReprogramar(cita); setModal('buscarHora'); };
+  // Desde el buscador de horas: abrir el calendario semanal para elegir a mano (otra hora o sobrecupo)
+  const reprogramarEnCalendario = () => {
+    const cita = citaReprogramar;
+    setModal(null); setCitaReprogramar(null);
+    if (cita) abrirAgendar(configReprogramar(cita));
+  };
 
   const agendarControl = (cita: any) => {
     if (!cita?.pacientes) return toast.error('La cita no tiene paciente asociado');
@@ -290,7 +298,14 @@ export default function AgendaPage() {
 
   const agendarEnHueco = (h: Hueco) => {
     setModal(null);
-    abrirAgendar({ profesionalId: h.profesional_id, duracion: h.duracion, semanaInicio: h.fecha, diaSugerido: h.fecha, horas: [{ fecha: h.fecha, hora: h.hora, duracion: h.duracion }] });
+    const horas = [{ fecha: h.fecha, hora: h.hora, duracion: h.duracion }];
+    if (citaReprogramar) {
+      // Reprogramar: se abre la confirmación con la hora ya elegida; si se cancela, se vuelve a la lista de horas
+      setVolverA('buscarHora');
+      abrirAgendar({ ...configReprogramar(citaReprogramar), profesionalId: h.profesional_id, duracion: h.duracion, semanaInicio: h.fecha, diaSugerido: h.fecha, horas });
+      return;
+    }
+    abrirAgendar({ profesionalId: h.profesional_id, duracion: h.duracion, semanaInicio: h.fecha, diaSugerido: h.fecha, horas });
   };
 
   async function actualizarEstadoCita(cita: any, nuevoEstado: string) {
@@ -388,7 +403,7 @@ export default function AgendaPage() {
           <button onClick={() => setModal('hojaRuta')} className={`${botonCabecera} border-slate-200 text-slate-600 hover:bg-slate-50`}>
             <ClipboardList className="text-[#C9A24B]" size={14} /> Hoja de Ruta
           </button>
-          <button onClick={() => setModal('buscarHora')} className={`${botonCabecera} border-[#C9A24B] text-[#8A6D2F] hover:bg-[#C9A24B]/10`}>
+          <button onClick={() => { setCitaReprogramar(null); setModal('buscarHora'); }} className={`${botonCabecera} border-[#C9A24B] text-[#8A6D2F] hover:bg-[#C9A24B]/10`}>
             <Search size={14} /> Buscar Hora
           </button>
           {puedeVerFinanzas && (
@@ -552,8 +567,15 @@ export default function AgendaPage() {
       {/* MODALES */}
       <ModalAgendar
         config={agendarConfig}
-        onClose={() => { setAgendarConfig(null); if (volverA) { setModal(volverA); setVolverA(null); } }}
-        onGuardado={fetchCitasAgenda}
+        onClose={() => {
+          setAgendarConfig(null);
+          if (volverA) { setModal(volverA); setVolverA(null); } else setCitaReprogramar(null);
+        }}
+        onGuardado={() => {
+          fetchCitasAgenda();
+          // Reprogramación guardada: ya no se vuelve a la lista de horas
+          if (volverA === 'buscarHora') { setVolverA(null); setCitaReprogramar(null); }
+        }}
         profesionales={profesionales}
         usuarioLogueado={usuarioLogueado}
         puedeVerAgendaCompleta={puedeVerAgendaCompleta}
@@ -566,7 +588,7 @@ export default function AgendaPage() {
       <ModalCitasWeb abierto={modal === 'web'} onClose={cerrarModal} onCambio={fetchCitasAgenda} citas={citasOnlinePendientes} profesionales={profesionales} usuarioLogueado={usuarioLogueado} />
       <ModalRecordatorios abierto={modal === 'recordatorios' && puedeEnviarRecordatorios} onClose={cerrarModal} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} filtroEspecialista={filtroEspecialista} realtimeTrigger={realtimeTrigger} />
       <ModalResenas abierto={modal === 'resenas' && puedeEnviarRecordatorios} onClose={cerrarModal} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} filtroEspecialista={filtroEspecialista} />
-      <ModalBuscarHora abierto={modal === 'buscarHora'} onClose={cerrarModal} onElegir={agendarEnHueco} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} especialistaInicial={filtroEspecialista} />
+      <ModalBuscarHora abierto={modal === 'buscarHora'} onClose={() => { cerrarModal(); setCitaReprogramar(null); }} onElegir={agendarEnHueco} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} especialistaInicial={filtroEspecialista} cita={citaReprogramar} onCalendario={reprogramarEnCalendario} />
       <ModalSinProximaHora abierto={modal === 'sinHora'} onClose={cerrarModal} citas={citasSinProximaHora} profesionales={profesionales} onAgendar={(c) => { setVolverA('sinHora'); agendarProximaHora(c); }} mostrarFecha={vistaAgenda === 'semana'} />
       <ModalInasistencias abierto={modal === 'inasistencias'} onClose={cerrarModal} profesionales={profesionales} usuarioLogueado={usuarioLogueado} filtroEspecialista={filtroEspecialista} onReagendar={reagendarInasistencia} />
       <ModalHojaRuta abierto={modal === 'hojaRuta'} onClose={cerrarModal} fechaInicial={getLocalDateISO(selectedDate)} especialistaInicial={filtroEspecialista} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} />
