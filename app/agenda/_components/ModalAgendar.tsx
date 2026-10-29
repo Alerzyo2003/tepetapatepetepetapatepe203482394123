@@ -3,6 +3,7 @@
 // Incluye el ticket "¡Cita lista!" con el envío por WhatsApp.
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { filtroPalabraPaciente } from '@/lib/busquedaPacientes'
 import { toast } from 'sonner'
 import {
   Ban, Calendar as CalendarIcon, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Clock,
@@ -251,16 +252,10 @@ function FormularioAgendar({
     const palabras = term.trim().split(/\s+/).map(limpiarParaFiltro).filter(Boolean);
     if (palabras.length === 0) { setPacientesEncontrados([]); return; }
     let query = supabase.from('pacientes').select('*');
+    // Sin importar tildes, diéresis ni ñ; las letras pueden ir separadas (búsqueda aproximada) y RUT con o sin puntos
     palabras.forEach(palabra => {
-      const fuzzy = `%${palabra.split('').join('%')}%`;
-      if (/\d/.test(palabra)) {
-        // RUT: si viene con guión buscamos por el cuerpo (sin DV), sin puntos
-        const limpio = palabra.replace(/\./g, '');
-        const rutBusqueda = limpio.includes('-') ? limpio.split('-')[0].replace(/\D/g, '') : limpio.replace(/[^0-9kK]/g, '').toUpperCase();
-        query = query.or(`nombre.ilike.${fuzzy},apellido.ilike.${fuzzy},rut.ilike.%${rutBusqueda}%`);
-      } else {
-        query = query.or(`nombre.ilike.${fuzzy},apellido.ilike.${fuzzy}`);
-      }
+      const filtro = filtroPalabraPaciente(palabra, { subsecuencia: true });
+      if (filtro) query = query.or(filtro);
     });
     const { data } = await query.limit(8);
     if (seq !== busquedaSeq.current) return;
