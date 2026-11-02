@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation'
 import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
+import { descargarExcel } from '@/lib/excel'
 import { ChevronLeft, Printer, DollarSign, Loader2, FlaskConical, CheckCircle2, History, AlertCircle, Download, Eye, X, Wallet } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -629,15 +630,8 @@ export default function MiDetalleLiquidacionPage() {
      </Worksheet>
     </Workbook>`;
 
-    const blob = new Blob([xmlTemplate], { type: 'application/vnd.ms-excel' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Liquidacion_Dr_${profesional?.apellido}_${mesSeleccionado}.xls`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // .xlsx real: se abre en PC, iPhone y Android sin el aviso de "formato y extensión no coinciden"
+    descargarExcel(xmlTemplate, `Liquidacion_Dr_${profesional?.apellido}_${mesSeleccionado}`);
     toast.success("Excel descargado correctamente");
   };
 
@@ -694,15 +688,8 @@ export default function MiDetalleLiquidacionPage() {
  </Worksheet>
 </Workbook>`;
 
-    const blob = new Blob([xml], { type: 'application/vnd.ms-excel' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Cierre_${cierre.numero}_Dr_${profesional?.apellido}_${mesSeleccionado}.xls`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // .xlsx real: se abre en PC, iPhone y Android sin el aviso de "formato y extensión no coinciden"
+    descargarExcel(xml, `Cierre_${cierre.numero}_Dr_${profesional?.apellido}_${mesSeleccionado}`);
     toast.success(`Cierre #${cierre.numero} descargado`);
   };
 
