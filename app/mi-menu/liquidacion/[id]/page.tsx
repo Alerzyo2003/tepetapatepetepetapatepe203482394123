@@ -3,6 +3,7 @@ import { useParams } from 'next/navigation'
 import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
+import { descargarExcel } from '@/lib/excel'
 import { ChevronLeft, Printer, Download, DollarSign, Loader2, CheckCircle2, History, AlertCircle, Eye, X, Wallet } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -509,14 +510,8 @@ export default function MiDetalleLiquidacionPage() {
      </Worksheet>
     </Workbook>`;
 
-    const blob = new Blob([xmlTemplate], { type: 'application/vnd.ms-excel' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Liquidacion_Dr_${profesional?.apellido}_${mesSeleccionado}.xls`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    // .xlsx real: se abre en PC, iPhone y Android sin el aviso de "formato y extensión no coinciden"
+    descargarExcel(xmlTemplate, `Liquidacion_Dr_${profesional?.apellido}_${mesSeleccionado}`);
   };
 
   const obtenerFechaFinalizacion = () => {
