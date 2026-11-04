@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Activity, Ban, CalendarClock, CalendarDays, CalendarPlus, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList,
+  Activity, Ban, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList,
   Clock, Globe, LayoutGrid, Link as LinkIcon, Loader2, Lock, MessageCircle, MessageSquare, MoreVertical, Plus,
   Save, Search, Timer, User, Users, Wallet, X,
 } from 'lucide-react'
@@ -16,6 +16,7 @@ import ModalShell from '../agenda/_components/ModalShell'
 import ModalAgendar from '../agenda/_components/ModalAgendar'
 import ModalBloqueo, { type BloqueoInicial } from '../agenda/_components/ModalBloqueo'
 import ModalBuscarHora from '../agenda/_components/ModalBuscarHora'
+import ModalEnlaceReagendar from '../agenda/_components/ModalEnlaceReagendar'
 import ModalHojaRuta from '../agenda/_components/ModalHojaRuta'
 import AvisoPacienteEspera from '../agenda/_components/AvisoPacienteEspera'
 import { contarInasistencias, registrarAuditoria } from '../agenda/_components/data'
@@ -27,7 +28,7 @@ import {
   abrirWhatsApp, claseBadgeSemaforo, construirMensajeCambioHora, construirMensajeInasistencia, duracionMinutos,
   esWebPendiente, ESTADOS_CITA, estiloInasistencias, fechaISODeStr, getInitials, getLocalDateISO, getMinsFromDateStr,
   horaDeStr, horaLocalAhoraISO, MESES_INASISTENCIAS, minsToT, minutosDesde, nivelSemaforo, nombrePaciente,
-  rangoCita, requiereControl, SLOTS_HORARIOS, tToMins,
+  puedeEnviarEnlaceReagendar, rangoCita, requiereControl, SLOTS_HORARIOS, tToMins,
 } from '../agenda/_components/utils'
 import type { AgendarConfig, Hueco, Profesional } from '../agenda/_components/types'
 
@@ -60,6 +61,7 @@ export default function VistaDiariaPage() {
   // ── UI ──
   const [menuAbiertoId, setMenuAbiertoId] = useState<string | null>(null);
   const [comentario, setComentario] = useState<{ cita: any; texto: string } | null>(null);
+  const [citaEnlaceReagendar, setCitaEnlaceReagendar] = useState<any>(null);
   const [guardandoComentario, setGuardandoComentario] = useState(false);
   const [agendarConfig, setAgendarConfig] = useState<AgendarConfig | null>(null);
   const [modal, setModal] = useState<null | 'buscarHora' | 'hojaRuta' | 'bloqueo'>(null);
@@ -552,6 +554,7 @@ export default function VistaDiariaPage() {
                             onDragStart={(e) => iniciarArrastre(e, cita)}
                             onDragEnd={terminarArrastre}
                             onReagendar={() => abrirAgendar(configReprogramar(cita))}
+                            onEnlaceReagendar={() => { setMenuAbiertoId(null); setCitaEnlaceReagendar(cita); }}
                             onComentario={() => { setMenuAbiertoId(null); setComentario({ cita, texto: cita.motivo || '' }); }}
                             onRecordatorio={() => { setMenuAbiertoId(null); enviarRecordatorioIndividual(cita, profesionales); }}
                             onInasistencia={() => { setMenuAbiertoId(null); abrirWhatsApp(cita.pacientes?.telefono, construirMensajeInasistencia(cita, profesionales)); }}
@@ -629,6 +632,7 @@ export default function VistaDiariaPage() {
         puedeVerAgendaCompleta={puedeVerAgendaCompleta}
         especialistaInicial={puedeVerAgendaCompleta ? 'Todos' : (usuarioLogueado || 'Todos')}
       />
+      {citaEnlaceReagendar && <ModalEnlaceReagendar key={citaEnlaceReagendar.id} cita={citaEnlaceReagendar} onClose={() => setCitaEnlaceReagendar(null)} profesionales={profesionales} />}
       <ModalHojaRuta
         abierto={modal === 'hojaRuta'}
         onClose={() => setModal(null)}
@@ -702,6 +706,7 @@ interface TarjetaProps {
   onDragStart: (e: DragEvent) => void;
   onDragEnd: () => void;
   onReagendar: () => void;
+  onEnlaceReagendar: () => void;
   onComentario: () => void;
   onRecordatorio: () => void;
   onInasistencia: () => void;
@@ -711,7 +716,7 @@ interface TarjetaProps {
 
 function TarjetaCitaGrilla({
   cita, unico: unicoDoctor, esSobrecupo, carril, totalCarriles, ahoraMs, menuAbierto, arrastrando, esLaArrastrada, puedeVerFinanzas,
-  onToggleMenu, onDragStart, onDragEnd, onReagendar, onComentario, onRecordatorio, onInasistencia, onControl, onCambiarEstado,
+  onToggleMenu, onDragStart, onDragEnd, onReagendar, onEnlaceReagendar, onComentario, onRecordatorio, onInasistencia, onControl, onCambiarEstado,
 }: TarjetaProps) {
   // Si comparte espacio con otra cita, usa el diseño compacto aunque sea el único doctor
   const unico = unicoDoctor && totalCarriles === 1;
@@ -825,6 +830,7 @@ function TarjetaCitaGrilla({
             <div className="h-px bg-slate-100 my-1 mx-2"></div>
             <p className="px-4 pt-1 pb-1 text-[8px] font-black text-slate-400 uppercase tracking-widest">Cita</p>
             <ItemBoton onClick={onReagendar} icono={<CalendarClock size={14} />} texto="Reagendar / duración" color="hover:bg-blue-50 hover:text-blue-600" />
+            {puedeEnviarEnlaceReagendar(cita) && <ItemBoton onClick={onEnlaceReagendar} icono={<CalendarSync size={14} />} texto="Enlace para reagendar" color="hover:bg-violet-50 hover:text-violet-600" />}
             <ItemBoton onClick={onComentario} icono={<MessageSquare size={14} />} texto="Comentario / motivo" color="hover:bg-amber-50 hover:text-amber-600" />
             {!web && <ItemBoton onClick={onRecordatorio} icono={<LinkIcon size={14} />} texto="Enviar recordatorio" color="hover:bg-emerald-50 hover:text-emerald-600" />}
             {cita.estado === 'no_asiste' && <ItemBoton onClick={onInasistencia} icono={<MessageCircle size={14} />} texto="WhatsApp para reagendar" color="hover:bg-rose-50 hover:text-rose-600" />}

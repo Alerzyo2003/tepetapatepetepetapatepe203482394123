@@ -35,6 +35,7 @@ export const DURACIONES_DISPONIBLES = [15, 30, 45, 60, 90, 120, 150, 180, 210, 2
 export const DIRECCION_CLINICA = 'Av. Venancia Leiva 1871, La Pintana';
 export const URL_CONFIRMAR = 'https://agendar.clinicadignidad.cl/confirmar';
 export const URL_AGENDAR_ONLINE = 'https://agendar.clinicadignidad.cl/agendar';
+export const URL_REAGENDAR = 'https://agendar.clinicadignidad.cl/reagendar';
 export const URL_RESENA_GOOGLE = 'https://g.page/r/CTmbdo9C4oVGEBM/review';
 
 // ─────────────────────────────────────────────────────────────
@@ -193,6 +194,9 @@ export const construirMensajeInasistencia = (cita: any, profesionales: Profesion
 export const construirMensajeCambioHora = (cita: any, fecha: string, hora: string, profesionalId: string, profesionales: Profesional[]) =>
   variarMensaje(`Hola ${cita.pacientes?.nombre || ''}, te escribimos de Clínica Dignidad para informarte que tu cita fue cambiada para el día ${capitalizar(fechaLarga(fecha))} a las ${hora} hrs con el/la ${nombreDoctorCompleto(profesionales, profesionalId)}.\n\n📍 Dirección: ${DIRECCION_CLINICA}.\n\nPor favor confirma tu asistencia en el siguiente enlace:\n${URL_CONFIRMAR}/${cita.id}`);
 
+export const construirMensajeReagendar = (cita: any, url: string, profesionales: Profesional[]) =>
+  variarMensaje(`Hola ${cita.pacientes?.nombre || ''}, te escribimos de Clínica Dignidad. Puedes elegir una nueva hora para tu cita con el/la ${nombreDoctorCompleto(profesionales, cita.profesional_id)} en este enlace:\n${url}\n\nEl enlace dura 7 días y sirve una sola vez. Si ningún horario te acomoda, respóndenos por aquí y te ayudamos.`);
+
 export const construirMensajeResena = (cita: any, profesionales?: Profesional[]) => {
   const nombre = cita.pacientes?.nombre || '';
   const doctor = profesionales ? buscarDoctor(profesionales, cita.profesional_id) : undefined;
@@ -251,6 +255,8 @@ export const calcularSinProximaHora = (c: any, cont: Continuidad | undefined, ho
 };
 // Paciente que ya está o estuvo en la clínica hoy (el momento de agendarle antes de que se vaya)
 export const ESTADOS_EN_CLINICA = ['en_espera', 'atendiendose', 'atendido'];
+// Enlace para que el paciente elija otra hora: no aplica si ya llegó o ya se atendió
+export const puedeEnviarEnlaceReagendar = (c: any) => !!c?.paciente_id && !!c?.profesional_id && !ESTADOS_EN_CLINICA.includes(c.estado);
 
 // ⚠️ Palabras que se destacan como alerta médica
 export const PALABRAS_ALERTA = ['ALERG', 'ANTICOAG', 'SINTROM', 'NEOSINTROM', 'WARFARIN', 'ASPIRINA', 'CLOPIDOGREL', 'DIABET', 'HIPERTENS', 'EMBARAZ', 'CARDI', 'MARCAPASO', 'EPILEP', 'CONVULS', 'ASMA', 'VIH', 'HEPATIT', 'BIFOSFONAT', 'HEMOFIL', 'RADIOTERAP', 'QUIMIOTERAP', 'INFARTO', 'TRASPLANT', 'RENAL'];

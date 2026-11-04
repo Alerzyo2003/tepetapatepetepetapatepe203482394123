@@ -187,6 +187,22 @@ export async function marcarRecordatorioEnviado(citas: any[]) {
   if (error) console.error('No se pudo marcar el recordatorio como enviado', error);
 }
 
+// ─────────────────────────────────────────────────────────────
+// Enlace para que el paciente reagende su hora
+// ─────────────────────────────────────────────────────────────
+export async function obtenerEnlaceActivo(citaId: string): Promise<{ created_at: string } | null> {
+  const { data, error } = await supabase.from('reagendamiento_enlaces').select('created_at')
+    .eq('cita_id', citaId).eq('estado', 'activo').gt('expira_en', new Date().toISOString()).maybeSingle();
+  if (error) console.error('No se pudo revisar el enlace activo', error);
+  return data;
+}
+
+export async function generarEnlaceReagendar(citaId: string): Promise<{ ok: true; token: string; reemplazo_anterior: boolean } | { ok: false; codigo: string }> {
+  const { data, error } = await supabase.rpc('generar_enlace_reagendamiento', { p_cita_id: citaId });
+  if (error) { console.error('No se pudo generar el enlace', error); return { ok: false, codigo: 'error' }; }
+  return data;
+}
+
 export async function registrarAuditoria(usuarioId: string | null, accion: string, tabla: string, detalles: string) {
   const { error } = await supabase.from('auditoria_clinica').insert([{ usuario_id: usuarioId, accion, tabla, detalles }]);
   if (error) console.error('No se pudo registrar la auditoría', error);

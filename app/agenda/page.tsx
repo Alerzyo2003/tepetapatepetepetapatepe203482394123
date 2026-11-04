@@ -31,6 +31,7 @@ import ModalCitasWeb from './_components/ModalCitasWeb'
 import ModalRecordatorios from './_components/ModalRecordatorios'
 import ModalResenas from './_components/ModalResenas'
 import ModalBuscarHora from './_components/ModalBuscarHora'
+import ModalEnlaceReagendar from './_components/ModalEnlaceReagendar'
 import ModalHojaRuta from './_components/ModalHojaRuta'
 import ModalSinProximaHora from './_components/ModalSinProximaHora'
 import ModalInasistencias from './_components/ModalInasistencias'
@@ -74,6 +75,7 @@ export default function AgendaPage() {
   const [volverA, setVolverA] = useState<null | 'sinHora' | 'inasistencias' | 'buscarHora'>(null);
   // Cita que se está reprogramando: "Buscar hora" se abre en modo reprogramar (todas las horas del mismo doctor y duración)
   const [citaReprogramar, setCitaReprogramar] = useState<any>(null);
+  const [citaEnlaceReagendar, setCitaEnlaceReagendar] = useState<any>(null);
   const [inasistenciasPorReagendar, setInasistenciasPorReagendar] = useState(0);
 
   const dateInputRef = useRef<HTMLInputElement>(null);
@@ -336,6 +338,7 @@ export default function AgendaPage() {
   const acciones: AccionesCita = {
     onCambiarEstado: actualizarEstadoCita,
     onReprogramar: iniciarReprogramacion,
+    onEnlaceReagendar: setCitaEnlaceReagendar,
     onPresupuesto: setCitaPresupuesto,
     onRecordatorio: (c) => enviarRecordatorioIndividual(c, profesionales),
     onResena: (c) => abrirWhatsApp(c.pacientes?.telefono, construirMensajeResena(c)),
@@ -589,6 +592,7 @@ export default function AgendaPage() {
       <ModalRecordatorios abierto={modal === 'recordatorios' && puedeEnviarRecordatorios} onClose={cerrarModal} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} filtroEspecialista={filtroEspecialista} realtimeTrigger={realtimeTrigger} />
       <ModalResenas abierto={modal === 'resenas' && puedeEnviarRecordatorios} onClose={cerrarModal} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} filtroEspecialista={filtroEspecialista} />
       <ModalBuscarHora abierto={modal === 'buscarHora'} onClose={() => { cerrarModal(); setCitaReprogramar(null); }} onElegir={agendarEnHueco} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} especialistaInicial={filtroEspecialista} cita={citaReprogramar} onCalendario={reprogramarEnCalendario} />
+      {citaEnlaceReagendar && <ModalEnlaceReagendar key={citaEnlaceReagendar.id} cita={citaEnlaceReagendar} onClose={() => setCitaEnlaceReagendar(null)} profesionales={profesionales} />}
       <ModalSinProximaHora abierto={modal === 'sinHora'} onClose={cerrarModal} citas={citasSinProximaHora} profesionales={profesionales} onAgendar={(c) => { setVolverA('sinHora'); agendarProximaHora(c); }} mostrarFecha={vistaAgenda === 'semana'} />
       <ModalInasistencias abierto={modal === 'inasistencias'} onClose={cerrarModal} profesionales={profesionales} usuarioLogueado={usuarioLogueado} filtroEspecialista={filtroEspecialista} onReagendar={reagendarInasistencia} />
       <ModalHojaRuta abierto={modal === 'hojaRuta'} onClose={cerrarModal} fechaInicial={getLocalDateISO(selectedDate)} especialistaInicial={filtroEspecialista} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} />

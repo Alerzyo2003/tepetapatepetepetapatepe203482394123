@@ -3,19 +3,20 @@
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import {
-  Activity, AlertTriangle, Ban, CalendarClock, CalendarPlus, CheckCircle2, ChevronDown, ClipboardList, Coins,
+  Activity, AlertTriangle, Ban, CalendarClock, CalendarPlus, CalendarSync, CheckCircle2, ChevronDown, ClipboardList, Coins,
   FileText, Globe, Link as LinkIcon, MessageCircle, MessageSquareText, Phone, Star, Timer, Trash2, User,
 } from 'lucide-react'
 import {
   buscarDoctor, claseBadgeSemaforo, DIAS_HASTA_CONTROL, ESTADOS_CITA, estiloInasistencias, formatNombreDoctor,
   ESTADOS_EN_CLINICA, getAvatarColorClass, getInitials, horaDeStr, MESES_INASISTENCIAS, minutosDesde, nivelSemaforo,
-  requiereControl, type NivelSemaforo,
+  puedeEnviarEnlaceReagendar, requiereControl, type NivelSemaforo,
 } from './utils'
 import type { Profesional } from './types'
 
 export interface AccionesCita {
   onCambiarEstado: (cita: any, estado: string) => void;
   onReprogramar: (cita: any) => void;
+  onEnlaceReagendar: (cita: any) => void;
   onPresupuesto: (cita: any) => void;
   onRecordatorio: (cita: any) => void;
   onResena: (cita: any) => void;
@@ -173,6 +174,7 @@ export function TarjetaCitaDia({ cita: c, index, esSobrecupo, ahoraMs, puedeVerF
           {/* Acciones */}
           <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto justify-start sm:justify-end">
             <button onClick={() => acciones.onReprogramar(c)} className={`${btn} hover:text-[#C9A24B]`} title="Reprogramar"><CalendarClock size={16} /></button>
+            {puedeEnviarEnlaceReagendar(c) && <button onClick={() => acciones.onEnlaceReagendar(c)} className={`${btn} hover:text-violet-600`} title="Enviar enlace para que el paciente reagende"><CalendarSync size={16} /></button>}
             <button onClick={() => acciones.onPresupuesto(c)} className={`${btn} hover:text-blue-500`} title="Enviar Presupuesto"><FileText size={16} /></button>
             <button onClick={() => acciones.onRecordatorio(c)} className={`${btn} hover:text-[#C9A24B]`} title="Enviar link de confirmación"><LinkIcon size={16} /></button>
             <button onClick={() => acciones.onResena(c)} className={`${btn} hover:text-amber-500`} title="Pedir reseña en Google Maps"><Star size={16} /></button>
@@ -253,6 +255,7 @@ export function TarjetaCitaSemana({ cita: c, delay, esSobrecupo, ahoraMs, puedeV
 
       <div className="absolute inset-0 bg-white/95 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
         <button onClick={() => acciones.onReprogramar(c)} className={`${btn} hover:bg-[#C9A24B]/10 hover:text-[#C9A24B]`} title="Reprogramar"><CalendarClock size={15} /></button>
+        {puedeEnviarEnlaceReagendar(c) && <button onClick={() => acciones.onEnlaceReagendar(c)} className={`${btn} hover:bg-violet-100 hover:text-violet-600`} title="Enviar enlace para que el paciente reagende"><CalendarSync size={15} /></button>}
         <button onClick={() => acciones.onPresupuesto(c)} className={`${btn} hover:bg-[#C9A24B]/10 hover:text-[#C9A24B]`} title="Enviar Presupuesto"><FileText size={15} /></button>
         <button onClick={() => acciones.onRecordatorio(c)} className={`${btn} hover:bg-[#C9A24B]/10 hover:text-[#C9A24B]`} title="Enviar link de confirmación"><LinkIcon size={15} /></button>
         <button onClick={() => acciones.onResena(c)} className={`${btn} hover:bg-amber-100 hover:text-amber-500`} title="Pedir reseña en Google Maps"><Star size={15} /></button>
