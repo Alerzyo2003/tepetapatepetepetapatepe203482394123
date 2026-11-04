@@ -237,8 +237,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
                   <div className="h-4 border-b border-white/5 mx-2 my-2"></div>
 
-                 {/* Acordeón: Mi Menú (Dentistas, Recepcionistas y Admin) */}
-                  {['DENTISTA', 'RECEPCIONISTA', 'ADMIN'].includes(perfil?.rol) && (
+                 {/* Acordeón: Mi Menú (Dentistas, Recepcionistas, Asistentes y Admin) */}
+                  {['DENTISTA', 'RECEPCIONISTA', 'ASISTENTE', 'ADMIN'].includes(perfil?.rol) && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="flex flex-col">
                       <button onClick={() => setShowMiMenu(!showMiMenu)} className={`flex items-center justify-between px-4 py-3 rounded-xl transition-all group ${showMiMenu ? 'text-white bg-white/5' : 'text-[#8A96A8] hover:text-white hover:bg-white/5'}`}>
                         <div className="flex items-center gap-3.5">
@@ -265,12 +265,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                                 <SidebarSubLink href="/mi-menu/aranceles" label="Ver Aranceles" onClick={() => setMobileMenuOpen(false)} />
                               )}
 
-                              {/* Recepcionistas y Admins: seguimiento de evaluaciones de implantes y presupuestos sin aprobar */}
+                              {/* Recepcionistas y Admins: seguimiento de evaluaciones de implantes */}
                               {['RECEPCIONISTA', 'ADMIN'].includes(perfil?.rol) && (
-                                <>
-                                  <SidebarSubLink href="/mi-menu/evaluaciones-implantes" label="Evaluaciones de implantes" onClick={() => setMobileMenuOpen(false)} />
-                                  <SidebarSubLink href="/mi-menu/presupuestos-sin-aprobar" label="Presupuestos sin aprobar" onClick={() => setMobileMenuOpen(false)} />
-                                </>
+                                <SidebarSubLink href="/mi-menu/evaluaciones-implantes" label="Evaluaciones de implantes" onClick={() => setMobileMenuOpen(false)} />
+                              )}
+
+                              {/* Recepcionistas, Asistentes y Admins: presupuestos sin aprobar */}
+                              {['RECEPCIONISTA', 'ASISTENTE', 'ADMIN'].includes(perfil?.rol) && (
+                                <SidebarSubLink href="/mi-menu/presupuestos-sin-aprobar" label="Presupuestos sin aprobar" onClick={() => setMobileMenuOpen(false)} />
                               )}
                               
                             </div>

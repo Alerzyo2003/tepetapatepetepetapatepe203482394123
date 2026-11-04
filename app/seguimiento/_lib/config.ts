@@ -35,6 +35,9 @@ export const CONFIG = {
 
   // ── Presupuestos sin aprobar (página de Mi menú) ──
   SIN_APROBAR: {
+    // Quién puede entrar a esta página (es_admin también entra). Es aparte de ROLES_PERMITIDOS:
+    // ASISTENTE ve esta página, pero no el Panel de Seguimiento
+    rolesPermitidos: ['ADMIN', 'RECEPCIONISTA', 'ASISTENTE'],
     // Período y monto mínimo con que se abre la página
     mesesPorDefecto: 6,
     montoMinimoPorDefecto: 50_000,

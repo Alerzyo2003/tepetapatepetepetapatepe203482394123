@@ -77,7 +77,7 @@ export default function PresupuestosSinAprobarPage() {
       if (!session?.user) { setAcceso('no'); return }
       const { data: perfil } = await supabase.from('perfiles').select('rol, es_admin').eq('id', session.user.id).maybeSingle()
       setUsuario({ id: session.user.id, rol: perfil?.rol || '' })
-      setAcceso(perfil && (CONFIG.ROLES_PERMITIDOS.includes(perfil.rol) || perfil.es_admin) ? 'si' : 'no')
+      setAcceso(perfil && (S.rolesPermitidos.includes(perfil.rol) || perfil.es_admin) ? 'si' : 'no')
     })()
   }, [])
 
