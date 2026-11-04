@@ -170,13 +170,13 @@ export default function DetalleTratamientoPage() {
   const puedeVerFinanzas = perfil?.rol === 'ADMIN' || perfil?.rol === 'RECEPCIONISTA' || perfil?.rol === 'DENTISTA';
   
   const packsAgrupados = useMemo(() => {
-  return plantillasDisponibles.reduce((acc: any, pack: any) => {
-    const cat = (pack.categoria || 'Otros').trim();
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push(pack);
-    return acc;
-  }, {});
-}, [plantillasDisponibles]);
+    return plantillasDisponibles.reduce((acc: any, pack: any) => {
+      const cat = (pack.categoria || 'Otros').trim();
+      if (!acc[cat]) acc[cat] = [];
+      acc[cat].push(pack);
+      return acc;
+    }, {});
+  }, [plantillasDisponibles]);
   
   const todasLasAccionesBoca = useMemo(() => {
     const historicasFiltradas = historialPaciente.filter(h => 
@@ -184,7 +184,6 @@ export default function DetalleTratamientoPage() {
       !acciones.some(a => a.id === h.id || a.tempId === h.tempId)
     );
 
-    // Quitamos la restricción para que los pendientes SÍ se dibujen en rojo
     const accionesParaOdontograma = acciones.filter(a => a.estado !== 'cancelada');
 
     return [...historicasFiltradas, ...accionesParaOdontograma];
@@ -192,8 +191,8 @@ export default function DetalleTratamientoPage() {
   
   const obtenerItemsDelDiente = (id: number) => {
     return todasLasAccionesBoca.filter(a => 
-        String(a.diente_id) === String(id) || 
-        (a.zona && obtenerDientesPorZona(a.zona, vistaTemporal).includes(id))
+      String(a.diente_id) === String(id) || 
+      (a.zona && obtenerDientesPorZona(a.zona, vistaTemporal).includes(id))
     );
   }
   
@@ -217,8 +216,8 @@ export default function DetalleTratamientoPage() {
 
   const guardarHistorial = () => {
     setHistorialOdontograma(prev => {
-        const nuevoHistorial = [...prev, JSON.parse(JSON.stringify(odontogramaEstado))];
-        return nuevoHistorial.slice(-10);
+      const nuevoHistorial = [...prev, JSON.parse(JSON.stringify(odontogramaEstado))];
+      return nuevoHistorial.slice(-10);
     });
   }
 
@@ -232,9 +231,9 @@ export default function DetalleTratamientoPage() {
 
     const { error } = await supabase.from('presupuestos').update({ odontograma_estado: estadoPrevio }).eq('id', idURL);
     if (!error) {
-        toast.success("Acción deshecha");
+      toast.success("Acción deshecha");
     } else {
-        toast.error("Error al deshacer en BD");
+      toast.error("Error al deshacer en BD");
     }
   }
 
@@ -249,37 +248,37 @@ export default function DetalleTratamientoPage() {
   };
 
   const handleDrop = async (e: React.DragEvent, nuevaSeccion: string) => {
-  e.preventDefault();
-  const itemId = e.dataTransfer.getData('text/plain');
-  if (!itemId) return;
+    e.preventDefault();
+    const itemId = e.dataTransfer.getData('text/plain');
+    if (!itemId) return;
 
-  const item = acciones.find(a => a.id === itemId || a.tempId === itemId);
-  if (!item || item.seccion_nombre === nuevaSeccion) return;
+    const item = acciones.find(a => a.id === itemId || a.tempId === itemId);
+    if (!item || item.seccion_nombre === nuevaSeccion) return;
 
-  setAcciones(prev => prev.map(a =>
-    (a.id === itemId || a.tempId === itemId)
-      ? { ...a, seccion_nombre: nuevaSeccion }
-      : a
-  ));
+    setAcciones(prev => prev.map(a =>
+      (a.id === itemId || a.tempId === itemId)
+        ? { ...a, seccion_nombre: nuevaSeccion }
+        : a
+    ));
 
-  let textoBase = item.texto_db || item.nombre_prestacion || item.observacion || '';
-  textoBase = textoBase.replace(/ \| Fase: [^|]+/g, '');
-  const nuevoTexto = `${textoBase} | Fase: ${nuevaSeccion}`;
+    let textoBase = item.texto_db || item.nombre_prestacion || item.observacion || '';
+    textoBase = textoBase.replace(/ \| Fase: [^|]+/g, '');
+    const nuevoTexto = `${textoBase} | Fase: ${nuevaSeccion}`;
 
-  if (item.id) {
-    if (item.presupuesto_id) {
-      await supabase
-        .from('presupuesto_items')
-        .update({ observacion: nuevoTexto, nombre_prestacion: nuevoTexto })
-        .eq('id', item.id);
-    } else {
-      await supabase
-        .from('temp_items')
-        .update({ nombre_prestacion: nuevoTexto, observacion: nuevoTexto })
-        .eq('id', item.id);
+    if (item.id) {
+      if (item.presupuesto_id) {
+        await supabase
+          .from('presupuesto_items')
+          .update({ observacion: nuevoTexto, nombre_prestacion: nuevoTexto })
+          .eq('id', item.id);
+      } else {
+        await supabase
+          .from('temp_items')
+          .update({ nombre_prestacion: nuevoTexto, observacion: nuevoTexto })
+          .eq('id', item.id);
+      }
     }
-  }
-};
+  };
 
   async function fetchDatosFinales() {
     setCargando(true)
@@ -291,43 +290,43 @@ export default function DetalleTratamientoPage() {
       
       if (pres) {
         if (pres.profesionales?.user_id) {
-            const { data: perf } = await supabase.from('perfiles').select('rut, especialidad').eq('id', pres.profesionales.user_id).maybeSingle();
-            if (perf) {
-                pres.profesionales.rut = perf.rut;
-                pres.profesionales.especialidad = perf.especialidad;
-            }
+          const { data: perf } = await supabase.from('perfiles').select('rut, especialidad').eq('id', pres.profesionales.user_id).maybeSingle();
+          if (perf) {
+            pres.profesionales.rut = perf.rut;
+            pres.profesionales.especialidad = perf.especialidad;
+          }
         }
 
         if (pres.paciente_id) {
-            setPacienteId(pres.paciente_id);
-            const { data: pac } = await supabase.from('pacientes').select('rut, nombre, apellido, fecha_nacimiento, prevision, saldo_a_favor').eq('id', pres.paciente_id).single();
-            setPacienteInfo(pac);
+          setPacienteId(pres.paciente_id);
+          const { data: pac } = await supabase.from('pacientes').select('rut, nombre, apellido, fecha_nacimiento, prevision, saldo_a_favor').eq('id', pres.paciente_id).single();
+          setPacienteInfo(pac);
 
-            const { data: odontoMaster } = await supabase.from('odontogramas').select('dentadura').eq('paciente_id', pres.paciente_id).maybeSingle();
-            if (odontoMaster?.dentadura) {
-                setOdontogramaEstado(typeof odontoMaster.dentadura === 'string' ? JSON.parse(odontoMaster.dentadura) : odontoMaster.dentadura);
-            } else if (pres.odontograma_estado) { 
-                setOdontogramaEstado(typeof pres.odontograma_estado === 'string' ? JSON.parse(pres.odontograma_estado) : pres.odontograma_estado);
-            }
+          const { data: odontoMaster } = await supabase.from('odontogramas').select('dentadura').eq('paciente_id', pres.paciente_id).maybeSingle();
+          if (odontoMaster?.dentadura) {
+            setOdontogramaEstado(typeof odontoMaster.dentadura === 'string' ? JSON.parse(odontoMaster.dentadura) : odontoMaster.dentadura);
+          } else if (pres.odontograma_estado) { 
+            setOdontogramaEstado(typeof pres.odontograma_estado === 'string' ? JSON.parse(pres.odontograma_estado) : pres.odontograma_estado);
+          }
 
-            const hoyIso = new Date().toISOString();
-            const { data: cits } = await supabase.from('citas').select('id, inicio, motivo').eq('paciente_id', pres.paciente_id).gte('inicio', hoyIso).order('inicio', { ascending: true }).limit(3);
-            setCitasRelacionadas(cits || []);
+          const hoyIso = new Date().toISOString();
+          const { data: cits } = await supabase.from('citas').select('id, inicio, motivo').eq('paciente_id', pres.paciente_id).gte('inicio', hoyIso).order('inicio', { ascending: true }).limit(3);
+          setCitasRelacionadas(cits || []);
         }
 
         if (pres.secciones) {
-            let seccionesGuardadas: string[] = [];
-            if (Array.isArray(pres.secciones)) { 
-                seccionesGuardadas = pres.secciones;
-            } else if (typeof pres.secciones === 'string') { 
-                try {
-                    const parsed = JSON.parse(pres.secciones);
-                    if (Array.isArray(parsed)) seccionesGuardadas = parsed;
-                } catch (e) { }
-            }
-            if (seccionesGuardadas.length > 0) {
-                setListaSecciones(prev => Array.from(new Set([...prev, ...seccionesGuardadas])));
-            }
+          let seccionesGuardadas: string[] = [];
+          if (Array.isArray(pres.secciones)) { 
+            seccionesGuardadas = pres.secciones;
+          } else if (typeof pres.secciones === 'string') { 
+            try {
+              const parsed = JSON.parse(pres.secciones);
+              if (Array.isArray(parsed)) seccionesGuardadas = parsed;
+            } catch (e) { }
+          }
+          if (seccionesGuardadas.length > 0) {
+            setListaSecciones(prev => Array.from(new Set([...prev, ...seccionesGuardadas])));
+          }
         }
 
         setPresupuestoData({ ...pres, isAprobado: pres.aprobado || Number(pres.total_abonado || 0) > 0 });
@@ -336,14 +335,11 @@ export default function DetalleTratamientoPage() {
       let targetID: string = idURL;
       let esNuevo = true;
       
-      // Mantenemos la variable esNuevo=false para que la lógica de "Ajustes de saldo" 
-      // siga funcionando en los presupuestos antiguos.
       if (pres && pres.id_dentalink) { 
-          targetID = pres.id_dentalink.toString(); 
-          esNuevo = false; 
+        targetID = pres.id_dentalink.toString(); 
+        esNuevo = false; 
       }
 
-      // 🚀 CAMBIO CLAVE: Todo está ahora oficializado en presupuesto_items.
       let query = supabase
         .from('presupuesto_items')
         .select(`*, progreso, prestaciones:prestacion_id(icono_tipo, "Nombre Accion", "Nombre", "Precio")`)
@@ -355,34 +351,34 @@ export default function DetalleTratamientoPage() {
       let itemsMapeados = (data || []).map((item:any) => mapearItem({...item, tempId: item.id || Math.random().toString()}, esNuevo));
 
       if (!esNuevo && itemsMapeados.length > 1) {
-          const indiceFantasma = itemsMapeados.findIndex((i: any) => {
-              const n = String(i.display_nombre).toLowerCase().trim();
-              const obs = String(i.texto_db).toLowerCase().trim();
-              return (n.includes("plan de tratamiento") || n.includes("plan:") || obs.includes("plan: tratamiento") || n === "tratamiento genérico") && !i.diente_id;
-          });
+        const indiceFantasma = itemsMapeados.findIndex((i: any) => {
+          const n = String(i.display_nombre).toLowerCase().trim();
+          const obs = String(i.texto_db).toLowerCase().trim();
+          return (n.includes("plan de tratamiento") || n.includes("plan:") || obs.includes("plan: tratamiento") || n === "tratamiento genérico") && !i.diente_id;
+        });
 
-          if (indiceFantasma !== -1) {
-              const filaFantasma = itemsMapeados[indiceFantasma];
-              const totalFantasma = Number(filaFantasma.display_pactado || 0);
+        if (indiceFantasma !== -1) {
+          const filaFantasma = itemsMapeados[indiceFantasma];
+          const totalFantasma = Number(filaFantasma.display_pactado || 0);
 
-              const sumaReal = itemsMapeados.reduce((acc, curr, idx) => {
-                  if (idx !== indiceFantasma) return acc + Number(curr.display_pactado || 0);
-                  return acc;
-              }, 0);
+          const sumaReal = itemsMapeados.reduce((acc, curr, idx) => {
+            if (idx !== indiceFantasma) return acc + Number(curr.display_pactado || 0);
+            return acc;
+          }, 0);
 
-              const dineroEscondido = totalFantasma - sumaReal;
+          const dineroEscondido = totalFantasma - sumaReal;
 
-              if (dineroEscondido > 0) {
-                  itemsMapeados[indiceFantasma].display_pactado = dineroEscondido;
-                  itemsMapeados[indiceFantasma].precio_base = dineroEscondido;
-                  itemsMapeados[indiceFantasma].display_abonado = 0; 
-                  itemsMapeados[indiceFantasma].display_saldo = dineroEscondido;
-                  itemsMapeados[indiceFantasma].display_nombre = "Ajuste de Saldo Dentalink";
-                  itemsMapeados[indiceFantasma].es_oculto = true;
-              } else {
-                  itemsMapeados.splice(indiceFantasma, 1);
-              }
+          if (dineroEscondido > 0) {
+            itemsMapeados[indiceFantasma].display_pactado = dineroEscondido;
+            itemsMapeados[indiceFantasma].precio_base = dineroEscondido;
+            itemsMapeados[indiceFantasma].display_abonado = 0; 
+            itemsMapeados[indiceFantasma].display_saldo = dineroEscondido;
+            itemsMapeados[indiceFantasma].display_nombre = "Ajuste de Saldo Dentalink";
+            itemsMapeados[indiceFantasma].es_oculto = true;
+          } else {
+            itemsMapeados.splice(indiceFantasma, 1);
           }
+        }
       }
 
       setListaSecciones(prev => Array.from(new Set([...prev, ...Array.from(new Set(itemsMapeados.map((i:any) => i.seccion_nombre)))])));
@@ -390,117 +386,118 @@ export default function DetalleTratamientoPage() {
       setDebug(esNuevo ? "Modo Local" : `Dentalink #${targetID}`);
 
       if (pres?.paciente_id) {
-          const { data: presupuestosPaciente } = await supabase.from('presupuestos').select('id').eq('paciente_id', pres.paciente_id);
-          if (presupuestosPaciente) {
-              const ids = presupuestosPaciente.map(p => p.id);
-              const { data: historial } = await supabase.from('presupuesto_items').select(`*, prestaciones:prestacion_id(icono_tipo, "Nombre Accion", "Nombre", "Precio")`).in('presupuesto_id', ids).neq('presupuesto_id', idURL);
-              if (historial) setHistorialPaciente(historial.map(h => mapearItem({...h, tempId: h.id}, true)));
-          }
+        const { data: presupuestosPaciente } = await supabase.from('presupuestos').select('id').eq('paciente_id', pres.paciente_id);
+        if (presupuestosPaciente) {
+          const ids = presupuestosPaciente.map(p => p.id);
+          const { data: historial } = await supabase.from('presupuesto_items').select(`*, prestaciones:prestacion_id(icono_tipo, "Nombre Accion", "Nombre", "Precio")`).in('presupuesto_id', ids).neq('presupuesto_id', idURL);
+          if (historial) setHistorialPaciente(historial.map(h => mapearItem({...h, tempId: h.id}, true)));
+        }
       }
 
     } catch (err) { setDebug("Error"); } finally { setCargando(false); }
   }
 
   const mapearItem = (item: any, esNuevo: boolean) => {
-      const pactado = Number(item.precio_pactado || item.precio || 0);
-      const abonado = Number(item.abonado || 0);
+    const pactado = Number(item.precio_pactado || item.precio || 0);
+    const abonado = Number(item.abonado || 0);
+    
+    const textoBase = item.nombre_prestacion || item.observacion || 'Plan General';
+    const partes = textoBase.split('|').map((p: string) => p.trim());
+    
+    let estadoNormalizado = String(item.estado || 'pendiente').toLowerCase().trim();
+    if (['atendido', 'realizado', 'terminado', 'completado', 'finalizado'].includes(estadoNormalizado)) {
+      estadoNormalizado = 'realizado';
+    }
+    
+    let caraMatch = item.cara ? String(item.cara).toUpperCase().trim() : null; 
+    let zonaMatch = item.zona || null; 
+    let iconoMatch = null, dctoMatch = 0, faseMatch = 'Plan General', evoDocMatch = null, evoFecMatch = null, pptoDocMatch = null, pptoFecMatch = null;
+    let dienteParseado = null;
+    if (item.diente_id !== null && item.diente_id !== undefined) {
+      const strDiente = String(item.diente_id).toLowerCase().trim();
+      if (!strDiente.includes('arcada') && !strDiente.includes('general')) {
+        dienteParseado = parseInt(strDiente);
+        if (isNaN(dienteParseado)) dienteParseado = null;
+      }
+    }
+
+    partes.forEach((p: string) => {
+      if (!caraMatch && p.startsWith('Cara:')) caraMatch = p.replace('Cara:', '').trim().replace(/[\s,]/g, '').toUpperCase().replace(/P/g, 'L');
+      if (!zonaMatch && p.startsWith('Zona:')) zonaMatch = p.replace('Zona:', '').trim();
+      if (p.startsWith('Icono:')) iconoMatch = p.replace('Icono:', '').trim();
+      if (p.startsWith('Dcto:')) dctoMatch = parseInt(p.replace('Dcto:', '').trim());
+      if (p.startsWith('Fase:')) faseMatch = p.replace('Fase:', '').trim();
+      if (p.startsWith('EvoDoc:')) evoDocMatch = p.replace('EvoDoc:', '').trim();
+      if (p.startsWith('EvoFec:')) evoFecMatch = p.replace('EvoFec:', '').trim();
+      if (p.startsWith('PptoDoc:')) pptoDocMatch = p.replace('PptoDoc:', '').trim();
+      if (p.startsWith('PptoFec:')) pptoFecMatch = p.replace('PptoFec:', '').trim();
+    });
+
+    let nombreDisplay = item.prestaciones?.["Nombre Accion"] || item.prestaciones?.["Nombre"] || partes[0] || "Tratamiento Genérico";
+    nombreDisplay = String(nombreDisplay).split('|')[0].trim(); 
+
+    const nombreLower = nombreDisplay.toLowerCase();
+    const esGeneral = [
+      "ortodoncia", "control", "evolución", "evolucion", "limpieza", "destartraje", 
+      "profilaxis", "rx", "radiografía", "radiografia", "panorámica", "scanner", 
+      "hialurónico", "blanqueamiento", "peeling", "evaluación", "evaluacion", 
+      "consulta", "modelo", "fotografía", "fotografia", "férula", "plano", 
+      "placa", "bótox", "botox", "presupuesto", "certificado", "receta", "insumos",
+      "contención", "contencion", "retenedor", "instalación", "instalacion", 
+      "retiro", "aparato", "estudio", "alta", "brackets", "frenillos"
+    ].some(palabra => nombreLower.includes(palabra));
+
+    if (esGeneral) {
+      dienteParseado = null; 
+      if (!caraMatch) caraMatch = null; 
+    }
+
+    if (!caraMatch && dienteParseado && !esGeneral) {
+      const regexCara = /\b([VLMDOPvlmdop]{1,5})\b/; 
+      const matchC = nombreDisplay.match(regexCara);
       
-      const textoBase = item.nombre_prestacion || item.observacion || 'Plan General';
-      const partes = textoBase.split('|').map((p: string) => p.trim());
-      
-      let estadoNormalizado = String(item.estado || 'pendiente').toLowerCase().trim();
-      if (['atendido', 'realizado', 'terminado', 'completado', 'finalizado'].includes(estadoNormalizado)) {
-          estadoNormalizado = 'realizado';
+      if (matchC && matchC[1].length <= 5) {
+        caraMatch = matchC[1].toUpperCase().replace(/P/g, 'L');
+      } else {
+        if (nombreLower.includes('oclusal')) caraMatch = 'O';
+        else if (nombreLower.includes('vestibular') || nombreLower.includes('cervical') || nombreLower.includes('carilla')) caraMatch = 'V';
+        else if (nombreLower.includes('lingual') || nombreLower.includes('palatin')) caraMatch = 'L';
+        else if (nombreLower.includes('mesial')) caraMatch = 'M';
+        else if (nombreLower.includes('distal')) caraMatch = 'D';
+        else if (nombreLower.includes('simple') || nombreLower.includes('restauración') || nombreLower.includes('resina')) caraMatch = 'O';
       }
-      
-      let caraMatch = item.cara ? String(item.cara).toUpperCase().trim() : null; 
-      let zonaMatch = item.zona || null; 
-  let iconoMatch = null, dctoMatch = 0, faseMatch = 'Plan General', evoDocMatch = null, evoFecMatch = null, pptoDocMatch = null, pptoFecMatch = null;      let dienteParseado = null;
-      if (item.diente_id !== null && item.diente_id !== undefined) {
-          const strDiente = String(item.diente_id).toLowerCase().trim();
-          if (!strDiente.includes('arcada') && !strDiente.includes('general')) {
-              dienteParseado = parseInt(strDiente);
-              if (isNaN(dienteParseado)) dienteParseado = null;
-          }
-      }
+    }
 
-      partes.forEach((p: string) => {
-          if (!caraMatch && p.startsWith('Cara:')) caraMatch = p.replace('Cara:', '').trim().replace(/[\s,]/g, '').toUpperCase().replace(/P/g, 'L');
-          if (!zonaMatch && p.startsWith('Zona:')) zonaMatch = p.replace('Zona:', '').trim();
-          if (p.startsWith('Icono:')) iconoMatch = p.replace('Icono:', '').trim();
-          if (p.startsWith('Dcto:')) dctoMatch = parseInt(p.replace('Dcto:', '').trim());
-          if (p.startsWith('Fase:')) faseMatch = p.replace('Fase:', '').trim();
-          if (p.startsWith('EvoDoc:')) evoDocMatch = p.replace('EvoDoc:', '').trim();
-          if (p.startsWith('EvoFec:')) evoFecMatch = p.replace('EvoFec:', '').trim();
-          if (p.startsWith('PptoDoc:')) pptoDocMatch = p.replace('PptoDoc:', '').trim();
-          if (p.startsWith('PptoFec:')) pptoFecMatch = p.replace('PptoFec:', '').trim();
-      });
+    if (caraMatch) {
+      caraMatch = caraMatch.toUpperCase().replace(/[\s,]/g, '').replace(/P/g, 'L');
+    }
 
-      let nombreDisplay = item.prestaciones?.["Nombre Accion"] || item.prestaciones?.["Nombre"] || partes[0] || "Tratamiento Genérico";
-      nombreDisplay = String(nombreDisplay).split('|')[0].trim(); 
+    let precioBase = item.prestaciones?.["Precio"] || item.precio;
+    if (!precioBase) precioBase = pactado / (1 - (dctoMatch / 100));
 
-      const nombreLower = nombreDisplay.toLowerCase();
-      const esGeneral = [
-          "ortodoncia", "control", "evolución", "evolucion", "limpieza", "destartraje", 
-          "profilaxis", "rx", "radiografía", "radiografia", "panorámica", "scanner", 
-          "hialurónico", "blanqueamiento", "peeling", "evaluación", "evaluacion", 
-          "consulta", "modelo", "fotografía", "fotografia", "férula", "plano", 
-          "placa", "bótox", "botox", "presupuesto", "certificado", "receta", "insumos",
-          "contención", "contencion", "retenedor", "instalación", "instalacion", 
-          "retiro", "aparato", "estudio", "alta", "brackets", "frenillos"
-      ].some(palabra => nombreLower.includes(palabra));
-
-      if (esGeneral) {
-          dienteParseado = null; 
-          if (!caraMatch) caraMatch = null; 
-      }
-
-      if (!caraMatch && dienteParseado && !esGeneral) {
-          const regexCara = /\b([VLMDOPvlmdop]{1,5})\b/; 
-          const matchC = nombreDisplay.match(regexCara);
-          
-          if (matchC && matchC[1].length <= 5) {
-              caraMatch = matchC[1].toUpperCase().replace(/P/g, 'L');
-          } else {
-              if (nombreLower.includes('oclusal')) caraMatch = 'O';
-              else if (nombreLower.includes('vestibular') || nombreLower.includes('cervical') || nombreLower.includes('carilla')) caraMatch = 'V';
-              else if (nombreLower.includes('lingual') || nombreLower.includes('palatin')) caraMatch = 'L';
-              else if (nombreLower.includes('mesial')) caraMatch = 'M';
-              else if (nombreLower.includes('distal')) caraMatch = 'D';
-              else if (nombreLower.includes('simple') || nombreLower.includes('restauración') || nombreLower.includes('resina')) caraMatch = 'O';
-          }
-      }
-
-      if (caraMatch) {
-          caraMatch = caraMatch.toUpperCase().replace(/[\s,]/g, '').replace(/P/g, 'L');
-      }
-
-      let precioBase = item.prestaciones?.["Precio"] || item.precio;
-      if (!precioBase) precioBase = pactado / (1 - (dctoMatch / 100));
-
-      return {
-          ...item,
-          estado: estadoNormalizado, 
-          diente_id: dienteParseado, 
-          seccion_nombre: faseMatch,
-          cara: caraMatch, 
-          zona: zonaMatch,
-          display_nombre: nombreDisplay,
-          icono_tipo: iconoMatch || item.prestaciones?.icono_tipo,
-          precio_base: precioBase,
-          descuento: dctoMatch,          
-          avance: estadoNormalizado === 'realizado' ? 100 : (item.progreso || 0),
-          progreso: item.progreso || 0,
-          tempId: item.tempId || item.id || Math.random().toString(),
-          display_pactado: pactado, display_abonado: abonado, display_saldo: pactado - abonado,
-          texto_db: textoBase,
-          costo_laboratorio: Number(item.costo_laboratorio || 0),
-          lab_pagado_por_dr: Boolean(item.lab_pagado_por_dr),
-          evo_doc: evoDocMatch,
-          evo_fecha: evoFecMatch,
-            ppto_doc: pptoDocMatch || item.profesional_id,
-            ppto_fecha: pptoFecMatch
-      };
+    return {
+      ...item,
+      estado: estadoNormalizado, 
+      diente_id: dienteParseado, 
+      seccion_nombre: faseMatch,
+      cara: caraMatch, 
+      zona: zonaMatch,
+      display_nombre: nombreDisplay,
+      icono_tipo: iconoMatch || item.prestaciones?.icono_tipo,
+      precio_base: precioBase,
+      descuento: dctoMatch,          
+      avance: estadoNormalizado === 'realizado' ? 100 : (item.progreso || 0),
+      progreso: item.progreso || 0,
+      tempId: item.tempId || item.id || Math.random().toString(),
+      display_pactado: pactado, display_abonado: abonado, display_saldo: pactado - abonado,
+      texto_db: textoBase,
+      costo_laboratorio: Number(item.costo_laboratorio || 0),
+      lab_pagado_por_dr: Boolean(item.lab_pagado_por_dr),
+      evo_doc: evoDocMatch,
+      evo_fecha: evoFecMatch,
+      ppto_doc: pptoDocMatch || item.profesional_id,
+      ppto_fecha: pptoFecMatch
+    };
   }
 
   async function fetchAuxiliares() {
@@ -523,23 +520,23 @@ export default function DetalleTratamientoPage() {
     if (lp) setLabPrests(lp);
     const { data: lbs } = await supabase.from('laboratorios').select('id, nombre');
     if (lbs) {
-        const map: Record<string, string> = {};
-        lbs.forEach(l => map[l.id] = l.nombre);
-        setLaboratoriosDB(map);
+      const map: Record<string, string> = {};
+      lbs.forEach(l => map[l.id] = l.nombre);
+      setLaboratoriosDB(map);
     }
     
-    const { data: catsData } = await supabase.from('categorias_prestaciones').select('nombre, tipo_reparto, profesional_id, porcentaje_forzado'); // 👈 AGREGAR porcentaje_forzado AQUÍ
+    const { data: catsData } = await supabase.from('categorias_prestaciones').select('nombre, tipo_reparto, profesional_id, porcentaje_forzado');
     const mapCategorias: Record<string, any> = {};
     catsData?.forEach(c => {
-        mapCategorias[c.nombre] = { tipo: c.tipo_reparto, prof_id: c.profesional_id, porcentaje_forzado: c.porcentaje_forzado }; // 👈 Y AQUÍ
+      mapCategorias[c.nombre] = { tipo: c.tipo_reparto, prof_id: c.profesional_id, porcentaje_forzado: c.porcentaje_forzado };
     });
 
     let allPrests: any[] = [];
     let fetchMore = true, from = 0;
     while (fetchMore) {
-        const { data, error } = await supabase.from('prestaciones').select('*').range(from, from + 999);
-        if (error) break;
-        if (data && data.length > 0) { allPrests = [...allPrests, ...data]; from += 1000; } else fetchMore = false;
+      const { data, error } = await supabase.from('prestaciones').select('*').range(from, from + 999);
+      if (error) break;
+      if (data && data.length > 0) { allPrests = [...allPrests, ...data]; from += 1000; } else fetchMore = false;
     }
 
     if (allPrests.length > 0) {
@@ -549,7 +546,7 @@ export default function DetalleTratamientoPage() {
         const catRegla = mapCategorias[curr["Nombre Categoria"]];
         curr.tipo_reparto_resuelto = curr.tipo_reparto || (catRegla ? catRegla.tipo : 'general');
         curr.prof_reparto_resuelto = catRegla ? catRegla.prof_id : null;
-        curr.porcentaje_forzado_resuelto = catRegla ? catRegla.porcentaje_forzado : null; // 👈 AGREGA ESTA LÍNEA
+        curr.porcentaje_forzado_resuelto = catRegla ? catRegla.porcentaje_forzado : null;
 
         const cat = (curr["Nombre Categoria"] || "OTROS").trim();
         if (!acc[cat]) acc[cat] = [];
@@ -562,18 +559,18 @@ export default function DetalleTratamientoPage() {
       setSeccionesPrests(agrupado);
 
       setAcciones(prev => prev.map(a => {
-          if (!a.icono_tipo) {
-              const match = allPrests.find(p => p.display_nombre?.toLowerCase() === a.display_nombre?.toLowerCase());
-              if (match && match.icono_tipo) return { ...a, icono_tipo: match.icono_tipo };
-          }
-          return a;
+        if (!a.icono_tipo) {
+          const match = allPrests.find(p => p.display_nombre?.toLowerCase() === a.display_nombre?.toLowerCase());
+          if (match && match.icono_tipo) return { ...a, icono_tipo: match.icono_tipo };
+        }
+        return a;
       }));
       setHistorialPaciente(prev => prev.map(h => {
-          if (!h.icono_tipo) {
-              const match = allPrests.find(p => p.display_nombre?.toLowerCase() === h.display_nombre?.toLowerCase());
-              if (match && match.icono_tipo) return { ...h, icono_tipo: match.icono_tipo };
-          }
-          return h;
+        if (!h.icono_tipo) {
+          const match = allPrests.find(p => p.display_nombre?.toLowerCase() === h.display_nombre?.toLowerCase());
+          if (match && match.icono_tipo) return { ...h, icono_tipo: match.icono_tipo };
+        }
+        return h;
       }));
     }
 
@@ -630,37 +627,106 @@ export default function DetalleTratamientoPage() {
     await supabase.from('presupuestos').update({ secciones: JSON.stringify(Array.from(new Set(nuevaLista))) }).eq('id', idURL);
 
     const updates = acciones.filter(a => a.seccion_nombre === oldName).map(item => {
-        let nuevaObs = item.texto_db || `${item.display_nombre} | Fase: ${item.seccion_nombre}`;
-        if (/\|\s*Fase:\s*[^|]+/.test(nuevaObs)) {
-            nuevaObs = nuevaObs.replace(/\|\s*Fase:\s*[^|]+/, `| Fase: ${newName}`);
-        } else {
-            nuevaObs += ` | Fase: ${newName}`;
-        }
+      let nuevaObs = item.texto_db || `${item.display_nombre} | Fase: ${item.seccion_nombre}`;
+      if (/\|\s*Fase:\s*[^|]+/.test(nuevaObs)) {
+        nuevaObs = nuevaObs.replace(/\|\s*Fase:\s*[^|]+/, `| Fase: ${newName}`);
+      } else {
+        nuevaObs += ` | Fase: ${newName}`;
+      }
 
-        const payload = { observacion: nuevaObs, nombre_prestacion: nuevaObs };
-        if (item.id) {
-            if (item.presupuesto_id) return supabase.from('presupuesto_items').update(payload).eq('id', item.id);
-            else return supabase.from('temp_items').update(payload).eq('id', item.id);
-        }
-        return Promise.resolve();
+      const payload = { observacion: nuevaObs, nombre_prestacion: nuevaObs };
+      if (item.id) {
+        if (item.presupuesto_id) return supabase.from('presupuesto_items').update(payload).eq('id', item.id);
+        else return supabase.from('temp_items').update(payload).eq('id', item.id);
+      }
+      return Promise.resolve();
     });
     
     await Promise.all(updates);
 
     setAcciones(prev => prev.map(a => {
-        if (a.seccion_nombre === oldName) {
-            let nuevaObs = a.texto_db || a.display_nombre || '';
-            if (/\|\s*Fase:\s*[^|]+/.test(nuevaObs)) {
-                nuevaObs = nuevaObs.replace(/\|\s*Fase:\s*[^|]+/, `| Fase: ${newName}`);
-            } else {
-                nuevaObs += ` | Fase: ${newName}`;
-            }
-            return { ...a, seccion_nombre: newName, texto_db: nuevaObs };
+      if (a.seccion_nombre === oldName) {
+        let nuevaObs = a.texto_db || a.display_nombre || '';
+        if (/\|\s*Fase:\s*[^|]+/.test(nuevaObs)) {
+          nuevaObs = nuevaObs.replace(/\|\s*Fase:\s*[^|]+/, `| Fase: ${newName}`);
+        } else {
+          nuevaObs += ` | Fase: ${newName}`;
         }
-        return a;
+        return { ...a, seccion_nombre: newName, texto_db: nuevaObs };
+      }
+      return a;
     }));
     if (seccionInput === oldName) setSeccionInput(newName);
     toast.success("Fase renombrada correctamente");
+  }
+
+  const handleEliminarSeccion = async (seccionAEliminar: string) => {
+    if (listaSecciones.length <= 1) {
+      return toast.error("Debe existir al menos una fase clínica en el presupuesto.");
+    }
+
+    const itemsEnSeccion = acciones.filter(a => a.seccion_nombre === seccionAEliminar);
+    const seccionDestino = listaSecciones.find(s => s !== seccionAEliminar) || 'Plan General';
+
+    const mensaje = itemsEnSeccion.length > 0
+      ? `La fase "${seccionAEliminar}" tiene ${itemsEnSeccion.length} prestación(es).\n\nSi la eliminas, estas prestaciones se moverán automáticamente a "${seccionDestino}". ¿Deseas continuar?`
+      : `¿Estás seguro de eliminar la fase vacía "${seccionAEliminar}"?`;
+
+    if (!window.confirm(mensaje)) return;
+
+    const nuevaLista = listaSecciones.filter(s => s !== seccionAEliminar);
+    if (!nuevaLista.includes(seccionDestino) && itemsEnSeccion.length > 0) {
+      nuevaLista.push(seccionDestino);
+    }
+
+    const { error } = await supabase
+      .from('presupuestos')
+      .update({ secciones: JSON.stringify(nuevaLista) })
+      .eq('id', idURL);
+
+    if (error) {
+      return toast.error("Error al eliminar la fase en la base de datos.");
+    }
+
+    if (itemsEnSeccion.length > 0) {
+      const updates = itemsEnSeccion.map(item => {
+        let nuevaObs = item.texto_db || `${item.display_nombre} | Fase: ${seccionDestino}`;
+        if (/\|\s*Fase:\s*[^|]+/.test(nuevaObs)) {
+          nuevaObs = nuevaObs.replace(/\|\s*Fase:\s*[^|]+/, `| Fase: ${seccionDestino}`);
+        } else {
+          nuevaObs += ` | Fase: ${seccionDestino}`;
+        }
+
+        const payload = { observacion: nuevaObs, nombre_prestacion: nuevaObs };
+        if (item.id) {
+          if (item.presupuesto_id) return supabase.from('presupuesto_items').update(payload).eq('id', item.id);
+          else return supabase.from('temp_items').update(payload).eq('id', item.id);
+        }
+        return Promise.resolve();
+      });
+
+      await Promise.all(updates);
+
+      setAcciones(prev => prev.map(a => {
+        if (a.seccion_nombre === seccionAEliminar) {
+          let nuevaObs = a.texto_db || a.display_nombre || '';
+          if (/\|\s*Fase:\s*[^|]+/.test(nuevaObs)) {
+            nuevaObs = nuevaObs.replace(/\|\s*Fase:\s*[^|]+/, `| Fase: ${seccionDestino}`);
+          } else {
+            nuevaObs += ` | Fase: ${seccionDestino}`;
+          }
+          return { ...a, seccion_nombre: seccionDestino, texto_db: nuevaObs };
+        }
+        return a;
+      }));
+    }
+
+    setListaSecciones(nuevaLista);
+    if (seccionInput === seccionAEliminar) {
+      setSeccionInput(nuevaLista[0] || 'Plan General');
+    }
+
+    toast.success(`Fase "${seccionAEliminar}" eliminada correctamente.`);
   }
 
   const handleCambiarPrecio = async (tempId: string, id: string | null, nuevoPrecioStr: string) => {
@@ -678,16 +744,16 @@ export default function DetalleTratamientoPage() {
     const nuevoPactado = nuevoPrecio * (1 - (dcto / 100));
 
     if (id) {
-        if (item.presupuesto_id) await supabase.from('presupuesto_items').update({ precio_pactado: nuevoPactado }).eq('id', id);
-        else await supabase.from('temp_items').update({ precio_pactado: nuevoPactado }).eq('id', id);
+      if (item.presupuesto_id) await supabase.from('presupuesto_items').update({ precio_pactado: nuevoPactado }).eq('id', id);
+      else await supabase.from('temp_items').update({ precio_pactado: nuevoPactado }).eq('id', id);
     }
     
     setAcciones(prev => prev.map(a => (a.tempId === tempId) ? { 
-        ...a, 
-        precio_base: nuevoPrecio, 
-        precio_pactado: nuevoPactado, 
-        display_pactado: nuevoPactado, 
-        display_saldo: nuevoPactado - a.display_abonado 
+      ...a, 
+      precio_base: nuevoPrecio, 
+      precio_pactado: nuevoPactado, 
+      display_pactado: nuevoPactado, 
+      display_saldo: nuevoPactado - a.display_abonado 
     } : a));
     toast.success("Precio actualizado");
   }
@@ -696,8 +762,8 @@ export default function DetalleTratamientoPage() {
     if (zona) { setDienteInput(''); setZonaInput(zona); setDientesSeleccionados([]); } 
     else if (dientePreseleccionado !== null) { setDienteInput(dientePreseleccionado.toString()); setZonaInput(''); setDientesSeleccionados([dientePreseleccionado]); } 
     else {
-        if (dientesSeleccionados.length > 0) setDienteInput(dientesSeleccionados.join(', ')); else setDienteInput('');
-        setZonaInput('');
+      if (dientesSeleccionados.length > 0) setDienteInput(dientesSeleccionados.join(', ')); else setDienteInput('');
+      setZonaInput('');
     }
     setCaraInput(cara); setPanelAgregarAbierto(true);
   }
@@ -710,13 +776,13 @@ export default function DetalleTratamientoPage() {
 
   const handleDienteClick = (id: number, e?: React.MouseEvent) => {
     if (e?.shiftKey) {
-        setDientesSeleccionados(prev => {
-            const newSelection = prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id];
-            if (panelAgregarAbierto && !zonaInput && !caraInput) setDienteInput(newSelection.join(', '));
-            return newSelection;
-        });
+      setDientesSeleccionados(prev => {
+        const newSelection = prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id];
+        if (panelAgregarAbierto && !zonaInput && !caraInput) setDienteInput(newSelection.join(', '));
+        return newSelection;
+      });
     } else {
-        setDientesSeleccionados([id]); abrirPanelAgregar(id);
+      setDientesSeleccionados([id]); abrirPanelAgregar(id);
     }
   }
 
@@ -747,13 +813,13 @@ export default function DetalleTratamientoPage() {
     const t = tipo.toLowerCase();
 
     dientesArreglo.forEach(diente => {
-        const dId = diente.toString();
-        let actual = nuevoEstado[dId]?.hallazgos || [];
-        if (nuevoEstado[dId]?.center) actual = [nuevoEstado[dId].center];
-        
-        if (t.includes('sano')) { actual = []; } 
-        else { actual = actual.filter((h:string) => !h.toLowerCase().includes('sano')); if (!actual.some((h:string) => h.toLowerCase() === t)) actual.push(tipo); }
-        nuevoEstado[dId] = { ...nuevoEstado[dId], hallazgos: actual };
+      const dId = diente.toString();
+      let actual = nuevoEstado[dId]?.hallazgos || [];
+      if (nuevoEstado[dId]?.center) actual = [nuevoEstado[dId].center];
+      
+      if (t.includes('sano')) { actual = []; } 
+      else { actual = actual.filter((h:string) => !h.toLowerCase().includes('sano')); if (!actual.some((h:string) => h.toLowerCase() === t)) actual.push(tipo); }
+      nuevoEstado[dId] = { ...nuevoEstado[dId], hallazgos: actual };
     });
 
     setOdontogramaEstado(nuevoEstado);
@@ -761,23 +827,23 @@ export default function DetalleTratamientoPage() {
 
     const { error } = await supabase.from('odontogramas').upsert({ paciente_id: pacienteId, dentadura: nuevoEstado }, { onConflict: 'paciente_id' });
     if (!error) { 
-        toast.success(esMulti ? "Hallazgo aplicado a la selección" : "Hallazgo registrado"); 
-        if(esMulti) setDientesSeleccionados([]); 
+      toast.success(esMulti ? "Hallazgo aplicado a la selección" : "Hallazgo registrado"); 
+      if(esMulti) setDientesSeleccionados([]); 
     } else {
-        toast.error("Error al guardar hallazgo en BD");
+      toast.error("Error al guardar hallazgo en BD");
     }
   }
 
   const aplicarHallazgo = (tipo: string) => { 
-      if (!menuContextual) return;
-      if (menuContextual.zona) {
-          const dientes = obtenerDientesPorZona(menuContextual.zona, vistaTemporal);
-          procesarAplicacionHallazgo(dientes, tipo, true);
-      } else if (menuContextual.diente !== null && !menuContextual.cara) {
-          procesarAplicacionHallazgo([menuContextual.diente], tipo);
-      } else if (menuContextual.diente !== null && menuContextual.cara) {
-          aplicarLesionCaraLocal(tipo);
-      }
+    if (!menuContextual) return;
+    if (menuContextual.zona) {
+      const dientes = obtenerDientesPorZona(menuContextual.zona, vistaTemporal);
+      procesarAplicacionHallazgo(dientes, tipo, true);
+    } else if (menuContextual.diente !== null && !menuContextual.cara) {
+      procesarAplicacionHallazgo([menuContextual.diente], tipo);
+    } else if (menuContextual.diente !== null && menuContextual.cara) {
+      aplicarLesionCaraLocal(tipo);
+    }
   };
 
   const aplicarLesionCaraLocal = async (tipo: string) => {
@@ -789,8 +855,8 @@ export default function DetalleTratamientoPage() {
     
     const nuevaCara = carasActuales[menuContextual.cara] === tipo ? null : tipo;
     const nuevoEstado = { 
-        ...odontogramaEstado, 
-        [dId]: { ...odontogramaEstado[dId], caras: { ...carasActuales, [menuContextual.cara]: nuevaCara } } 
+      ...odontogramaEstado, 
+      [dId]: { ...odontogramaEstado[dId], caras: { ...carasActuales, [menuContextual.cara]: nuevaCara } } 
     };
     
     setOdontogramaEstado(nuevoEstado);
@@ -798,9 +864,9 @@ export default function DetalleTratamientoPage() {
     
     const { error } = await supabase.from('odontogramas').upsert({ paciente_id: pacienteId, dentadura: nuevoEstado }, { onConflict: 'paciente_id' });
     if (!error) { 
-        toast.success(`Cara ${menuContextual.cara} actualizada a ${tipo}`); 
+      toast.success(`Cara ${menuContextual.cara} actualizada a ${tipo}`); 
     } else {
-        toast.error("Error al guardar en la BD");
+      toast.error("Error al guardar en la BD");
     }
   }
 
@@ -809,37 +875,35 @@ export default function DetalleTratamientoPage() {
 
     const abonado = Number(item.abonado || 0);
     const confirmMessage = `¿Estás seguro de ANULAR la prestación "${item.display_nombre}"?\n\n` +
-        `Esta acción marcará el tratamiento como "Cancelado" y no se podrá revertir.\n\n` +
-        (abonado > 0 ? `Se han detectado $${abonado.toLocaleString('es-CL')} en pagos. Ese dinero quedará en la Billetera Virtual (Saldo a Favor) del paciente y seguirá contado en la caja del día en que se cobró.` : 'No se han detectado pagos asociados a esta prestación.') +
-        `\n\n¿Deseas continuar?`;
+      `Esta acción marcará el tratamiento como "Cancelado" y no se podrá revertir.\n\n` +
+      (abonado > 0 ? `Se han detectado $${abonado.toLocaleString('es-CL')} en pagos. Ese dinero quedará en la Billetera Virtual (Saldo a Favor) del paciente y seguirá contado en la caja del día en que se cobró.` : 'No se han detectado pagos asociados a esta prestación.') +
+      `\n\n¿Deseas continuar?`;
 
     if (!window.confirm(confirmMessage)) {
-        return;
+      return;
     }
 
     setProcesandoId(item.id);
     try {
-        // Cancela la prestación y pasa sus pagos al saldo a favor en una sola operación (función cancelar_prestacion en Supabase)
-        const { data: resultado, error: errCancelar } = await supabase.rpc('cancelar_prestacion', {
-            p_item_id: String(item.id),
-            p_motivo: `Prestación "${item.display_nombre}" cancelada`,
-        });
-        if (errCancelar) throw errCancelar;
-        const movido = Number((resultado as any)?.pasado_a_saldo || 0);
+      const { data: resultado, error: errCancelar } = await supabase.rpc('cancelar_prestacion', {
+        p_item_id: String(item.id),
+        p_motivo: `Prestación "${item.display_nombre}" cancelada`,
+      });
+      if (errCancelar) throw errCancelar;
+      const movido = Number((resultado as any)?.pasado_a_saldo || 0);
 
-        await supabase.from('auditoria_clinica').insert([{
-            usuario_id: usuarioLogueado?.id,
-            accion: 'CANCEL / PRESTACIÓN',
-            tabla: 'presupuesto_items, pagos, pacientes',
-            detalles: `Canceló la prestación "${item.display_nombre}" (ID: ${item.id}). ${movido > 0 ? `Se movieron $${movido.toLocaleString('es-CL')} a saldo a favor.` : ''}`
-        }]);
+      await supabase.from('auditoria_clinica').insert([{
+        usuario_id: usuarioLogueado?.id,
+        accion: 'CANCEL / PRESTACIÓN',
+        tabla: 'presupuesto_items, pagos, pacientes',
+        detalles: `Canceló la prestación "${item.display_nombre}" (ID: ${item.id}). ${movido > 0 ? `Se movieron $${movido.toLocaleString('es-CL')} a saldo a favor.` : ''}`
+      }]);
 
-        // Lo que queda abonado en la prestación (normalmente 0) se lee de la base para no dejar montos viejos en pantalla
-        const { data: itemDb } = await supabase.from('presupuesto_items').select('abonado').eq('id', item.id).maybeSingle();
-        const abonadoQueda = Number(itemDb?.abonado || 0);
-        setAcciones(prev => prev.map(a => a.id === item.id ? { ...a, estado: 'cancelada', abonado: abonadoQueda, display_abonado: abonadoQueda, display_saldo: Number(a.display_pactado || 0) - abonadoQueda } : a));
-        if (movido > 0) refrescarSaldoPaciente();
-        toast.success("Prestación anulada correctamente.");
+      const { data: itemDb } = await supabase.from('presupuesto_items').select('abonado').eq('id', item.id).maybeSingle();
+      const abonadoQueda = Number(itemDb?.abonado || 0);
+      setAcciones(prev => prev.map(a => a.id === item.id ? { ...a, estado: 'cancelada', abonado: abonadoQueda, display_abonado: abonadoQueda, display_saldo: Number(a.display_pactado || 0) - abonadoQueda } : a));
+      if (movido > 0) refrescarSaldoPaciente();
+      toast.success("Prestación anulada correctamente.");
 
     } catch (err: any) { toast.error("Error al anular la prestación: " + err.message); } finally { setProcesandoId(null); }
   }
@@ -868,95 +932,89 @@ export default function DetalleTratamientoPage() {
       return toast.error("No se puede eliminar un tratamiento que ya ha sido iniciado.");
     }
 
-    // Prestación guardada en el presupuesto: si tiene pagos, primero pasan al saldo a favor del paciente
-    // (igual que "Anular") y después se borra.
     if (id && item.presupuesto_id) {
-        const pesos = (n: number) => `$${n.toLocaleString('es-CL')}`;
-        let movido = 0;
-        setProcesandoId(id);
-        try {
-            const [{ data: pagosItem, error: errPagos }, { data: itemDb, error: errItem }] = await Promise.all([
-                supabase.from('pagos').select('id, monto, estado').eq('item_id', id),
-                supabase.from('presupuesto_items').select('abonado').eq('id', id).maybeSingle(),
-            ]);
-            if (errPagos) throw errPagos;
-            if (errItem) throw errItem;
-            const pagos = pagosItem || [];
-            const montoPagos = pagos.filter((p: any) => p.estado !== 'Anulado').reduce((s: number, p: any) => s + Number(p.monto || 0), 0);
-            const abonoSinPago = Math.max(0, Number(itemDb?.abonado || 0) - montoPagos);
+      const pesos = (n: number) => `$${n.toLocaleString('es-CL')}`;
+      let movido = 0;
+      setProcesandoId(id);
+      try {
+        const [{ data: pagosItem, error: errPagos }, { data: itemDb, error: errItem }] = await Promise.all([
+          supabase.from('pagos').select('id, monto, estado').eq('item_id', id),
+          supabase.from('presupuesto_items').select('abonado').eq('id', id).maybeSingle(),
+        ]);
+        if (errPagos) throw errPagos;
+        if (errItem) throw errItem;
+        const pagos = pagosItem || [];
+        const montoPagos = pagos.filter((p: any) => p.estado !== 'Anulado').reduce((s: number, p: any) => s + Number(p.monto || 0), 0);
+        const abonoSinPago = Math.max(0, Number(itemDb?.abonado || 0) - montoPagos);
 
-            const mensaje = `¿Estás seguro de que quieres eliminar la prestación "${item.display_nombre}"? Esta acción no se puede deshacer.` +
-                (montoPagos > 0 ? `\n\nTiene ${pesos(montoPagos)} en pagos: ese dinero pasará a la Billetera Virtual (Saldo a Favor) del paciente y seguirá contado en la caja del día en que se cobró.` : '') +
-                (abonoSinPago > 0 ? `\n\nAdemás figura con ${pesos(abonoSinPago)} abonados que no tienen un pago registrado en el sistema (por ejemplo, abonos traídos de Dentalink). Ese monto NO pasa al saldo a favor: se quita del presupuesto junto con la prestación.` : '');
-            if (!window.confirm(mensaje)) return;
+        const mensaje = `¿Estás seguro de que quieres eliminar la prestación "${item.display_nombre}"? Esta acción no se puede deshacer.` +
+          (montoPagos > 0 ? `\n\nTiene ${pesos(montoPagos)} en pagos: ese dinero pasará a la Billetera Virtual (Saldo a Favor) del paciente y seguirá contado en la caja del día en que se cobró.` : '') +
+          (abonoSinPago > 0 ? `\n\nAdemás figura con ${pesos(abonoSinPago)} abonados que no tienen un pago registrado en el sistema (por ejemplo, abonos traídos de Dentalink). Ese monto NO pasa al saldo a favor: se quita del presupuesto junto con la prestación.` : '');
+        if (!window.confirm(mensaje)) return;
 
-            // 1) Pagos vigentes → saldo a favor del paciente (misma función que usa "Anular")
-            if (montoPagos > 0) {
-                const { data: resultado, error: errCancelar } = await supabase.rpc('cancelar_prestacion', {
-                    p_item_id: String(id),
-                    p_motivo: `Prestación "${item.display_nombre}" eliminada`,
-                });
-                if (errCancelar) throw errCancelar;
-                movido = Number((resultado as any)?.pasado_a_saldo || 0);
-            }
-
-            // 2) Los pagos anulados siguen apuntando a la prestación y la base no deja borrarla: se sueltan
-            if (pagos.length > 0) {
-                const { error: errSoltar } = await supabase.from('pagos').update({ item_id: null }).eq('item_id', id);
-                if (errSoltar) throw errSoltar;
-            }
-
-            // 3) Borrar (se pide de vuelta la fila para confirmar que de verdad se borró)
-            const { data: borrados, error } = await supabase.from('presupuesto_items').delete().eq('id', id).select('id');
-            if (error) throw error;
-            if (!borrados || borrados.length === 0) throw new Error('Tu usuario no tiene permiso para eliminar prestaciones.');
-
-            // 4) El abono sin pago registrado se descuenta del total abonado del presupuesto
-            if (abonoSinPago > 0) {
-                const { data: pres } = await supabase.from('presupuestos').select('total_abonado').eq('id', item.presupuesto_id).maybeSingle();
-                if (pres) await supabase.from('presupuestos').update({ total_abonado: Math.max(0, Number(pres.total_abonado || 0) - abonoSinPago) }).eq('id', item.presupuesto_id);
-            }
-
-            setAcciones(prev => prev.filter(a => a.id !== id));
-
-            await supabase.from('auditoria_clinica').insert([{
-                usuario_id: usuarioLogueado?.id,
-                accion: 'DELETE / PRESTACIÓN',
-                tabla: movido > 0 ? 'presupuesto_items, pagos, pacientes' : 'presupuesto_items',
-                detalles: `Eliminó la prestación "${item.display_nombre}" (ID: ${item.id}) del presupuesto #${idURL} del paciente ${pacienteInfo?.nombre} ${pacienteInfo?.apellido}.` +
-                    (movido > 0 ? ` Se movieron ${pesos(movido)} a saldo a favor.` : '') +
-                    (abonoSinPago > 0 ? ` Se quitaron ${pesos(abonoSinPago)} abonados sin pago registrado.` : '')
-            }]);
-
-            if (movido > 0) {
-                refrescarSaldoPaciente();
-                toast.success("Prestación eliminada.", { description: `${pesos(movido)} pasaron al saldo a favor del paciente.` });
-            } else {
-                toast.info("Acción eliminada del presupuesto.");
-            }
-        } catch (err: any) {
-            const yaAnulada = movido > 0 ? ` La prestación quedó anulada y sus pagos (${pesos(movido)}) ya están en el saldo a favor.` : '';
-            if (err?.code === '23503') {
-                toast.error("No se pudo eliminar la prestación.", { description: `Está incluida en una liquidación de un doctor u otro registro que la usa.${yaAnulada}` });
-            } else {
-                toast.error("Error al eliminar la prestación.", { description: `${err?.message || ''}${yaAnulada}` });
-            }
-            if (movido > 0) { refrescarSaldoPaciente(); fetchDatosFinales(); }
-        } finally {
-            setProcesandoId(null);
+        if (montoPagos > 0) {
+          const { data: resultado, error: errCancelar } = await supabase.rpc('cancelar_prestacion', {
+            p_item_id: String(id),
+            p_motivo: `Prestación "${item.display_nombre}" eliminada`,
+          });
+          if (errCancelar) throw errCancelar;
+          movido = Number((resultado as any)?.pasado_a_saldo || 0);
         }
-        return;
+
+        if (pagos.length > 0) {
+          const { error: errSoltar } = await supabase.from('pagos').update({ item_id: null }).eq('item_id', id);
+          if (errSoltar) throw errSoltar;
+        }
+
+        const { data: borrados, error } = await supabase.from('presupuesto_items').delete().eq('id', id).select('id');
+        if (error) throw error;
+        if (!borrados || borrados.length === 0) throw new Error('Tu usuario no tiene permiso para eliminar prestaciones.');
+
+        if (abonoSinPago > 0) {
+          const { data: pres } = await supabase.from('presupuestos').select('total_abonado').eq('id', item.presupuesto_id).maybeSingle();
+          if (pres) await supabase.from('presupuestos').update({ total_abonado: Math.max(0, Number(pres.total_abonado || 0) - abonoSinPago) }).eq('id', item.presupuesto_id);
+        }
+
+        setAcciones(prev => prev.filter(a => a.id !== id));
+
+        await supabase.from('auditoria_clinica').insert([{
+          usuario_id: usuarioLogueado?.id,
+          accion: 'DELETE / PRESTACIÓN',
+          tabla: movido > 0 ? 'presupuesto_items, pagos, pacientes' : 'presupuesto_items',
+          detalles: `Eliminó la prestación "${item.display_nombre}" (ID: ${item.id}) del presupuesto #${idURL} del paciente ${pacienteInfo?.nombre} ${pacienteInfo?.apellido}.` +
+            (movido > 0 ? ` Se movieron ${pesos(movido)} a saldo a favor.` : '') +
+            (abonoSinPago > 0 ? ` Se quitaron ${pesos(abonoSinPago)} abonados sin pago registrado.` : '')
+        }]);
+
+        if (movido > 0) {
+          refrescarSaldoPaciente();
+          toast.success("Prestación eliminada.", { description: `${pesos(movido)} pasaron al saldo a favor del paciente.` });
+        } else {
+          toast.info("Acción eliminada del presupuesto.");
+        }
+      } catch (err: any) {
+        const yaAnulada = movido > 0 ? ` La prestación quedó anulada y sus pagos (${pesos(movido)}) ya están en el saldo a favor.` : '';
+        if (err?.code === '23503') {
+          toast.error("No se pudo eliminar la prestación.", { description: `Está incluida en una liquidación de un doctor u otro registro que la usa.${yaAnulada}` });
+        } else {
+          toast.error("Error al eliminar la prestación.", { description: `${err?.message || ''}${yaAnulada}` });
+        }
+        if (movido > 0) { refrescarSaldoPaciente(); fetchDatosFinales(); }
+      } finally {
+        setProcesandoId(null);
+      }
+      return;
     }
 
     if (!window.confirm(`¿Estás seguro de que quieres eliminar la prestación "${item.display_nombre}"? Esta acción no se puede deshacer.`)) {
-        return;
+      return;
     }
 
     if (id) {
-        setAcciones(prev => prev.filter(a => a.tempId !== tempId));
-        toast.info("Acción importada quitada de la vista (no se elimina de la base de datos de origen).");
+      setAcciones(prev => prev.filter(a => a.tempId !== tempId));
+      toast.info("Acción importada quitada de la vista (no se elimina de la base de datos de origen).");
     } else {
-        setAcciones(prev => prev.filter(a => a.tempId !== tempId)); toast.info("Acción quitada de la vista");
+      setAcciones(prev => prev.filter(a => a.tempId !== tempId)); toast.info("Acción quitada de la vista");
     }
   }
 
@@ -970,7 +1028,7 @@ export default function DetalleTratamientoPage() {
     let nuevaObs = item.texto_db || '';
     
     if (item.zona) {
-        nuevaObs = nuevaObs.replace(/ \| Zona: [^|]+/g, '');
+      nuevaObs = nuevaObs.replace(/ \| Zona: [^|]+/g, '');
     }
 
     if (id) await supabase.from('presupuesto_items').update({ diente_id: dId, zona: null, observacion: nuevaObs, nombre_prestacion: nuevaObs }).eq('id', id);
@@ -987,8 +1045,8 @@ export default function DetalleTratamientoPage() {
     if (nuevoAvance > 0) nuevaObs += ` | Avance: ${nuevoAvance}`;
 
     if (id) {
-        if (item.presupuesto_id) supabase.from('presupuesto_items').update({ observacion: nuevaObs, nombre_prestacion: nuevaObs }).eq('id', id).then();
-        else supabase.from('temp_items').update({ nombre_prestacion: nuevaObs, observacion: nuevaObs }).eq('id', id).then();
+      if (item.presupuesto_id) supabase.from('presupuesto_items').update({ observacion: nuevaObs, nombre_prestacion: nuevaObs }).eq('id', id).then();
+      else supabase.from('temp_items').update({ nombre_prestacion: nuevaObs, observacion: nuevaObs }).eq('id', id).then();
     }
     setAcciones(prev => prev.map(a => a.tempId === tempId ? { ...a, avance: nuevoAvance, texto_db: nuevaObs } : a));
   }
@@ -1007,16 +1065,16 @@ export default function DetalleTratamientoPage() {
     if (dcto > 0) nuevaObs += ` | Dcto: ${dcto}`;
 
     const updatePayload = {
-        observacion: nuevaObs, 
-        nombre_prestacion: nuevaObs, 
-        precio_pactado: nuevoPactado,
-        costo_laboratorio: costoLabInput,
-        lab_pagado_por_dr: labPorDoctorInput
+      observacion: nuevaObs, 
+      nombre_prestacion: nuevaObs, 
+      precio_pactado: nuevoPactado,
+      costo_laboratorio: costoLabInput,
+      lab_pagado_por_dr: labPorDoctorInput
     };
 
     if (id) {
-        if (item.presupuesto_id) supabase.from('presupuesto_items').update(updatePayload).eq('id', id).then();
-        else supabase.from('temp_items').update(updatePayload).eq('id', id).then();
+      if (item.presupuesto_id) supabase.from('presupuesto_items').update(updatePayload).eq('id', id).then();
+      else supabase.from('temp_items').update(updatePayload).eq('id', id).then();
     }
 
     if (dcto > 0) {
@@ -1029,14 +1087,14 @@ export default function DetalleTratamientoPage() {
     }
 
     setAcciones(prev => prev.map(a => a.tempId === tempId ? {
-        ...a, 
-        descuento: dcto, 
-        texto_db: nuevaObs, 
-        precio_pactado: nuevoPactado, 
-        display_pactado: nuevoPactado, 
-        display_saldo: nuevoPactado - a.display_abonado,
-        costo_laboratorio: costoLabInput,
-        lab_pagado_por_dr: labPorDoctorInput
+      ...a, 
+      descuento: dcto, 
+      texto_db: nuevaObs, 
+      precio_pactado: nuevoPactado, 
+      display_pactado: nuevoPactado, 
+      display_saldo: nuevoPactado - a.display_abonado,
+      costo_laboratorio: costoLabInput,
+      lab_pagado_por_dr: labPorDoctorInput
     } : a));
     
     setModalEditarItem({abierto: false, item: null});
@@ -1048,9 +1106,9 @@ export default function DetalleTratamientoPage() {
     if (!seccionInput.trim()) return toast.error("Defina una fase o sección");
     
     if (!skipIconCheck && !prestacion.icono_tipo) {
-        const h = prestacion.display_nombre.toLowerCase();
-        const isKnown = LESIONES_LISTA.some(l => l.toLowerCase() === h) || ["ausente", "extraccion", "extracción", "exodoncia", "sano", "erupcionar", "residuo", "rr", "corona", "endodoncia", "restauración", "restauracion", "tapadura", "implante", "perno", "muñón", "munon", "rayos", "radiografia", "radiografía", "rx", "removible", "protesis", "prótesis", "pulido", "destartraje", "limpieza", "profilaxis", "amalgama", "sellante", "resina", "ionomero", "default", "otro", "ortodoncia", "contención"].some(k => h.includes(k));
-        if (!isKnown) { setModalIcono({ abierto: true, prestacion: prestacion, autoAdd: true }); return; }
+      const h = prestacion.display_nombre.toLowerCase();
+      const isKnown = LESIONES_LISTA.some(l => l.toLowerCase() === h) || ["ausente", "extraccion", "extracción", "exodoncia", "sano", "erupcionar", "residuo", "rr", "corona", "endodoncia", "restauración", "restauracion", "tapadura", "implante", "perno", "muñón", "munon", "rayos", "radiografia", "radiografía", "rx", "removible", "protesis", "prótesis", "pulido", "destartraje", "limpieza", "profilaxis", "amalgama", "sellante", "resina", "ionomero", "default", "otro", "ortodoncia", "contención"].some(k => h.includes(k));
+      if (!isKnown) { setModalIcono({ abierto: true, prestacion: prestacion, autoAdd: true }); return; }
     }
 
     const dIds = dienteInput.split(',').map(d => parseInt(d.trim())).filter(d => !isNaN(d));
@@ -1061,9 +1119,9 @@ export default function DetalleTratamientoPage() {
     const labsRequeridos = labPrests.filter(l => l.nombre_prestacion?.toUpperCase().trim() === dispName);
     let costoLabAuto = 0;
     if (labsRequeridos.length > 0) {
-        const sorted = [...labsRequeridos].sort((a,b) => (a.costo_clinica || 0) - (b.costo_clinica || 0));
-        costoLabAuto = sorted[0].costo_clinica || 0;
-        toast.info("Costo de laboratorio asignado automáticamente.");
+      const sorted = [...labsRequeridos].sort((a,b) => (a.costo_clinica || 0) - (b.costo_clinica || 0));
+      costoLabAuto = sorted[0].costo_clinica || 0;
+      toast.info("Costo de laboratorio asignado automáticamente.");
     }
 
     const tipoRepartoFinal = prestacion.tipo_reparto_resuelto || 'general';
@@ -1072,20 +1130,20 @@ export default function DetalleTratamientoPage() {
       : profesionalSeleccionado;
 
     const baseItem = {
-        presupuesto_id: idURL, 
-        prestacion_id: prestacion.id, 
-        precio_pactado: prestacion["Precio"], 
-        abonado: 0, 
-        estado: 'pendiente', 
-        profesional_id: docFinal, 
-        nombre_prestacion: observacionFinal, 
-        observacion: observacionFinal,
-        cara: caraInput || null,
-        zona: zonaInput || null,
-        tipo_reparto: tipoRepartoFinal,
-        porcentaje_forzado: prestacion.porcentaje_forzado_resuelto || null, // 👈 AGREGA ESTA LÍNEA
-        costo_laboratorio: costoLabAuto,
-        lab_pagado_por_dr: false
+      presupuesto_id: idURL, 
+      prestacion_id: prestacion.id, 
+      precio_pactado: prestacion["Precio"], 
+      abonado: 0, 
+      estado: 'pendiente', 
+      profesional_id: docFinal, 
+      nombre_prestacion: observacionFinal, 
+      observacion: observacionFinal,
+      cara: caraInput || null,
+      zona: zonaInput || null,
+      tipo_reparto: tipoRepartoFinal,
+      porcentaje_forzado: prestacion.porcentaje_forzado_resuelto || null,
+      costo_laboratorio: costoLabAuto,
+      lab_pagado_por_dr: false
     };
 
     let inserts = [];
@@ -1095,19 +1153,19 @@ export default function DetalleTratamientoPage() {
     const { data, error } = await supabase.from('presupuesto_items').insert(inserts).select('*, prestaciones:prestacion_id(*)');
 
     if (!error && data) {
-        const nuevosItems = data.map((d:any) => ({
-            ...d, seccion_nombre: seccionInput.trim(), cara: caraInput || null, zona: zonaInput || null,
-            display_nombre: prestacion.display_nombre, icono_tipo: prestacion.icono_tipo || d.prestaciones?.icono_tipo, 
-            precio_base: prestacion["Precio"], descuento: 0, avance: 0, tempId: d.id,
-            display_pactado: d.precio_pactado, display_abonado: 0, display_saldo: d.precio_pactado,
-            texto_db: observacionFinal,
-            costo_laboratorio: costoLabAuto,
-            lab_pagado_por_dr: false,
-            ppto_doc: d.profesional_id,
-            ppto_fecha: fechaPresupuestada
-        }));
-        setAcciones(prev => [...prev, ...nuevosItems]);
-        toast.success(`Prestación agregada exitosamente ${inserts.length > 1 ? `(${inserts.length} piezas)` : ''}`);
+      const nuevosItems = data.map((d:any) => ({
+        ...d, seccion_nombre: seccionInput.trim(), cara: caraInput || null, zona: zonaInput || null,
+        display_nombre: prestacion.display_nombre, icono_tipo: prestacion.icono_tipo || d.prestaciones?.icono_tipo, 
+        precio_base: prestacion["Precio"], descuento: 0, avance: 0, tempId: d.id,
+        display_pactado: d.precio_pactado, display_abonado: 0, display_saldo: d.precio_pactado,
+        texto_db: observacionFinal,
+        costo_laboratorio: costoLabAuto,
+        lab_pagado_por_dr: false,
+        ppto_doc: d.profesional_id,
+        ppto_fecha: fechaPresupuestada
+      }));
+      setAcciones(prev => [...prev, ...nuevosItems]);
+      toast.success(`Prestación agregada exitosamente ${inserts.length > 1 ? `(${inserts.length} piezas)` : ''}`);
     } else toast.error("Error al guardar en base de datos.");
   };
 
@@ -1115,45 +1173,45 @@ export default function DetalleTratamientoPage() {
      const configs: Record<string, any> = {};
      
      pack.items.forEach((pi: any) => {
-         const dispName = pi.prestacion?.display_nombre?.toUpperCase().trim();
-         const labsDisp = labPrests.filter(l => l.nombre_prestacion?.toUpperCase().trim() === dispName);
-         
-         let defaultLab = null;
-         let minCosto = 0;
-         
-         if (labsDisp.length > 0) {
-             const sorted = [...labsDisp].sort((a,b) => (a.costo_clinica || 0) - (b.costo_clinica || 0));
-             defaultLab = sorted[0].laboratorio_id;
-             minCosto = sorted[0].costo_clinica || 0;
-         }
+       const dispName = pi.prestacion?.display_nombre?.toUpperCase().trim();
+       const labsDisp = labPrests.filter(l => l.nombre_prestacion?.toUpperCase().trim() === dispName);
+       
+       let defaultLab = null;
+       let minCosto = 0;
+       
+       if (labsDisp.length > 0) {
+         const sorted = [...labsDisp].sort((a,b) => (a.costo_clinica || 0) - (b.costo_clinica || 0));
+         defaultLab = sorted[0].laboratorio_id;
+         minCosto = sorted[0].costo_clinica || 0;
+       }
 
-         configs[pi.prestacion.id] = {
-             cantidad: pi.cantidad,
-             descuento: 0,
-             labId: defaultLab,
-             costoLab: minCosto,
-             labsDisponibles: labsDisp
-         };
+       configs[pi.prestacion.id] = {
+         cantidad: pi.cantidad,
+         descuento: 0,
+         labId: defaultLab,
+         costoLab: minCosto,
+         labsDisponibles: labsDisp
+       };
      });
 
      setModalPack({ abierto: true, pack, configuraciones: configs });
   }
 
   const updatePackItemConfig = (prestacionId: string, field: string, value: any) => {
-      setModalPack(prev => {
-          const actual = prev.configuraciones[prestacionId];
-          let nuevaConf = { ...actual, [field]: value };
-          
-          if (field === 'labId') {
-              const elLab = actual.labsDisponibles.find((l:any) => l.laboratorio_id === value);
-              if (elLab) nuevaConf.costoLab = elLab.costo_clinica || 0;
-          }
-          
-          return {
-              ...prev,
-              configuraciones: { ...prev.configuraciones, [prestacionId]: nuevaConf }
-          };
-      });
+    setModalPack(prev => {
+      const actual = prev.configuraciones[prestacionId];
+      let nuevaConf = { ...actual, [field]: value };
+      
+      if (field === 'labId') {
+        const elLab = actual.labsDisponibles.find((l:any) => l.laboratorio_id === value);
+        if (elLab) nuevaConf.costoLab = elLab.costo_clinica || 0;
+      }
+      
+      return {
+        ...prev,
+        configuraciones: { ...prev.configuraciones, [prestacionId]: nuevaConf }
+      };
+    });
   }
 
   const handleAgregarPackCompletos = async () => {
@@ -1167,95 +1225,95 @@ export default function DetalleTratamientoPage() {
     const seccionesAInsertar = new Set<string>();
     const fechaPresupuestada = new Date().toISOString();
     pack.items.forEach((pi: any) => {
-        const nombreFase = (pi.seccion && pi.seccion.trim() !== '') ? pi.seccion.trim() : pack.nombre.trim();
-        seccionesAInsertar.add(nombreFase);
+      const nombreFase = (pi.seccion && pi.seccion.trim() !== '') ? pi.seccion.trim() : pack.nombre.trim();
+      seccionesAInsertar.add(nombreFase);
     });
 
     setListaSecciones(prev => {
-        const nuevaLista = Array.from(new Set([...prev, ...Array.from(seccionesAInsertar)]));
-        supabase.from('presupuestos').update({ secciones: JSON.stringify(nuevaLista) }).eq('id', idURL).then();
-        return nuevaLista;
+      const nuevaLista = Array.from(new Set([...prev, ...Array.from(seccionesAInsertar)]));
+      supabase.from('presupuestos').update({ secciones: JSON.stringify(nuevaLista) }).eq('id', idURL).then();
+      return nuevaLista;
     });
 
     pack.items.forEach((pi: any) => {
-        const prestacion = pi.prestacion;
-        const config = configuraciones[prestacion.id] || { cantidad: pi.cantidad, descuento: 0, costoLab: 0 };
-        
-        const precioBase = prestacion.Precio;
-        const precioConDcto = precioBase * (1 - (config.descuento / 100));
+      const prestacion = pi.prestacion;
+      const config = configuraciones[prestacion.id] || { cantidad: pi.cantidad, descuento: 0, costoLab: 0 };
+      
+      const precioBase = prestacion.Precio;
+      const precioConDcto = precioBase * (1 - (config.descuento / 100));
 
-        const iconoFinal = prestacion.icono_tipo || pack.icono_tipo;
-        
-        const faseDelItem = (pi.seccion && pi.seccion.trim() !== '') ? pi.seccion.trim() : pack.nombre.trim();
+      const iconoFinal = prestacion.icono_tipo || pack.icono_tipo;
+      
+      const faseDelItem = (pi.seccion && pi.seccion.trim() !== '') ? pi.seccion.trim() : pack.nombre.trim();
 
-        const tipoRepartoFinal = prestacion.tipo_reparto_resuelto || 'general';
-        const docFinal = (tipoRepartoFinal === 'doctor' && prestacion.prof_reparto_resuelto) 
-          ? prestacion.prof_reparto_resuelto 
-          : profesionalSeleccionado;
+      const tipoRepartoFinal = prestacion.tipo_reparto_resuelto || 'general';
+      const docFinal = (tipoRepartoFinal === 'doctor' && prestacion.prof_reparto_resuelto) 
+        ? prestacion.prof_reparto_resuelto 
+        : profesionalSeleccionado;
 
-        for(let i=0; i < config.cantidad; i++) {
-            const observacionFinal = `${prestacion.display_nombre} | Fase: ${faseDelItem}` + 
-                (caraInput ? ` | Cara: ${caraInput}` : '') + 
-                (zonaInput ? ` | Zona: ${zonaInput}` : '') + 
-                (iconoFinal ? ` | Icono: ${iconoFinal}` : '') +
-                (config.descuento > 0 ? ` | Dcto: ${config.descuento}` : '') +
-                ` | PptoFec: ${fechaPresupuestada}`;
+      for(let i=0; i < config.cantidad; i++) {
+        const observacionFinal = `${prestacion.display_nombre} | Fase: ${faseDelItem}` + 
+          (caraInput ? ` | Cara: ${caraInput}` : '') + 
+          (zonaInput ? ` | Zona: ${zonaInput}` : '') + 
+          (iconoFinal ? ` | Icono: ${iconoFinal}` : '') +
+          (config.descuento > 0 ? ` | Dcto: ${config.descuento}` : '') +
+          ` | PptoFec: ${fechaPresupuestada}`;
 
-            const baseItem = {
-                presupuesto_id: idURL, 
-                prestacion_id: prestacion.id, 
-                precio_pactado: precioConDcto, 
-                abonado: 0, 
-                estado: 'pendiente', 
-                profesional_id: docFinal, 
-                nombre_prestacion: observacionFinal, 
-                observacion: observacionFinal,
-                cara: caraInput || null,
-                zona: zonaInput || null,
-               tipo_reparto: tipoRepartoFinal,
-                porcentaje_forzado: prestacion.porcentaje_forzado_resuelto || null, // 👈 AGREGA ESTA LÍNEA
-                costo_laboratorio: config.costoLab,
-                lab_pagado_por_dr: false
-            };
+        const baseItem = {
+          presupuesto_id: idURL, 
+          prestacion_id: prestacion.id, 
+          precio_pactado: precioConDcto, 
+          abonado: 0, 
+          estado: 'pendiente', 
+          profesional_id: docFinal, 
+          nombre_prestacion: observacionFinal, 
+          observacion: observacionFinal,
+          cara: caraInput || null,
+          zona: zonaInput || null,
+          tipo_reparto: tipoRepartoFinal,
+          porcentaje_forzado: prestacion.porcentaje_forzado_resuelto || null,
+          costo_laboratorio: config.costoLab,
+          lab_pagado_por_dr: false
+        };
 
-            if (dIds.length > 0 && !zonaInput) {
-                dIds.forEach(dId => inserts.push({ ...baseItem, diente_id: dId }));
-            } else {
-                inserts.push({ ...baseItem, diente_id: null });
-            }
+        if (dIds.length > 0 && !zonaInput) {
+          dIds.forEach(dId => inserts.push({ ...baseItem, diente_id: dId }));
+        } else {
+          inserts.push({ ...baseItem, diente_id: null });
         }
+      }
     });
 
     const { data, error } = await supabase.from('presupuesto_items').insert(inserts).select('*, prestaciones:prestacion_id(*)');
 
     if (!error && data) {
-        const nuevosItems = data.map((d:any) => {
-            const pMatch = pack.items.find((pi:any) => pi.prestacion.id === d.prestacion_id)?.prestacion;
-            const configDcto = configuraciones[d.prestacion_id]?.descuento || 0;
-            
-            let faseExtraida = pack.nombre.trim();
-            const faseMatch = d.observacion.match(/\|\s*Fase:\s*([^|]+)/);
-            if (faseMatch) faseExtraida = faseMatch[1].trim();
+      const nuevosItems = data.map((d:any) => {
+        const pMatch = pack.items.find((pi:any) => pi.prestacion.id === d.prestacion_id)?.prestacion;
+        const configDcto = configuraciones[d.prestacion_id]?.descuento || 0;
+        
+        let faseExtraida = pack.nombre.trim();
+        const faseMatch = d.observacion.match(/\|\s*Fase:\s*([^|]+)/);
+        if (faseMatch) faseExtraida = faseMatch[1].trim();
 
-            return {
-                ...d, seccion_nombre: faseExtraida, cara: caraInput || null, zona: zonaInput || null,
-                display_nombre: pMatch?.display_nombre || d.prestaciones?.["Nombre Accion"], 
-                icono_tipo: pMatch?.icono_tipo || d.prestaciones?.icono_tipo || pack.icono_tipo, 
-                precio_base: pMatch?.Precio, descuento: configDcto, avance: 0, tempId: d.id,
-                display_pactado: d.precio_pactado, display_abonado: 0, display_saldo: d.precio_pactado,
-                texto_db: d.observacion,
-                costo_laboratorio: d.costo_laboratorio || 0,
-                lab_pagado_por_dr: false,
-                ppto_doc: d.profesional_id,
-                ppto_fecha: fechaPresupuestada
-            }
-        });
-        setAcciones(prev => [...prev, ...nuevosItems]);
-        setModalPack({abierto: false, pack: null, configuraciones: {}});
-        setPanelAgregarAbierto(false); setDientesSeleccionados([]); 
-        toast.success(`Pack "${pack.nombre}" agregado respetando sus secciones`);
+        return {
+          ...d, seccion_nombre: faseExtraida, cara: caraInput || null, zona: zonaInput || null,
+          display_nombre: pMatch?.display_nombre || d.prestaciones?.["Nombre Accion"], 
+          icono_tipo: pMatch?.icono_tipo || d.prestaciones?.icono_tipo || pack.icono_tipo, 
+          precio_base: pMatch?.Precio, descuento: configDcto, avance: 0, tempId: d.id,
+          display_pactado: d.precio_pactado, display_abonado: 0, display_saldo: d.precio_pactado,
+          texto_db: d.observacion,
+          costo_laboratorio: d.costo_laboratorio || 0,
+          lab_pagado_por_dr: false,
+          ppto_doc: d.profesional_id,
+          ppto_fecha: fechaPresupuestada
+        }
+      });
+      setAcciones(prev => [...prev, ...nuevosItems]);
+      setModalPack({abierto: false, pack: null, configuraciones: {}});
+      setPanelAgregarAbierto(false); setDientesSeleccionados([]); 
+      toast.success(`Pack "${pack.nombre}" agregado respetando sus secciones`);
     } else {
-        toast.error("Error al guardar el pack en el presupuesto.");
+      toast.error("Error al guardar el pack en el presupuesto.");
     }
   }
 
@@ -1266,12 +1324,10 @@ export default function DetalleTratamientoPage() {
     if (!item) return;
 
     if (item.avance === 100 && avanceInicial < 100) {
-        if (!window.confirm(`⚠️ Atención: Estás a punto de revertir un tratamiento que ya estaba finalizado. Esto puede afectar las liquidaciones ya pagadas. ¿Deseas continuar?`)) {
-            return;
-        }
+      if (!window.confirm(`⚠️ Atención: Estás a punto de revertir un tratamiento que ya estaba finalizado. Esto puede afectar las liquidaciones ya pagadas. ¿Deseas continuar?`)) {
+        return;
+      }
     }
-
-    // ELIMINADA LA RESTRICCIÓN DE ROL: Ahora cualquier usuario puede continuar.
 
     if (perfil?.rol === 'DENTISTA') {
       const doctorLogueadoId = profesionalSeleccionado;
@@ -1291,7 +1347,6 @@ export default function DetalleTratamientoPage() {
     setItemsAEvolucionar(itemIds);
     setAvanceEvolucion(avanceInicial);
     
-    // Si el usuario NO es dentista (es decir, admin, recepcionista, etc), reseteamos el campo para obligarlo a elegir al doctor
     if (perfil?.rol !== 'DENTISTA') setProfesionalSeleccionado(''); 
     setModalEvolucionAbierto(true);
   }
@@ -1303,7 +1358,6 @@ export default function DetalleTratamientoPage() {
 
     setGuardandoEvolucion(true);
     try {
-      // La evolución guarda qué prestaciones se evolucionaron (se ven en la Ficha de Evoluciones)
       const prestacionesEvo = acciones.filter(a => itemIds.includes(a.id)).map(a => ({
           id: a.id, nombre: a.display_nombre, pieza: a.diente_id ?? null, cara: a.cara || null, zona: a.zona || null, avance
       }));
@@ -1319,7 +1373,6 @@ export default function DetalleTratamientoPage() {
       };
       let { error: evoError } = await supabase.from('evoluciones')
         .insert([{ ...evolucionBase, presupuesto_id: esUuid ? idURL : null, prestaciones: prestacionesEvo }]);
-      // Si todavía no se ejecutó evoluciones_prestaciones.sql (faltan esas columnas), se guarda igual sin ellas
       if (evoError && /prestaciones|presupuesto_id/i.test(evoError.message || '')) {
         ({ error: evoError } = await supabase.from('evoluciones').insert([evolucionBase]));
       }
@@ -1346,20 +1399,18 @@ export default function DetalleTratamientoPage() {
         nuevaObs = nuevaObs.replace(/ \| EvoDoc: [^|]+/g, '');
         nuevaObs = nuevaObs.replace(/ \| EvoFec: [^|]+/g, '');
         
-        // Atrapamos al doctor original ANTES de que el sistema le cambie el dueño
         if (!nuevaObs.includes('PptoDoc:')) {
-            nuevaObs += ` | PptoDoc: ${item.ppto_doc || item.profesional_id}`;
+          nuevaObs += ` | PptoDoc: ${item.ppto_doc || item.profesional_id}`;
         }
 
         if (avance > 0) {
-            nuevaObs += ` | EvoDoc: ${doctorId} | EvoFec: ${new Date().toISOString()}`;
+          nuevaObs += ` | EvoDoc: ${doctorId} | EvoFec: ${new Date().toISOString()}`;
         }
         
         const nuevoEstado = avance === 100 ? 'realizado' : item.estado;
         const doctorFinalParaPago = item.tipo_reparto === 'doctor' ? item.profesional_id : doctorId;
 
         if (item.presupuesto_id) {
-          // 1. Actualizamos el ítem en el presupuesto
           await supabase.from('presupuesto_items').update({ 
             observacion: nuevaObs,
             nombre_prestacion: nuevaObs,
@@ -1367,9 +1418,6 @@ export default function DetalleTratamientoPage() {
             profesional_id: doctorFinalParaPago, 
             progreso: avance
           }).eq('id', itemId);
-
-          // (Se quitó el registro en liquidaciones_detalle: nadie lo leía y usaba un 40% fijo.
-          //  La liquidación se calcula en la página de Liquidaciones con el % real de cada doctor.)
 
         } else if (item.id_dentalink) {
           await supabase.from('temp_items').update({ 
@@ -1381,14 +1429,14 @@ export default function DetalleTratamientoPage() {
       }
       
       if (!presupuestoData.aprobado) { 
-  const { error: errAprobar } = await supabase.from('presupuestos').update({ aprobado: true }).eq('id', idURL); 
-  if (errAprobar) {
-    toast.error("⚠️ El presupuesto no pudo aprobarse automáticamente. El tratamiento no aparecerá en Pagos hasta corregir esto.");
-    console.error(errAprobar);
-  } else {
-    setPresupuestoData({ ...presupuestoData, aprobado: true, isAprobado: true }); 
-  }
-}
+        const { error: errAprobar } = await supabase.from('presupuestos').update({ aprobado: true }).eq('id', idURL); 
+        if (errAprobar) {
+          toast.error("⚠️ El presupuesto no pudo aprobarse automáticamente. El tratamiento no aparecerá en Pagos hasta corregir esto.");
+          console.error(errAprobar);
+        } else {
+          setPresupuestoData({ ...presupuestoData, aprobado: true, isAprobado: true }); 
+        }
+      }
       
       setAcciones(prev => prev.map(a => {
         if (itemIds.includes(a.id)) {
@@ -1481,14 +1529,14 @@ export default function DetalleTratamientoPage() {
     let prestacionIdParaActualizar = prestacionActual?.id;
 
     if (!prestacionIdParaActualizar && prestacionActual?.display_nombre) {
-        const { data } = await supabase.from('prestaciones').select('id').ilike('Nombre Accion', prestacionActual.display_nombre).limit(1);
-        if (data && data.length > 0) {
-            prestacionIdParaActualizar = data[0].id;
-        }
+      const { data } = await supabase.from('prestaciones').select('id').ilike('Nombre Accion', prestacionActual.display_nombre).limit(1);
+      if (data && data.length > 0) {
+        prestacionIdParaActualizar = data[0].id;
+      }
     }
 
     if (prestacionIdParaActualizar) {
-        await supabase.from('prestaciones').update({ icono_tipo: iconoId }).eq('id', prestacionIdParaActualizar);
+      await supabase.from('prestaciones').update({ icono_tipo: iconoId }).eq('id', prestacionIdParaActualizar);
     }
 
     const nuevasSecciones = { ...seccionesPrests };
@@ -1499,22 +1547,22 @@ export default function DetalleTratamientoPage() {
     setSeccionesPrests(nuevasSecciones);
 
     const inyectarLogoGlobal = (itemsArray: any[]) => itemsArray.map(a => {
-        if (a.prestacion_id === prestacionIdParaActualizar || a.display_nombre?.toLowerCase() === prestacionActual?.display_nombre?.toLowerCase()) {
-            
-            let nuevoTexto = (a.texto_db || a.display_nombre || '').replace(/ \| Icono: [a-zA-Z0-9_-]+/g, ''); 
-            if (iconoId) nuevoTexto += ` | Icono: ${iconoId}`; 
-            
-            if (a.id) {
-                if (a.presupuesto_id) {
-                    supabase.from('presupuesto_items').update({ observacion: nuevoTexto, nombre_prestacion: nuevoTexto }).eq('id', a.id).then();
-                } else {
-                    supabase.from('temp_items').update({ nombre_prestacion: nuevoTexto, observacion: nuevoTexto }).eq('id', a.id).then();
-                }
-            }
-
-            return { ...a, icono_tipo: iconoId, texto_db: nuevoTexto };
+      if (a.prestacion_id === prestacionIdParaActualizar || a.display_nombre?.toLowerCase() === prestacionActual?.display_nombre?.toLowerCase()) {
+        
+        let nuevoTexto = (a.texto_db || a.display_nombre || '').replace(/ \| Icono: [a-zA-Z0-9_-]+/g, ''); 
+        if (iconoId) nuevoTexto += ` | Icono: ${iconoId}`; 
+        
+        if (a.id) {
+          if (a.presupuesto_id) {
+            supabase.from('presupuesto_items').update({ observacion: nuevoTexto, nombre_prestacion: nuevoTexto }).eq('id', a.id).then();
+          } else {
+            supabase.from('temp_items').update({ nombre_prestacion: nuevoTexto, observacion: nuevoTexto }).eq('id', a.id).then();
+          }
         }
-        return a;
+
+        return { ...a, icono_tipo: iconoId, texto_db: nuevoTexto };
+      }
+      return a;
     });
 
     setAcciones(prev => inyectarLogoGlobal(prev));
@@ -1712,7 +1760,6 @@ export default function DetalleTratamientoPage() {
                       <span className="text-xs font-black text-emerald-600">${Number(pacienteInfo.saldo_a_favor).toLocaleString('es-CL')}</span>
                    </div>
                 )}
-                {/* 👆 FIN DEL BLOQUE 👆 */}
              </div>
            )}
 
@@ -1841,19 +1888,20 @@ export default function DetalleTratamientoPage() {
                             <td style={{ padding: '8px', fontWeight: 600 }}>{estadoBase}<br/><span style={{fontSize: 9, color: '#64748b', fontWeight: 'normal'}}>{labInfo}</span></td>
                             <td style={{ padding: '8px', textAlign: 'center' }}>{item.zona ? item.zona : (item.diente_id || '-')}{item.cara ? ` (${item.cara})` : ''}</td>
                             <td style={{ padding: '6px 8px' }}>
-  {item.display_nombre}
-  <br/>
-  <span style={{fontSize: 9, color: '#64748b', fontWeight: 'normal'}}>
-Presupuestado: Dr. {profesionales.find(p => p.user_id === item.ppto_doc)?.apellido || 'Sin asignar'}{item.ppto_fecha ? ` el ${new Date(item.ppto_fecha).toLocaleDateString('es-CL')}` : ''}  </span>
-  {item.evo_doc && (
-      <>
-        <br/>
-        <span style={{fontSize: 9, color: '#3b82f6', fontWeight: 'normal'}}>
-          Evolucionado: Dr. {profesionales.find(p => p.user_id === item.evo_doc)?.apellido || ''} el {new Date(item.evo_fecha).toLocaleDateString('es-CL')}
-        </span>
-      </>
-  )}
-</td>
+                              {item.display_nombre}
+                              <br/>
+                              <span style={{fontSize: 9, color: '#64748b', fontWeight: 'normal'}}>
+                                Presupuestado: Dr. {profesionales.find(p => p.user_id === item.ppto_doc)?.apellido || 'Sin asignar'}{item.ppto_fecha ? ` el ${new Date(item.ppto_fecha).toLocaleDateString('es-CL')}` : ''}
+                              </span>
+                              {item.evo_doc && (
+                                <>
+                                  <br/>
+                                  <span style={{fontSize: 9, color: '#3b82f6', fontWeight: 'normal'}}>
+                                    Evolucionado: Dr. {profesionales.find(p => p.user_id === item.evo_doc)?.apellido || ''} el {new Date(item.evo_fecha).toLocaleDateString('es-CL')}
+                                  </span>
+                                </>
+                              )}
+                            </td>
                             <td style={{ padding: '8px', textAlign: 'right' }}>${Number(item.precio_base || item.display_pactado).toLocaleString('es-CL')}</td>
                             <td style={{ padding: '8px', textAlign: 'right' }}>{item.descuento > 0 ? `${item.descuento}%` : '0%'}</td>
                             <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700 }}>${Number(item.display_pactado).toLocaleString('es-CL')}</td>
@@ -1921,11 +1969,11 @@ Presupuestado: Dr. {profesionales.find(p => p.user_id === item.ppto_doc)?.apelli
             </div>
           </div>
             
-            <div className="flex gap-2">
-                <button onClick={handleImprimirPresupuesto} className="px-5 py-3 bg-white text-slate-900 border border-slate-200 rounded-xl text-[10px] font-black uppercase hover:bg-slate-50 transition-all flex items-center justify-center gap-2 shadow-sm">
-                    <Printer size={16}/> Imprimir / PDF
-                </button>
-            </div>
+          <div className="flex gap-2">
+            <button onClick={handleImprimirPresupuesto} className="px-5 py-3 bg-white text-slate-900 border border-slate-200 rounded-xl text-[10px] font-black uppercase hover:bg-slate-50 transition-all flex items-center justify-center gap-2 shadow-sm">
+              <Printer size={16}/> Imprimir / PDF
+            </button>
+          </div>
         </div>
 
         {/* ========================================================
@@ -2135,8 +2183,20 @@ Presupuestado: Dr. {profesionales.find(p => p.user_id === item.ppto_doc)?.apelli
                       </span>
                     )}
                   </div>
-                  {puedeVerFinanzas && (
-<span className="text-[10px] text-black font-black">Subtotal: ${totalPorSeccion(seccion).toLocaleString('es-CL')}</span>                  )}
+                  <div className="flex items-center gap-3">
+                    {puedeVerFinanzas && (
+                      <span className="text-[10px] text-black font-black">Subtotal: ${totalPorSeccion(seccion).toLocaleString('es-CL')}</span>
+                    )}
+                    {listaSecciones.length > 1 && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleEliminarSeccion(seccion); }}
+                        className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-all"
+                        title="Eliminar esta fase clínica"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
                 </h3>
                 
                 {itemsSeccion.length === 0 ? (
@@ -2210,26 +2270,27 @@ Presupuestado: Dr. {profesionales.find(p => p.user_id === item.ppto_doc)?.apelli
                                   />
                                 ) : (
                                   <span className="cursor-pointer" onClick={() => setEditandoDienteId(item.tempId)} title="Click para cambiar pieza">
-                                    {item.zona ? item.zona : (item.diente_id || <Plus size={14} strokeWidth="{4}"/>)}
+                                    {item.zona ? item.zona : (item.diente_id || <Plus size={14} strokeWidth={4}/>)}
                                   </span>
                                 )}
                                 {item.cara && <span className="text-[8px] opacity-70 mt-1">CARA {item.cara}</span>}
                               </div>
                             </td>
-                           <td className="px-6 py-5 font-black uppercase text-slate-800 text-[11px]">
-  {item.display_nombre}
-  <div className="flex flex-col gap-0.5 mt-1">
-    <div className="text-[9px] font-bold text-slate-400 flex items-center gap-1 normal-case tracking-normal">
-       <User size={10} />
-Presupuestado: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr. ${profesionales.find(p => p.user_id === item.ppto_doc)?.apellido}` : 'Sin asignar'}{item.ppto_fecha ? ` el ${new Date(item.ppto_fecha).toLocaleDateString('es-CL')}` : ''}    </div>
-    {item.evo_doc && (
-       <div className="text-[9px] font-bold text-blue-500 flex items-center gap-1 normal-case tracking-normal">
-          <CheckCircle2 size={10} />
-          Evolucionado: Dr. {profesionales.find(p => p.user_id === item.evo_doc)?.apellido || 'Desconocido'} el {new Date(item.evo_fecha).toLocaleDateString('es-CL')}
-       </div>
-    )}
-  </div>
-</td>
+                            <td className="px-6 py-5 font-black uppercase text-slate-800 text-[11px]">
+                              {item.display_nombre}
+                              <div className="flex flex-col gap-0.5 mt-1">
+                                <div className="text-[9px] font-bold text-slate-400 flex items-center gap-1 normal-case tracking-normal">
+                                   <User size={10} />
+                                   Presupuestado: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr. ${profesionales.find(p => p.user_id === item.ppto_doc)?.apellido}` : 'Sin asignar'}{item.ppto_fecha ? ` el ${new Date(item.ppto_fecha).toLocaleDateString('es-CL')}` : ''}
+                                </div>
+                                {item.evo_doc && (
+                                   <div className="text-[9px] font-bold text-blue-500 flex items-center gap-1 normal-case tracking-normal">
+                                      <CheckCircle2 size={10} />
+                                      Evolucionado: Dr. {profesionales.find(p => p.user_id === item.evo_doc)?.apellido || 'Desconocido'} el {new Date(item.evo_fecha).toLocaleDateString('es-CL')}
+                                   </div>
+                                )}
+                              </div>
+                            </td>
                             
                             <td className="px-6 py-5 text-center">
                               <div className="flex items-center justify-center gap-1">
@@ -2250,24 +2311,24 @@ Presupuestado: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr. ${pr
                             {puedeVerFinanzas && (
                                 <>
                                     <td className="px-6 py-5 text-right font-bold text-slate-500 text-[11px]" onDoubleClick={() => { if (perfil?.rol === 'ADMIN') setEditandoPrecioId(item.tempId); }}>
-    {editandoPrecioId === item.tempId && perfil?.rol === 'ADMIN' ? (
-        <input
-            type="number"
-            autoFocus
-            className="w-20 px-2 py-1 border border-slate-300 rounded text-right text-slate-900 outline-none focus:border-blue-500"
-            defaultValue={item.precio_base || item.precio_pactado || item.display_pactado}
-            onBlur={(e) => handleCambiarPrecio(item.tempId, item.id, e.target.value)}
-            onKeyDown={(e) => {
-                if (e.key === 'Enter') handleCambiarPrecio(item.tempId, item.id, e.currentTarget.value);
-                if (e.key === 'Escape') setEditandoPrecioId(null);
-            }}
-        />
-    ) : (
-        <span className={perfil?.rol === 'ADMIN' ? "cursor-pointer hover:text-blue-600 transition-colors" : ""} title={perfil?.rol === 'ADMIN' ? "Doble clic para editar precio original" : "Precio de la prestación"}>
-            ${Number(item.display_pactado).toLocaleString('es-CL')}
-        </span>
-    )}
-</td>
+                                      {editandoPrecioId === item.tempId && perfil?.rol === 'ADMIN' ? (
+                                          <input
+                                              type="number"
+                                              autoFocus
+                                              className="w-20 px-2 py-1 border border-slate-300 rounded text-right text-slate-900 outline-none focus:border-blue-500"
+                                              defaultValue={item.precio_base || item.precio_pactado || item.display_pactado}
+                                              onBlur={(e) => handleCambiarPrecio(item.tempId, item.id, e.target.value)}
+                                              onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') handleCambiarPrecio(item.tempId, item.id, e.currentTarget.value);
+                                                  if (e.key === 'Escape') setEditandoPrecioId(null);
+                                              }}
+                                          />
+                                      ) : (
+                                          <span className={perfil?.rol === 'ADMIN' ? "cursor-pointer hover:text-blue-600 transition-colors" : ""} title={perfil?.rol === 'ADMIN' ? "Doble clic para editar precio original" : "Precio de la prestación"}>
+                                              ${Number(item.display_pactado).toLocaleString('es-CL')}
+                                          </span>
+                                      )}
+                                    </td>
                                     <td className="px-6 py-5 text-right font-bold text-emerald-600 text-[11px]">${Number(item.display_abonado).toLocaleString('es-CL')}</td>
                                     <td className="px-6 py-5 text-right font-black text-slate-900 text-[11px]">${Number(item.display_saldo).toLocaleString('es-CL')}</td>
                                 </>
@@ -2291,10 +2352,10 @@ Presupuestado: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr. ${pr
                                 ) : (
                                   <>
                                     {item.estado !== 'cancelada' && item.estado !== 'realizado' && perfil?.rol === 'ADMIN' && (
-  <button onClick={() => { setModalEditarItem({abierto: true, item}); setDctoInput(item.descuento || 0); setCostoLabInput(item.costo_laboratorio || 0); setLabPorDoctorInput(item.lab_pagado_por_dr || false); }} className="text-slate-400 hover:text-blue-600 transition-colors p-2 bg-white rounded-lg border border-slate-100 shadow-sm" title="Ajustes Clínicos (Descuento/Lab)">
-    <Settings size={14}/>
-  </button>
-)}
+                                      <button onClick={() => { setModalEditarItem({abierto: true, item}); setDctoInput(item.descuento || 0); setCostoLabInput(item.costo_laboratorio || 0); setLabPorDoctorInput(item.lab_pagado_por_dr || false); }} className="text-slate-400 hover:text-blue-600 transition-colors p-2 bg-white rounded-lg border border-slate-100 shadow-sm" title="Ajustes Clínicos (Descuento/Lab)">
+                                        <Settings size={14}/>
+                                      </button>
+                                    )}
                                     {item.estado !== 'cancelada' && (
                                       <button onClick={() => handleCancelarPrestacion(item)} className="text-slate-400 hover:text-red-500 transition-colors p-2 bg-white rounded-lg border border-slate-100 shadow-sm" title="Anular Prestación (Mueve pagos a Saldo a Favor)">
                                         <Ban size={14}/>
@@ -2559,7 +2620,7 @@ Presupuestado: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr. ${pr
                               </div>
                           )}
                        </div>
-                       <button onClick={handleGuardarAjustesMulti} disabled={guardandoMulti} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-xs uppercase shadow-lg hover:bg-slate-800 transition-all">
+                       <button onClick={handleGuardarAjustesMulti} disabled={guardandoMulti} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-xs uppercase shadow-lg hover:bg-slate-800 transition-all flex items-center justify-center gap-2">
                          {guardandoMulti ? <Loader2 className="animate-spin"/> : <Save size={16}/>} Aplicar Cambios
                        </button>
                     </div>
@@ -2614,14 +2675,14 @@ Presupuestado: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr. ${pr
                             </button>
                             {['O', 'V', 'L', 'M', 'D'].map(c => {
                                  return (
-                                    <button 
-                                        key={c}
-                                        onClick={(e) => { e.preventDefault(); toggleCara(c); }} 
-                                        disabled={!!zonaInput}
-                                        className={`w-9 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all disabled:opacity-50 ${caraInput.includes(c) ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:border-blue-400'}`}
-                                    >
-                                        {c}
-                                    </button>
+                                     <button 
+                                         key={c}
+                                         onClick={(e) => { e.preventDefault(); toggleCara(c); }} 
+                                         disabled={!!zonaInput}
+                                         className={`w-9 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all disabled:opacity-50 ${caraInput.includes(c) ? 'bg-blue-600 text-white shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:border-blue-400'}`}
+                                     >
+                                         {c}
+                                     </button>
                                  )
                             })}
                         </div>
@@ -2944,7 +3005,6 @@ Presupuestado: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr. ${pr
                         <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center"><FileSignature size={24}/></div>
                         <div>
                           <h2 className="text-2xl font-black uppercase italic tracking-tighter leading-none">Evolución Clínica</h2>
-                          
                         </div>
                       </div>
                       <button onClick={() => setModalEvolucionAbierto(false)} className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center hover:bg-red-500 transition-all"><X size={20}/></button>
@@ -2964,24 +3024,25 @@ Presupuestado: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr. ${pr
                               const isSelected = itemsAEvolucionar.includes(item.id);
                               return (
                                 <div key={item.id} onClick={() => setItemsAEvolucionar(prev => isSelected ? prev.filter(i => i !== item.id) : [...prev, item.id])} className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex items-center gap-4 ${isSelected ? 'border-blue-600 bg-blue-50' : 'border-slate-100 hover:border-blue-200'}`}>
-                                   <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${isSelected ? 'border-blue-600 border-blue-600' : 'border-slate-300 bg-white'}`}>
+                                   <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${isSelected ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-white'}`}>
                                       {isSelected && <CheckCircle2 className="text-white" size={16}/>}
                                    </div>
                                   <div>
-  <p className="text-[10px] font-black text-slate-400 uppercase leading-none">
-    {item.zona ? item.zona : `Pieza ${item.diente_id || 'General'}`} {item.cara && `- Cara ${item.cara}`}
-  </p>
-  <p className="text-xs font-black text-slate-800 uppercase mt-1 leading-tight">{item.display_nombre}</p>
-  <p className="text-[9px] font-bold text-slate-500 mt-1 flex items-center gap-1 normal-case">
-     <User size={10} /> 
-Presupuestado por: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr(a). ${profesionales.find(p => p.user_id === item.ppto_doc)?.apellido}` : 'Sin asignar'}  </p>
-  {item.evo_doc && (
-     <p className="text-[9px] font-bold text-blue-500 mt-0.5 flex items-center gap-1 normal-case">
-        <CheckCircle2 size={10} />
-        Evolucionado por Dr(a). {profesionales.find(p => p.user_id === item.evo_doc)?.apellido} el {new Date(item.evo_fecha).toLocaleDateString('es-CL')}
-     </p>
-  )}
-</div>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase leading-none">
+                                      {item.zona ? item.zona : `Pieza ${item.diente_id || 'General'}`} {item.cara && `- Cara ${item.cara}`}
+                                    </p>
+                                    <p className="text-xs font-black text-slate-800 uppercase mt-1 leading-tight">{item.display_nombre}</p>
+                                    <p className="text-[9px] font-bold text-slate-500 mt-1 flex items-center gap-1 normal-case">
+                                       <User size={10} /> 
+                                       Presupuestado por: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr(a). ${profesionales.find(p => p.user_id === item.ppto_doc)?.apellido}` : 'Sin asignar'}
+                                    </p>
+                                    {item.evo_doc && (
+                                       <p className="text-[9px] font-bold text-blue-500 mt-0.5 flex items-center gap-1 normal-case">
+                                          <CheckCircle2 size={10} />
+                                          Evolucionado por Dr(a). {profesionales.find(p => p.user_id === item.evo_doc)?.apellido} el {new Date(item.evo_fecha).toLocaleDateString('es-CL')}
+                                       </p>
+                                    )}
+                                  </div>
                                 </div>
                               )
                             })
@@ -3166,18 +3227,19 @@ Presupuestado por: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr(a
                                    </svg>
                                  </div>
                                  <div className="flex flex-col">
-   {item.zona && <span className="text-[8px] font-black text-blue-500 uppercase tracking-widest">{item.zona}</span>}
-   <p className="text-[10px] font-black uppercase text-slate-800 leading-tight mt-0.5">{item.display_nombre}</p>
-   <span className="text-[8px] font-bold text-slate-400 mt-1 flex items-center gap-1 normal-case tracking-normal">
-      <User size={8} /> 
-Ppto: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr. ${profesionales.find(p => p.user_id === item.ppto_doc)?.apellido}` : 'Sin asignar'}   </span>
-   {item.evo_doc && (
-       <span className="text-[8px] font-bold text-blue-500 mt-0.5 flex items-center gap-1 normal-case tracking-normal">
-          <CheckCircle2 size={8} />
-          Evol: Dr. {profesionales.find(p => p.user_id === item.evo_doc)?.apellido} ({new Date(item.evo_fecha).toLocaleDateString('es-CL')})
-       </span>
-   )}
-</div>
+                                   {item.zona && <span className="text-[8px] font-black text-blue-500 uppercase tracking-widest">{item.zona}</span>}
+                                   <p className="text-[10px] font-black uppercase text-slate-800 leading-tight mt-0.5">{item.display_nombre}</p>
+                                   <span className="text-[8px] font-bold text-slate-400 mt-1 flex items-center gap-1 normal-case tracking-normal">
+                                      <User size={8} /> 
+                                      Ppto: {profesionales.find(p => p.user_id === item.ppto_doc) ? `Dr. ${profesionales.find(p => p.user_id === item.ppto_doc)?.apellido}` : 'Sin asignar'}
+                                   </span>
+                                   {item.evo_doc && (
+                                       <span className="text-[8px] font-bold text-blue-500 mt-0.5 flex items-center gap-1 normal-case tracking-normal">
+                                          <CheckCircle2 size={8} />
+                                          Evol: Dr. {profesionales.find(p => p.user_id === item.evo_doc)?.apellido} ({new Date(item.evo_fecha).toLocaleDateString('es-CL')})
+                                       </span>
+                                   )}
+                                 </div>
                               </div>
 
                               <div className="flex justify-between items-center">
@@ -3344,44 +3406,43 @@ function CarasDentales({ id, itemsDiente = [], estado, abrirPanelAgregar, onFace
   const getFill = (c: string) => {
     const valCara = estado?.caras?.[c];
     if (valCara) {
-        const low = valCara.toLowerCase();
-        if (low.includes('caries') || low.includes('erosi') || low.includes('atrici') || low.includes('abfrac')) {
-            return "#0f172a"; 
-        }
-        return "#3b82f6"; 
+      const low = valCara.toLowerCase();
+      if (low.includes('caries') || low.includes('erosi') || low.includes('atrici') || low.includes('abfrac')) {
+        return "#0f172a"; 
+      }
+      return "#3b82f6"; 
     }
 
     const hallazgosGenerales = estado?.hallazgos || [];
     const tieneLesionGeneralNegra = hallazgosGenerales.some((h: string) => {
-        const low = h.toLowerCase();
-        return low.includes('caries') || low.includes('erosi') || low.includes('atrici') || low.includes('abfrac');
+      const low = h.toLowerCase();
+      return low.includes('caries') || low.includes('erosi') || low.includes('atrici') || low.includes('abfrac');
     });
 
     if (tieneLesionGeneralNegra) {
-        return "#0f172a"; 
+      return "#0f172a"; 
     }
 
     try {
-        // Validación de seguridad para prevenir el error .some()
-        if (Array.isArray(itemsDiente) && itemsDiente.length > 0) {
-            const realiz = itemsDiente.some((i:any) => i.cara && typeof i.cara === 'string' && i.cara.includes(c) && i.estado === 'realizado');
-            if (realiz) return "#10b981"; 
-            
-            const pend = itemsDiente.some((i:any) => i.cara && typeof i.cara === 'string' && i.cara.includes(c) && i.estado !== 'realizado');
-            if (pend) return "#ef4444"; 
-        }
+      if (Array.isArray(itemsDiente) && itemsDiente.length > 0) {
+        const realiz = itemsDiente.some((i:any) => i.cara && typeof i.cara === 'string' && i.cara.includes(c) && i.estado === 'realizado');
+        if (realiz) return "#10b981"; 
+        
+        const pend = itemsDiente.some((i:any) => i.cara && typeof i.cara === 'string' && i.cara.includes(c) && i.estado !== 'realizado');
+        if (pend) return "#ef4444"; 
+      }
     } catch (error) {
-        console.error(`[CARAS] Error al evaluar color en diente ${id}:`, error);
+      console.error(`[CARAS] Error al evaluar color en diente ${id}:`, error);
     }
 
     return "white"; 
   }
 
   const paths = { 
-      V: "M 16 16 A 48 48 0 0 1 84 16 L 64 36 A 20 20 0 0 0 36 36 Z", 
-      L: "M 84 84 A 48 48 0 0 1 16 84 L 36 64 A 20 20 0 0 0 64 64 Z", 
-      FL: "M 16 84 A 48 48 0 0 1 16 16 L 36 36 A 20 20 0 0 0 36 64 Z", 
-      FR: "M 84 16 A 48 48 0 0 1 84 84 L 64 64 A 20 20 0 0 0 64 36 Z" 
+    V: "M 16 16 A 48 48 0 0 1 84 16 L 64 36 A 20 20 0 0 0 36 36 Z", 
+    L: "M 84 84 A 48 48 0 0 1 16 84 L 36 64 A 20 20 0 0 0 64 64 Z", 
+    FL: "M 16 84 A 48 48 0 0 1 16 16 L 36 36 A 20 20 0 0 0 36 64 Z", 
+    FR: "M 84 16 A 48 48 0 0 1 84 84 L 64 64 A 20 20 0 0 0 64 36 Z" 
   };
 
   return (
@@ -3414,54 +3475,54 @@ function DienteVisual({ id, seleccionado, onSelect, onContextMenu, onFaceClick, 
   
   const isAusenteManual = hallazgos.includes('Ausente');
   const exodonciaItem = Array.isArray(itemsDiente) ? itemsDiente.find((i:any) => {
-      const n = String(i.display_nombre).toLowerCase();
-      const ico = String(i.icono_tipo || "").toLowerCase();
-      return n.includes('extrac') || n.includes('exodoncia') || ico.includes('extrac');
+    const n = String(i.display_nombre).toLowerCase();
+    const ico = String(i.icono_tipo || "").toLowerCase();
+    return n.includes('extrac') || n.includes('exodoncia') || ico.includes('extrac');
   }) : null;
   const isAusente = isAusenteManual || !!exodonciaItem;
   let strokeExodoncia = "#0f172a";
   if (exodonciaItem) {
-      strokeExodoncia = exodonciaItem.estado === 'realizado' ? "#059669" : "#ef4444";
+    strokeExodoncia = exodonciaItem.estado === 'realizado' ? "#059669" : "#ef4444";
   }
   
   let elementosRaiz: any[] = hallazgos.map((h: string) => ({ nombre: h, icono: null, isManual: true }));
   
   if (Array.isArray(itemsDiente)) {
-      itemsDiente.forEach((t:any) => {
-          const n = String(t.display_nombre).toLowerCase();
-          const ico = String(t.icono_tipo || "").toLowerCase();
-          const esRaiz = n.includes("endo") || ico.includes("endo") || 
-                 n.includes("impla") || ico.includes("impla") || 
-                 n.includes("perno") || ico.includes("perno") || 
-                 n.includes("corona") || ico.includes("corona") || 
-                 n.includes("extra") || ico.includes("extra") || 
-                 n.includes("exodoncia") ||
-                 n.includes("restauraci") || ico.includes("restauraci") ||
-                 n.includes("resina") || ico.includes("resina") ||
-                 n.includes("amalgama") || ico.includes("amalgama") ||
-                 ico === "default" || 
-                 ico === "otro";
-          
-          if (!t.cara || esRaiz) {
-              if (!elementosRaiz.some(e => e.nombre === t.display_nombre)) {
-                  elementosRaiz.push({ nombre: t.display_nombre, icono: t.icono_tipo, isManual: false });
-              }
-          }
-      });
+    itemsDiente.forEach((t:any) => {
+      const n = String(t.display_nombre).toLowerCase();
+      const ico = String(t.icono_tipo || "").toLowerCase();
+      const esRaiz = n.includes("endo") || ico.includes("endo") || 
+             n.includes("impla") || ico.includes("impla") || 
+             n.includes("perno") || ico.includes("perno") || 
+             n.includes("corona") || ico.includes("corona") || 
+             n.includes("extra") || ico.includes("extra") || 
+             n.includes("exodoncia") ||
+             n.includes("restauraci") || ico.includes("restauraci") ||
+             n.includes("resina") || ico.includes("resina") ||
+             n.includes("amalgama") || ico.includes("amalgama") ||
+             ico === "default" || 
+             ico === "otro";
+      
+      if (!t.cara || esRaiz) {
+        if (!elementosRaiz.some(e => e.nombre === t.display_nombre)) {
+          elementosRaiz.push({ nombre: t.display_nombre, icono: t.icono_tipo, isManual: false });
+        }
+      }
+    });
   }
 
   let start = "#ffffff", end = "#f1f5f9", stroke = "#cbd5e1";
   
   if (isAusente) { 
-      start = "#f8fafc"; end = "#f1f5f9"; stroke = "#e2e8f0"; 
+    start = "#f8fafc"; end = "#f1f5f9"; stroke = "#e2e8f0"; 
   } else if (elementosRaiz.length > 0 || tienePendientes || todosRealizados) { 
-      if (todosRealizados && !isAusente) { 
-          start = "#ecfdf5"; end = "#d1fae5"; stroke = "#10b981"; 
-      } else if (tienePendientes || hallazgos.some((h:string) => LESIONES_LISTA.includes(h))) { 
-          start = "#fef2f2"; end = "#fecaca"; stroke = "#f87171"; 
-      } else { 
-          start = "#eff6ff"; end = "#dbeafe"; stroke = "#93c5fd"; 
-      }
+    if (todosRealizados && !isAusente) { 
+      start = "#ecfdf5"; end = "#d1fae5"; stroke = "#10b981"; 
+    } else if (tienePendientes || hallazgos.some((h:string) => LESIONES_LISTA.includes(h))) { 
+      start = "#fef2f2"; end = "#fecaca"; stroke = "#f87171"; 
+    } else { 
+      start = "#eff6ff"; end = "#dbeafe"; stroke = "#93c5fd"; 
+    }
   } 
   
   const getP = (n: number) => {
@@ -3490,11 +3551,11 @@ function DienteVisual({ id, seleccionado, onSelect, onContextMenu, onFaceClick, 
                <line x1="90" y1="20" x2="10" y2="100" />
              </g>
           ) : (
-              elementosRaiz.map((el, i) => {
-                  const isTtoRealizado = !el.isManual && Array.isArray(itemsDiente) && itemsDiente.some((t:any) => t.display_nombre === el.nombre && t.estado === 'realizado');
-                  const isTtoPendiente = !el.isManual && Array.isArray(itemsDiente) && itemsDiente.some((t:any) => t.display_nombre === el.nombre && t.estado !== 'realizado');
-                  return <LogoRender key={`h-${i}`} hallazgo={el.nombre} iconoKey={el.icono} isRealizado={isTtoRealizado} isPendiente={isTtoPendiente} />
-              })
+             elementosRaiz.map((el, i) => {
+               const isTtoRealizado = !el.isManual && Array.isArray(itemsDiente) && itemsDiente.some((t:any) => t.display_nombre === el.nombre && t.estado === 'realizado');
+               const isTtoPendiente = !el.isManual && Array.isArray(itemsDiente) && itemsDiente.some((t:any) => t.display_nombre === el.nombre && t.estado !== 'realizado');
+               return <LogoRender key={`h-${i}`} hallazgo={el.nombre} iconoKey={el.icono} isRealizado={isTtoRealizado} isPendiente={isTtoPendiente} />
+             })
           )}
         </svg>
       </div>
@@ -3515,17 +3576,16 @@ function LogoRender({ hallazgo, iconoKey, colorOverride, isRealizado, isPendient
   const isLesion = LESIONES_LISTA.some(l => l.toLowerCase() === originalName);
   const isMalEstado = originalName.includes("mal estado") || originalName.includes("fractu") || originalName.includes("infec");
   
-  let color = "#2563eb"; // Azul por defecto
+  let color = "#2563eb";
   if (colorOverride) color = colorOverride;
-  else if (isRealizado) color = "#059669"; // Verde realizado
-  else if (isPendiente) color = "#ef4444"; // Rojo pendiente
-  else if (isLesion || isMalEstado) color = "#0f172a"; // Negro lesión
+  else if (isRealizado) color = "#059669";
+  else if (isPendiente) color = "#ef4444";
+  else if (isLesion || isMalEstado) color = "#0f172a";
   
   const patternId = `hash-${Math.random().toString(36).substr(2, 9)}`;
   const pattern = isMalEstado ? (<defs><pattern id={patternId} width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke={color} strokeWidth="3" /></pattern></defs>) : null;
   const fill = isMalEstado ? `url(#${patternId})` : color;
   
-  // -- FORMAS ESPECÍFICAS SEGÚN TIPO --
   if (h === "otro" || h.includes("estrella")) return <g>{pattern}<polygon points="50,15 61,35 83,38 68,54 71,76 50,66 29,76 32,54 17,38 39,35" fill={fill} /></g>;
   if (h.includes("erosi") || h.includes("abfrac")) return <g>{pattern}<path d="M 25 80 Q 50 100 75 80" fill="none" stroke={color} strokeWidth="8" strokeLinecap="round" /></g>;
   if (h.includes("atrici")) return <g>{pattern}<line x1="20" y1="10" x2="80" y2="10" stroke={color} strokeWidth="10" strokeLinecap="round" /></g>;
@@ -3533,45 +3593,35 @@ function LogoRender({ hallazgo, iconoKey, colorOverride, isRealizado, isPendient
   if (h.includes("fractu")) return <path d="M 65 10 L 45 50 L 60 50 L 35 100" stroke={color} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" fill="none" />;
   if (h.includes("movilidad")) return <g stroke={color} strokeWidth="6" fill="none" strokeLinecap="round"><path d="M 15 30 Q -5 60 15 90" /><path d="M 85 30 Q 105 60 85 90" /></g>;
   
-  // Endodoncia
   if (h.includes("endo")) return <g><path d="M 35 25 L 35 95 M 65 25 L 65 95" stroke={isMalEstado ? "url(#" + patternId + ")" : color} strokeWidth="8" strokeLinecap="round" /></g>;
   
-  // Implantes
   if (h.includes("implante_corona") || (h.includes("implante") && h.includes("corona"))) return <g><rect x="42" y="55" width="16" height="40" fill={fill} rx="4" /><path d="M 25 55 Q 50 10 75 55 Z" fill="none" stroke={color} strokeWidth="8" strokeLinejoin="round" /></g>;
   if (h.includes("impla")) return <g fill={fill}><rect x="40" y="20" width="20" height="70" rx="4" /><line x1="32" y1="35" x2="68" y2="35" stroke={color} strokeWidth="6" strokeLinecap="round"/><line x1="32" y1="55" x2="68" y2="55" stroke={color} strokeWidth="6" strokeLinecap="round"/><line x1="32" y1="75" x2="68" y2="75" stroke={color} strokeWidth="6" strokeLinecap="round"/></g>;
   
-  // Rehabilitación / Prótesis Fija
   if (h.includes("perno") || h.includes("muñón") || h.includes("munon")) return <path d="M 25 20 L 75 20 L 50 90 Z" fill={fill} stroke={color} strokeWidth="4" strokeLinejoin="round" />;
   if (h.includes("incrustaci")) return <polygon points="30,30 70,30 60,70 40,70" fill={fill} />;
   if (h.includes("carilla")) return <path d="M 20 20 Q 80 50 20 80 Q 40 50 20 20 Z" fill={fill} opacity="0.9" />;
   if (h.includes("provisoria")) return <g><circle cx="50" cy="50" r="35" fill={isMalEstado ? fill : "none"} stroke={color} strokeWidth="6" /><text x="50" y="65" textAnchor="middle" fontSize="40" fontWeight="900" fill={isMalEstado ? "#fff" : color}>P</text></g>;
   if (h.includes("corona")) return <circle cx="50" cy="50" r="35" fill={isMalEstado ? fill : "none"} stroke={color} strokeWidth="6" />;
   
-  // Prótesis Removible y Fija
   if (h.includes("fija") || h.includes("puente")) return <g stroke={color} strokeWidth="14" strokeLinecap="round"><line x1="10" y1="50" x2="90" y2="50" /><path d="M 20 50 L 20 80 M 80 50 L 80 80" strokeWidth="8"/></g>;
   if (h.includes("protesis") || h.includes("removible")) return <g stroke={color} strokeWidth="8" strokeLinecap="round"><line x1="15" y1="40" x2="85" y2="40" /><line x1="15" y1="60" x2="85" y2="60" /></g>;
   
-  // Ortodoncia
   if (h.includes("ortodoncia") || h.includes("bracket")) return <g><rect x="35" y="35" width="30" height="30" fill="none" stroke={color} strokeWidth="8" rx="6" /><line x1="5" y1="50" x2="95" y2="50" stroke={color} strokeWidth="6" strokeLinecap="round" /></g>;
   
-  // Prevención
   if (h.includes("sellante")) return <path d="M 15 35 Q 35 15 50 35 T 85 35" fill="none" stroke={color} strokeWidth="10" strokeLinecap="round" />;
   if (h.includes("limpieza") || h.includes("pulido") || h.includes("destartraje") || h.includes("profilaxis")) return <g fill={color}><circle cx="30" cy="30" r="10"/><circle cx="75" cy="45" r="8"/><circle cx="45" cy="75" r="14"/></g>;
   
-  // Cirugía y Exodoncias
   if (h.includes("cirugia") || h.includes("compleja")) return <g stroke={color} strokeWidth="8" strokeLinecap="round"><circle cx="50" cy="50" r="38" fill="none"/><line x1="30" y1="30" x2="70" y2="70" /><line x1="70" y1="30" x2="30" y2="70" /></g>;
   if (h.includes("rr") || h.includes("residuo radicular")) return <g><rect x="15" y="30" width="70" height="40" rx="8" fill={color} /><text x="50" y="58" fill="#fff" fontSize="28" fontWeight="900" textAnchor="middle">RR</text></g>;
   if (h.includes("extrac") || h.includes("exodoncia") || h.includes("ausente")) return <g stroke={color} strokeWidth="12" strokeLinecap="round" opacity="0.8"><line x1="15" y1="15" x2="85" y2="85" /><line x1="85" y1="15" x2="15" y2="85" /></g>;
   
-  // Diagnóstico
   if (h.includes("rayos") || h.includes("radiografia") || h.includes("scanner") || h.includes("panoramica")) return <g stroke={color} strokeWidth="8" fill="none"><rect x="15" y="20" width="70" height="60" rx="8" /><circle cx="50" cy="50" r="16"/></g>;
   
   if (h.includes("sano")) return <path d="M 25 50 L 45 70 L 80 30" stroke={color} strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" fill="none" />;
   
-  // Caries y Restauraciones Genéricas
   if (h.includes("restauraci") || h.includes("resina") || h.includes("ionomero")) return <g>{pattern}<rect x="30" y="30" width="40" height="40" rx="10" fill={fill} /></g>;
 
-  // Caries y Amalgamas (Diseño irregular / trébol)
   if (h.includes("caries") || h.includes("amalgama")) return <g>{pattern}<path d="M 35 35 Q 50 20 65 35 Q 80 50 65 65 Q 50 80 35 65 Q 20 50 35 35 Z" fill={fill} /></g>;
   return <circle cx="50" cy="50" r="25" fill={fill} opacity="0.8" />;
 }
