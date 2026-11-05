@@ -1,21 +1,23 @@
 'use client'
 // Pacientes que no asistieron: los que aún no tienen otra hora (para reagendar) y los que ya la tienen.
 // Así no hay que revisar la ficha de cada paciente para saber si ya se reagendó.
+// El WhatsApp puede llevar, como alternativa a responder, el enlace para que el paciente elija su nueva hora solo.
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { CalendarCheck2, CalendarPlus, CalendarX, Loader2, MessageCircle, Phone, User } from 'lucide-react'
+import { CalendarCheck2, CalendarPlus, CalendarSync, CalendarX, Loader2, MessageCircle, Phone, User } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import ModalShell from './ModalShell'
-import { obtenerInasistencias } from './data'
+import { generarEnlaceReagendar, obtenerInasistencias } from './data'
 import {
   abrirWhatsApp, buscarDoctor, construirMensajeInasistencia, fechaISODeStr, fechaLarga, formatNombreDoctor,
-  getLocalDateISO, horaDeStr, horaLocalAhoraISO, nombrePaciente,
+  getLocalDateISO, horaDeStr, horaLocalAhoraISO, nombrePaciente, prepararVentanaWhatsApp, telefonoWA, URL_REAGENDAR,
 } from './utils'
 import type { Inasistencia, Profesional } from './types'
 
 const PERIODOS = [7, 30, 60];
 const DIAS_SIN_REPETIR_WHATSAPP = 5; // igual que "WhatsApp enviado" en el Panel de Seguimiento
+const CLAVE_ENLACE = 'inasistencias_incluir_enlace'; // preferencia guardada en este navegador
 const TEXTO_CONTACTO: Record<string, string> = {
   whatsapp: 'WhatsApp enviado', agendo: 'Agendó hora', lo_pensara: 'Lo va a pensar', no_contesta: 'No contesta',
   no_interesado: 'No le interesa', telefono_malo: 'Teléfono malo',
@@ -37,7 +39,15 @@ export default function ModalInasistencias({ abierto, onClose, profesionales, us
   const [pestana, setPestana] = useState<'pendientes' | 'reagendados'>('pendientes');
   const [filas, setFilas] = useState<Inasistencia[]>([]);
   const [cargando, setCargando] = useState(false);
+  const [incluirEnlace, setIncluirEnlace] = useState(true);
+  const [generando, setGenerando] = useState<string | null>(null); // cita a la que se le está creando el enlace
   const req = useRef(0);
+
+  useEffect(() => { try { if (localStorage.getItem(CLAVE_ENLACE) === 'no') setIncluirEnlace(false); } catch {} }, []);
+  const cambiarIncluirEnlace = (v: boolean) => {
+    setIncluirEnlace(v);
+    try { localStorage.setItem(CLAVE_ENLACE, v ? 'si' : 'no'); } catch {}
+  };
 
   useEffect(() => {
     if (!abierto) return;
@@ -53,23 +63,35 @@ export default function ModalInasistencias({ abierto, onClose, profesionales, us
   const reagendados = filas.filter(f => f.siguiente);
   const lista = pestana === 'pendientes' ? pendientes : reagendados;
 
-  // WhatsApp: se abre con el mensaje listo y, si recepción confirma que salió, queda en el historial de contactos
-  const enviarWhatsApp = (f: Inasistencia) => {
+  // WhatsApp: se abre con el mensaje listo y, si recepción confirma que salió, queda en el historial de contactos.
+  // Con "Incluir enlace" se crea un enlace nuevo para esa cita (el anterior, si había, deja de funcionar).
+  const enviarWhatsApp = async (f: Inasistencia) => {
     const c = f.cita;
-    if (!abrirWhatsApp(c.pacientes?.telefono, construirMensajeInasistencia(c, profesionales))) return;
+    if (!telefonoWA(c.pacientes?.telefono)) { toast.error('El paciente no tiene un teléfono válido registrado'); return; }
+    let enlace: string | undefined;
+    if (incluirEnlace) {
+      prepararVentanaWhatsApp(); // en el mismo clic, para que el navegador no bloquee la pestaña mientras se crea el enlace
+      setGenerando(c.id);
+      const r = await generarEnlaceReagendar(c.id);
+      setGenerando(null);
+      if (r.ok) enlace = `${URL_REAGENDAR}/${r.token}`;
+      else toast.warning('No se pudo crear el enlace para reagendar: el mensaje va sin enlace.');
+    }
+    if (!abrirWhatsApp(c.pacientes?.telefono, construirMensajeInasistencia(c, profesionales, { enlace }))) return;
     toast(`¿Se envió el WhatsApp a ${nombrePaciente(c.pacientes)}?`, {
       description: 'Confírmalo solo si el mensaje salió.', duration: 30000,
-      action: { label: 'Sí, se envió', onClick: () => registrarWhatsApp(f) },
+      action: { label: 'Sí, se envió', onClick: () => registrarWhatsApp(f, !!enlace) },
     });
   };
 
-  async function registrarWhatsApp(f: Inasistencia) {
+  async function registrarWhatsApp(f: Inasistencia, conEnlace = false) {
     const ahora = new Date().toISOString();
     setFilas(prev => prev.map(x => (x === f ? { ...x, contacto: { resultado: 'whatsapp', created_at: ahora } } : x)));
     const volver = new Date(); volver.setDate(volver.getDate() + DIAS_SIN_REPETIR_WHATSAPP);
     const { error } = await supabase.from('seguimiento_contactos').insert([{
       paciente_id: f.cita.paciente_id, lista: 'no_asistio', resultado: 'whatsapp',
       volver_a_contactar: getLocalDateISO(volver), usuario_id: usuarioLogueado,
+      nota: conEnlace ? 'Con enlace para reagendar' : null,
     }]);
     if (error) console.error('No se pudo guardar el contacto en el historial', error);
   }
@@ -121,8 +143,8 @@ export default function ModalInasistencias({ abierto, onClose, profesionales, us
             </button>
           )}
           {!s && c.pacientes?.telefono && (
-            <button onClick={() => enviarWhatsApp(f)} className="p-3 sm:p-2.5 bg-slate-50 text-slate-600 hover:text-emerald-600 rounded-xl border border-slate-200 transition-colors flex justify-center items-center" title="WhatsApp para reagendar">
-              <MessageCircle size={17} />
+            <button onClick={() => enviarWhatsApp(f)} disabled={generando === c.id} className="p-3 sm:p-2.5 bg-slate-50 text-slate-600 hover:text-emerald-600 rounded-xl border border-slate-200 transition-colors flex justify-center items-center disabled:opacity-50" title={incluirEnlace ? 'WhatsApp para reagendar (con enlace)' : 'WhatsApp para reagendar'}>
+              {generando === c.id ? <Loader2 size={17} className="animate-spin" /> : <MessageCircle size={17} />}
             </button>
           )}
           {!s && c.pacientes?.telefono && (
@@ -163,6 +185,16 @@ export default function ModalInasistencias({ abierto, onClose, profesionales, us
           ))}
         </div>
       </div>
+      {pestana === 'pendientes' && (
+        <label className="px-6 md:px-8 py-3 border-b border-slate-100 bg-violet-50/60 flex items-center gap-3 cursor-pointer select-none">
+          <input type="checkbox" checked={incluirEnlace} onChange={e => cambiarIncluirEnlace(e.target.checked)} className="w-4 h-4 accent-violet-600" />
+          <CalendarSync size={16} className="text-violet-600 shrink-0" />
+          <span className="text-xs font-bold text-slate-700">
+            Incluir en el WhatsApp el enlace para que el paciente elija su nueva hora
+            <span className="block text-[10px] font-semibold text-slate-500">Va como opción al final del mensaje. Dura 7 días y sirve una sola vez.</span>
+          </span>
+        </label>
+      )}
       <div className="flex-1 p-6 md:p-8 overflow-y-auto bg-slate-50/50 custom-scrollbar space-y-3">
         {cargando ? (
           <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-3">
