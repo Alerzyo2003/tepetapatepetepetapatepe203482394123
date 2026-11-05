@@ -146,6 +146,12 @@ export const abrirWhatsApp = (tel: string | null | undefined, mensaje?: string) 
   }
   return true;
 };
+// Abre (o enfoca) la pestaña de WhatsApp en el mismo clic, antes de una espera (ej. generar un enlace):
+// si se abre después de esperar, el navegador la bloquea como ventana emergente. Luego abrirWhatsApp la reutiliza.
+export const prepararVentanaWhatsApp = () => {
+  if (ventanaWhatsApp && !ventanaWhatsApp.closed) { ventanaWhatsApp.focus(); return; }
+  ventanaWhatsApp = window.open('about:blank', 'whatsapp-clinica');
+};
 // Formato para guardar en la ficha: +56XXXXXXXXX
 export const formatearTelefonoParaGuardar = (tel: string) => {
   const t = tel.trim();
@@ -190,10 +196,14 @@ export const construirMensajeRecordatorio = (citasPac: any[], profesionales: Pro
   return variarMensaje(m);
 };
 
-export const construirMensajeInasistencia = (cita: any, profesionales: Profesional[]) => {
+// enlace: link para que el paciente elija su nueva hora solo (opcional, se agrega como alternativa a responder el mensaje)
+export const construirMensajeInasistencia = (cita: any, profesionales: Profesional[], opciones: { enlace?: string } = {}) => {
   const fechaISO = fechaISODeStr(cita.inicio);
   const cuando = fechaISO === getLocalDateISO(new Date()) ? 'Hoy' : `El ${fechaLarga(fechaISO)}`;
-  return variarMensaje(`Hola ${cita.pacientes?.nombre || ''}, te escribimos de Clínica Dignidad. ${cuando} te esperábamos a las ${horaDeStr(cita.inicio)} hrs para tu cita con el/la ${nombreDoctorCompleto(profesionales, cita.profesional_id)} y no pudiste asistir.\n\nEntendemos que pueden surgir imprevistos 🙂 ¿Te gustaría que te busquemos una nueva hora? Respóndenos este mensaje y te ayudamos a reagendar.\n\n¡Saludos! 🦷`);
+  const conEnlace = opciones.enlace
+    ? `\n\nO si prefieres, puedes elegir tu nueva hora tú mismo en este enlace (dura 7 días):\n${opciones.enlace}`
+    : '';
+  return variarMensaje(`Hola ${cita.pacientes?.nombre || ''}, te escribimos de Clínica Dignidad. ${cuando} te esperábamos a las ${horaDeStr(cita.inicio)} hrs para tu cita con el/la ${nombreDoctorCompleto(profesionales, cita.profesional_id)} y no pudiste asistir.\n\nEntendemos que pueden surgir imprevistos 🙂 ¿Te gustaría que te busquemos una nueva hora? Respóndenos este mensaje y te ayudamos a reagendar.${conEnlace}\n\n¡Saludos! 🦷`);
 };
 
 export const construirMensajeCambioHora = (cita: any, fecha: string, hora: string, profesionalId: string, profesionales: Profesional[]) =>

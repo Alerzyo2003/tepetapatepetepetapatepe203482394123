@@ -19,7 +19,8 @@ import {
 import type { Profesional } from './types'
 
 const LISTA_DIA = 'recordatorio_dia'; // historial de contactos: recordatorio enviado el mismo día de la cita
-const ESTADOS_FUERA = ['cancelada', 'atendido', 'no_asiste', 'reprogramada'];
+// "reprogramada" NO va aquí: es una cita que se cambió de hora (sigue vigente y hay que recordarla)
+const ESTADOS_FUERA = ['cancelada', 'atendido', 'no_asiste'];
 const ESTADOS_YA_LLEGO = ['en_espera', 'atendiendose'];
 
 type EstadoRecordatorio = 'pendiente' | 'enviado' | 'confirmado' | 'fallido';
