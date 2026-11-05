@@ -18,7 +18,7 @@ import { useAgendaRealtime, useAvisoPacienteEspera, useReloj } from './_componen
 import AvisoPacienteEspera from './_components/AvisoPacienteEspera'
 import {
   abrirWhatsApp, calcularSinProximaHora, construirMensajeInasistencia, construirMensajeResena, duracionMinutos,
-  esWebPendiente, fechaISODeStr, getDiasLunesSabado, getLocalDateISO, GOLD, nombrePaciente,
+  esWebPendiente, fechaISODeStr, getDiasLunesSabado, getLocalDateISO, GOLD, horaLocalAhoraISO, nombrePaciente,
 } from './_components/utils'
 import type { AgendarConfig, Hueco, Profesional } from './_components/types'
 import { TarjetaCitaDia, TarjetaCitaSemana, type AccionesCita } from './_components/TarjetaCita'
@@ -225,6 +225,24 @@ export default function AgendaPage() {
     return citasDia.filter(c => nombrePaciente(c.pacientes).toLowerCase().includes(term) || (c.pacientes?.rut || '').toLowerCase().includes(term));
   }, [citasDia, busquedaAgenda]);
 
+  // Al abrir el día de hoy, bajar solo hasta la cita en curso o la próxima (como la Vista Diaria).
+  // Solo una vez por día y especialista: el refresco en tiempo real no vuelve a mover la pantalla.
+  const autoScrollRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (vistaAgenda !== 'dia' || !esHoySeleccionado) { autoScrollRef.current = null; return; }
+    const clave = `${hoyISO}|${filtroEspecialista}`;
+    if (cambiandoFecha || busquedaAgenda || autoScrollRef.current === clave || citasFiltradas.length === 0) return;
+    const ahora = horaLocalAhoraISO().slice(0, 19);
+    const local = (s?: string | null) => String(s || '').replace(' ', 'T').slice(0, 19);
+    const objetivo = citasFiltradas.find(c => local(c.fin || c.inicio) > ahora);
+    if (!objetivo) { autoScrollRef.current = clave; return; } // todas las citas de hoy ya pasaron: se queda arriba
+    const t = setTimeout(() => {
+      autoScrollRef.current = clave;
+      document.getElementById(`cita-dia-${objetivo.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [vistaAgenda, esHoySeleccionado, hoyISO, filtroEspecialista, cambiandoFecha, busquedaAgenda, citasFiltradas]);
+
   // El sobrecupo se calcula sobre TODAS las citas (no depende del buscador)
   const sobrecupoIds = useMemo(() => {
     const ids = new Set<string>();
@@ -379,7 +397,7 @@ export default function AgendaPage() {
           </button>
           {puedeEnviarRecordatorios && (
             <button onClick={() => setModal('recordatorios')} className={`${botonCabecera} border-emerald-200 text-emerald-600 hover:bg-emerald-50`}>
-              <BellRing size={14} /> Recordar Mañana
+              <BellRing size={14} /> Recordatorios
             </button>
           )}
           {puedeEnviarRecordatorios && (

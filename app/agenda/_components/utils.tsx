@@ -157,7 +157,8 @@ export const formatearTelefonoParaGuardar = (tel: string) => {
 };
 
 // Mensaje de recordatorio. Si el paciente tiene varias citas el mismo día, van en un solo mensaje.
-export const construirMensajeRecordatorio = (citasPac: any[], profesionales: Profesional[]) => {
+// yaConfirmado: el paciente ya confirmó (recordatorio del mismo día) → no se le vuelve a pedir que confirme
+export const construirMensajeRecordatorio = (citasPac: any[], profesionales: Profesional[], opciones: { yaConfirmado?: boolean } = {}) => {
   const c0 = citasPac[0];
   const fechaISO = fechaISODeStr(c0.inicio);
   const manana = new Date(); manana.setDate(manana.getDate() + 1);
@@ -175,6 +176,10 @@ export const construirMensajeRecordatorio = (citasPac: any[], profesionales: Pro
     m += `\n`;
   }
   m += `📍 Dirección: ${DIRECCION_CLINICA}.\n\n`;
+  if (opciones.yaConfirmado) {
+    m += `¡Te esperamos! Si tienes algún inconveniente, avísanos por este medio.`;
+    return variarMensaje(m);
+  }
   m += `⚠️ Importante: Debido a la alta demanda de horas, si tu cita no es confirmada el bloque será asignado a otro paciente.\n\n`;
   if (citasPac.length === 1) {
     m += `Por favor confirma tu asistencia en el siguiente enlace:\n${URL_CONFIRMAR}/${c0.id}`;

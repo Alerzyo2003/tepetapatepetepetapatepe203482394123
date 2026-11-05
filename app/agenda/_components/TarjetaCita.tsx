@@ -62,10 +62,11 @@ export function TarjetaCitaDia({ cita: c, index, esSobrecupo, ahoraMs, puedeVerF
 
   return (
     <motion.div
+      id={`cita-dia-${c.id}`}
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: Math.min(index, 10) * 0.05, duration: 0.3, ease: 'easeOut' }}
-      className="relative mb-6 z-10 flex md:block flex-col gap-2 group"
+      className="relative mb-6 z-10 flex md:block flex-col gap-2 group scroll-mt-28"
     >
       <div className="md:absolute md:-left-[140px] md:top-4 md:w-[80px] text-left md:text-right flex md:block items-center justify-between md:justify-start gap-2 mb-2 md:mb-0 px-2 md:px-0">
         <p className="text-xl font-black text-[#0A111F] leading-none tracking-tight group-hover:text-[#C9A24B] transition-colors">{horaDeStr(c.inicio)}</p>
