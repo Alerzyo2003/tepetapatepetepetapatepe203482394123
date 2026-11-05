@@ -13,8 +13,9 @@ export interface Contacto {
   created_at: string
 }
 
-// Los saludos (cumpleaños, reseñas) son aparte: no ocultan al paciente de las listas de venta y viceversa
-const FIDELIZACION = new Set<string>(LISTAS.filter(l => l.grupo === 'Fidelización').map(l => l.id))
+// Los saludos (cumpleaños, reseñas) y los recordatorios de hora de la Agenda son aparte:
+// no ocultan al paciente de las listas de venta ni aparecen como su último contacto, y viceversa
+const FIDELIZACION = new Set<string>([...LISTAS.filter(l => l.grupo === 'Fidelización').map(l => l.id), 'recordatorio_dia'])
 const aplica = (lista: IdLista, c: Contacto) =>
   FIDELIZACION.has(lista) ? c.lista === lista : (!FIDELIZACION.has(c.lista) || c.resultado === 'telefono_malo')
 

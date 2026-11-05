@@ -347,7 +347,7 @@ export async function cargarContactos(ahora: Date): Promise<any[] | null> {
     const desde = sumarDias(ahora, -400).toISOString()
     return await traerTodo(c => supabase.from('seguimiento_contactos')
       .select('id, paciente_id, lista, resultado, nota, volver_a_contactar, usuario_id, created_at', c ? { count: 'exact' } : undefined)
-      .gte('created_at', desde).order('id'))
+      .gte('created_at', desde).neq('lista', 'recordatorio_dia').order('id')) // los recordatorios de hora del día no son seguimiento
   } catch {
     return null // la tabla aún no existe (o no hay permiso): el panel funciona igual, sin historial
   }
