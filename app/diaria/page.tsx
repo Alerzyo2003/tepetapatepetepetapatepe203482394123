@@ -19,7 +19,7 @@ import ModalBuscarHora from '../agenda/_components/ModalBuscarHora'
 import ModalEnlaceReagendar from '../agenda/_components/ModalEnlaceReagendar'
 import ModalHojaRuta from '../agenda/_components/ModalHojaRuta'
 import AvisoPacienteEspera from '../agenda/_components/AvisoPacienteEspera'
-import { contarInasistencias, registrarAuditoria } from '../agenda/_components/data'
+import { contarInasistencias, enviarWhatsAppInasistencia, registrarAuditoria } from '../agenda/_components/data'
 import {
   configControl, configReprogramar, eliminarBloqueo, enviarRecordatorioIndividual, guardarEstadoCita, moverCita, restaurarCita,
 } from '../agenda/_components/acciones'
@@ -557,7 +557,7 @@ export default function VistaDiariaPage() {
                             onEnlaceReagendar={() => { setMenuAbiertoId(null); setCitaEnlaceReagendar(cita); }}
                             onComentario={() => { setMenuAbiertoId(null); setComentario({ cita, texto: cita.motivo || '' }); }}
                             onRecordatorio={() => { setMenuAbiertoId(null); enviarRecordatorioIndividual(cita, profesionales); }}
-                            onInasistencia={() => { setMenuAbiertoId(null); abrirWhatsApp(cita.pacientes?.telefono, construirMensajeInasistencia(cita, profesionales)); }}
+                            onInasistencia={() => { setMenuAbiertoId(null); enviarWhatsAppInasistencia(cita, profesionales); }}
                             onControl={() => agendarControl(cita)}
                             onCambiarEstado={(estado) => cambiarEstado(cita, estado)}
                           />
