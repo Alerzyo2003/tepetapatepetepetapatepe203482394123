@@ -8,16 +8,14 @@ import { toast } from 'sonner'
 import { CalendarCheck2, CalendarPlus, CalendarSync, CalendarX, Loader2, MessageCircle, Phone, User } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import ModalShell from './ModalShell'
-import { generarEnlaceReagendar, obtenerInasistencias } from './data'
+import { enviarWhatsAppInasistencia, guardarIncluirEnlaceInasistencia, leerIncluirEnlaceInasistencia, obtenerInasistencias } from './data'
 import {
-  abrirWhatsApp, buscarDoctor, construirMensajeInasistencia, fechaISODeStr, fechaLarga, formatNombreDoctor,
-  getLocalDateISO, horaDeStr, horaLocalAhoraISO, nombrePaciente, prepararVentanaWhatsApp, telefonoWA, URL_REAGENDAR,
+  buscarDoctor, fechaISODeStr, fechaLarga, formatNombreDoctor, getLocalDateISO, horaDeStr, horaLocalAhoraISO, nombrePaciente,
 } from './utils'
 import type { Inasistencia, Profesional } from './types'
 
 const PERIODOS = [7, 30, 60];
 const DIAS_SIN_REPETIR_WHATSAPP = 5; // igual que "WhatsApp enviado" en el Panel de Seguimiento
-const CLAVE_ENLACE = 'inasistencias_incluir_enlace'; // preferencia guardada en este navegador
 const TEXTO_CONTACTO: Record<string, string> = {
   whatsapp: 'WhatsApp enviado', agendo: 'Agendó hora', lo_pensara: 'Lo va a pensar', no_contesta: 'No contesta',
   no_interesado: 'No le interesa', telefono_malo: 'Teléfono malo',
@@ -43,11 +41,9 @@ export default function ModalInasistencias({ abierto, onClose, profesionales, us
   const [generando, setGenerando] = useState<string | null>(null); // cita a la que se le está creando el enlace
   const req = useRef(0);
 
-  useEffect(() => { try { if (localStorage.getItem(CLAVE_ENLACE) === 'no') setIncluirEnlace(false); } catch {} }, []);
-  const cambiarIncluirEnlace = (v: boolean) => {
-    setIncluirEnlace(v);
-    try { localStorage.setItem(CLAVE_ENLACE, v ? 'si' : 'no'); } catch {}
-  };
+  // La misma preferencia vale para todos los WhatsApp de inasistencia (tarjeta de la cita, Vista Diaria, etc.)
+  useEffect(() => { setIncluirEnlace(leerIncluirEnlaceInasistencia()); }, []);
+  const cambiarIncluirEnlace = (v: boolean) => { setIncluirEnlace(v); guardarIncluirEnlaceInasistencia(v); };
 
   useEffect(() => {
     if (!abierto) return;
@@ -67,20 +63,13 @@ export default function ModalInasistencias({ abierto, onClose, profesionales, us
   // Con "Incluir enlace" se crea un enlace nuevo para esa cita (el anterior, si había, deja de funcionar).
   const enviarWhatsApp = async (f: Inasistencia) => {
     const c = f.cita;
-    if (!telefonoWA(c.pacientes?.telefono)) { toast.error('El paciente no tiene un teléfono válido registrado'); return; }
-    let enlace: string | undefined;
-    if (incluirEnlace) {
-      prepararVentanaWhatsApp(); // en el mismo clic, para que el navegador no bloquee la pestaña mientras se crea el enlace
-      setGenerando(c.id);
-      const r = await generarEnlaceReagendar(c.id);
-      setGenerando(null);
-      if (r.ok) enlace = `${URL_REAGENDAR}/${r.token}`;
-      else toast.warning('No se pudo crear el enlace para reagendar: el mensaje va sin enlace.');
-    }
-    if (!abrirWhatsApp(c.pacientes?.telefono, construirMensajeInasistencia(c, profesionales, { enlace }))) return;
+    setGenerando(c.id);
+    const r = await enviarWhatsAppInasistencia(c, profesionales, incluirEnlace);
+    setGenerando(null);
+    if (!r.enviado) return;
     toast(`¿Se envió el WhatsApp a ${nombrePaciente(c.pacientes)}?`, {
       description: 'Confírmalo solo si el mensaje salió.', duration: 30000,
-      action: { label: 'Sí, se envió', onClick: () => registrarWhatsApp(f, !!enlace) },
+      action: { label: 'Sí, se envió', onClick: () => registrarWhatsApp(f, r.conEnlace) },
     });
   };
 

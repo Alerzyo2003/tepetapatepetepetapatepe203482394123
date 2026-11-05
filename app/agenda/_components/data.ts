@@ -1,7 +1,11 @@
 // Consultas a Supabase compartidas por la agenda
 import { supabase } from '@/lib/supabase'
-import { esWebPendiente, getLocalDateISO, horaLocalAhoraISO, MESES_INASISTENCIAS } from './utils'
-import type { Continuidad, FinanzasPaciente, Inasistencia } from './types'
+import { toast } from 'sonner'
+import {
+  abrirWhatsApp, construirMensajeInasistencia, esWebPendiente, getLocalDateISO, horaLocalAhoraISO, MESES_INASISTENCIAS,
+  prepararVentanaWhatsApp, telefonoWA, URL_REAGENDAR,
+} from './utils'
+import type { Continuidad, FinanzasPaciente, Inasistencia, Profesional } from './types'
 
 // Suma presupuestos aprobados por paciente: total, abonado, deuda y deuda de lo ya realizado
 export async function obtenerFinanzasPacientes(pacienteIds: string[]) {
@@ -201,6 +205,29 @@ export async function generarEnlaceReagendar(citaId: string): Promise<{ ok: true
   const { data, error } = await supabase.rpc('generar_enlace_reagendamiento', { p_cita_id: citaId });
   if (error) { console.error('No se pudo generar el enlace', error); return { ok: false, codigo: 'error' }; }
   return data;
+}
+
+// ─────────────────────────────────────────────────────────────
+// WhatsApp por inasistencia (modal "No asistieron", tarjeta de la cita, aviso al marcar "No asiste" y Vista Diaria)
+// ─────────────────────────────────────────────────────────────
+// Preferencia "incluir el enlace para reagendar" (se marca en el modal No asistieron; por defecto, sí)
+const CLAVE_ENLACE_INASISTENCIA = 'inasistencias_incluir_enlace';
+export const leerIncluirEnlaceInasistencia = () => { try { return localStorage.getItem(CLAVE_ENLACE_INASISTENCIA) !== 'no'; } catch { return true; } };
+export const guardarIncluirEnlaceInasistencia = (v: boolean) => { try { localStorage.setItem(CLAVE_ENLACE_INASISTENCIA, v ? 'si' : 'no'); } catch {} };
+
+// Abre WhatsApp con el mensaje de inasistencia y, si corresponde, el enlace para que el paciente elija su nueva hora.
+// Llamarla directo desde el clic: la pestaña se abre antes de crear el enlace para que el navegador no la bloquee.
+export async function enviarWhatsAppInasistencia(cita: any, profesionales: Profesional[], conEnlace = leerIncluirEnlaceInasistencia()) {
+  if (!telefonoWA(cita?.pacientes?.telefono)) { toast.error('El paciente no tiene un teléfono válido registrado'); return { enviado: false, conEnlace: false }; }
+  let enlace: string | undefined;
+  if (conEnlace) {
+    prepararVentanaWhatsApp();
+    const r = await generarEnlaceReagendar(cita.id);
+    if (r.ok) enlace = `${URL_REAGENDAR}/${r.token}`;
+    else toast.warning('No se pudo crear el enlace para reagendar: el mensaje va sin enlace.');
+  }
+  const enviado = abrirWhatsApp(cita.pacientes?.telefono, construirMensajeInasistencia(cita, profesionales, { enlace }));
+  return { enviado, conEnlace: !!enlace };
 }
 
 export async function registrarAuditoria(usuarioId: string | null, accion: string, tabla: string, detalles: string) {

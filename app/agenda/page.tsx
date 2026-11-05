@@ -12,7 +12,7 @@ import {
   Globe, LayoutGrid, List, Loader2, Lock, Plus, Search, Star, Users, X,
 } from 'lucide-react'
 
-import { contarInasistencias, obtenerContinuidad, obtenerFinanzasPacientes, obtenerInasistencias, registrarAuditoria } from './_components/data'
+import { contarInasistencias, enviarWhatsAppInasistencia, obtenerContinuidad, obtenerFinanzasPacientes, obtenerInasistencias, registrarAuditoria } from './_components/data'
 import { configControl, configReprogramar, enviarRecordatorioIndividual, guardarEstadoCita } from './_components/acciones'
 import { useAgendaRealtime, useAvisoPacienteEspera, useReloj } from './_components/hooks'
 import AvisoPacienteEspera from './_components/AvisoPacienteEspera'
@@ -366,7 +366,7 @@ export default function AgendaPage() {
       router.push(`/pacientes/${id}/pagos`);
     },
     onEliminar: eliminarCita,
-    onInasistencia: (c) => abrirWhatsApp(c.pacientes?.telefono, construirMensajeInasistencia(c, profesionales)),
+    onInasistencia: (c) => { enviarWhatsAppInasistencia(c, profesionales); },
     onControl: agendarControl,
     onProximaHora: agendarProximaHora,
   };

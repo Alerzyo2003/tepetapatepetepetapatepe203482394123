@@ -2,7 +2,7 @@
 // para que ambas páginas se comporten exactamente igual.
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import { marcarRecordatorioEnviado, registrarAuditoria } from './data'
+import { enviarWhatsAppInasistencia, marcarRecordatorioEnviado, registrarAuditoria } from './data'
 import {
   abrirWhatsApp, construirMensajeInasistencia, construirMensajeRecordatorio, DIAS_HASTA_CONTROL, duracionMinutos,
   fechaISODeStr, horaDeStr, horaLocalAhoraISO, nombrePaciente, rangoCita, requiereControl,
@@ -84,7 +84,7 @@ export async function guardarEstadoCita(cita: any, nuevoEstado: string, ctx: Con
   if (nuevoEstado === 'no_asiste' && cita.pacientes) {
     toast(`${nombre} no asistió`, {
       description: '¿Enviarle un WhatsApp para reagendar?', duration: 15000,
-      action: { label: 'Enviar WhatsApp', onClick: () => abrirWhatsApp(cita.pacientes?.telefono, construirMensajeInasistencia(cita, ctx.profesionales)) },
+      action: { label: 'Enviar WhatsApp', onClick: () => { enviarWhatsAppInasistencia({ ...cita, estado: 'no_asiste' }, ctx.profesionales); } },
     });
   }
   if (nuevoEstado === 'atendido' && cita.pacientes && ctx.onAgendarControl && requiereControl(cita.motivo)) {
