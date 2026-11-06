@@ -32,7 +32,7 @@ interface TicketData {
 interface Props {
   config: AgendarConfig | null;      // null = cerrado
   onClose: () => void;
-  onGuardado: () => void;            // para refrescar la agenda
+  onGuardado: (info?: { citaId: string | null }) => void;   // para refrescar la agenda (y saber qué cita quedó)
   profesionales: Profesional[];
   usuarioLogueado: string | null;
   puedeVerAgendaCompleta: boolean;
@@ -74,7 +74,7 @@ export default function ModalAgendar(props: Props) {
             key={cfg.id}
             {...props}
             config={cfg}
-            onGuardadoOk={(t) => { setTicket(t); onGuardado(); }}
+            onGuardadoOk={(t) => { setTicket(t); onGuardado({ citaId: t.citaId }); }}
           />
         )}
       </ModalShell>
