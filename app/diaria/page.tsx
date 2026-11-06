@@ -8,7 +8,7 @@ import { toast } from 'sonner'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Activity, Ban, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList,
-  Clock, Globe, LayoutGrid, Link as LinkIcon, Loader2, Lock, MessageCircle, MessageSquare, MoreVertical, Plus,
+  Clock, Globe, LayoutGrid, Link as LinkIcon, Loader2, Lock, MapPin, MessageCircle, MessageSquare, MoreVertical, Plus,
   Save, Search, Timer, User, Users, Wallet, X,
 } from 'lucide-react'
 
@@ -24,6 +24,7 @@ import {
   configControl, configReprogramar, eliminarBloqueo, enviarRecordatorioIndividual, guardarEstadoCita, moverCita, restaurarCita,
 } from '../agenda/_components/acciones'
 import { useAgendaRealtime, useAvisoPacienteEspera, useReloj } from '../agenda/_components/hooks'
+import { textoBox, useBoxDia } from '../agenda/_components/boxes'
 import {
   abrirWhatsApp, claseBadgeSemaforo, construirMensajeCambioHora, construirMensajeInasistencia, duracionMinutos,
   esWebPendiente, ESTADOS_CITA, estiloInasistencias, fechaISODeStr, getInitials, getLocalDateISO, getMinsFromDateStr,
@@ -83,6 +84,8 @@ export default function VistaDiariaPage() {
   const fechaStr = getLocalDateISO(selectedDate);
   const hoyISO = getLocalDateISO(new Date(ahoraMs));
   const esHoy = fechaStr === hoyISO;
+  // Box de cada doctor ese día (sorteo diario de box)
+  const { dia: boxDelDia } = useBoxDia(fechaStr, { clave: realtimeTrigger });
 
   // ─────────────────────────────────────────────────────────────
   // Carga
@@ -465,6 +468,11 @@ export default function VistaDiariaPage() {
                           <p className={`${unico ? 'text-sm md:text-xl text-[#8A6D2F]' : 'text-[9px] md:text-[11px] text-[#0A111F]'} font-black uppercase tracking-tight truncate leading-none`}>
                             {unico ? `Dr(a). ${p.nombre} ${p.apellido}` : `${p.nombre.split(' ')[0]} ${p.apellido.split(' ')[0]}`}
                           </p>
+                          {textoBox(boxDelDia, p.user_id) && (
+                            <Link prefetch={false} href="/agenda/mapa" title="Box asignado por el sorteo del día" className={`inline-flex items-center gap-1 mt-1 px-1.5 md:px-2 py-0.5 rounded-full text-[8px] md:text-[9px] font-black uppercase tracking-wider ${textoBox(boxDelDia, p.user_id) === 'Sin box' ? 'bg-amber-100 text-amber-700' : 'bg-[#0A111F] text-white'}`}>
+                              <MapPin size={9} className="text-[#C9A24B]" />{p.user_id === usuarioLogueado && esHoy && textoBox(boxDelDia, p.user_id) !== 'Sin box' ? `Hoy: ${textoBox(boxDelDia, p.user_id)}` : textoBox(boxDelDia, p.user_id)}
+                            </Link>
+                          )}
                           <p className="text-[8px] md:text-[9px] font-bold text-slate-400 uppercase tracking-wider mt-1 truncate" title={`${res.total} citas · ${res.confirmadas} confirmadas · ocupación ${res.ocupacion ?? '-'}%`}>
                             {res.total} cita{res.total === 1 ? '' : 's'}
                             <span className="text-emerald-600"> · ✓{res.confirmadas}</span>

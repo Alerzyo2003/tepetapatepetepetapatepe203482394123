@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import {
   AlertTriangle, BellRing, Calendar as CalendarIcon, CalendarDays, CalendarPlus, CalendarX, ChevronLeft, ChevronRight, ClipboardList,
-  Globe, LayoutGrid, List, Loader2, Lock, Plus, Search, Star, Users, X,
+  Globe, Hourglass, LayoutGrid, List, Loader2, Lock, MapPin, Plus, Search, Star, Users, X,
 } from 'lucide-react'
 
 import { contarInasistencias, enviarWhatsAppInasistencia, obtenerContinuidad, obtenerFinanzasPacientes, obtenerInasistencias, registrarAuditoria } from './_components/data'
@@ -18,7 +18,7 @@ import { useAgendaRealtime, useAvisoPacienteEspera, useReloj } from './_componen
 import AvisoPacienteEspera from './_components/AvisoPacienteEspera'
 import {
   abrirWhatsApp, calcularSinProximaHora, construirMensajeInasistencia, construirMensajeResena, duracionMinutos,
-  esWebPendiente, fechaISODeStr, getDiasLunesSabado, getLocalDateISO, GOLD, horaLocalAhoraISO, nombrePaciente,
+  esWebPendiente, fechaISODeStr, getDiasLunesSabado, getLocalDateISO, GOLD, nombrePaciente,
 } from './_components/utils'
 import type { AgendarConfig, Hueco, Profesional } from './_components/types'
 import { TarjetaCitaDia, TarjetaCitaSemana, type AccionesCita } from './_components/TarjetaCita'
@@ -35,6 +35,9 @@ import ModalEnlaceReagendar from './_components/ModalEnlaceReagendar'
 import ModalHojaRuta from './_components/ModalHojaRuta'
 import ModalSinProximaHora from './_components/ModalSinProximaHora'
 import ModalInasistencias from './_components/ModalInasistencias'
+import ModalListaEspera, { type HoraElegida } from './_components/ModalListaEspera'
+import { contarListaEspera, marcarAgendado, type EntradaEspera } from './_components/listaEspera'
+import { textoBox, useBoxDia } from './_components/boxes'
 
 const ROLES_AGENDA_COMPLETA = ['ADMIN', 'RECEPCIONISTA', 'ASISTENTE'];
 const ROLES_FINANZAS = ['ADMIN', 'RECEPCIONISTA'];
@@ -69,14 +72,19 @@ export default function AgendaPage() {
   // ── Modales ──
   const [agendarConfig, setAgendarConfig] = useState<AgendarConfig | null>(null);
   const [citaPresupuesto, setCitaPresupuesto] = useState<any>(null);
-  const [modal, setModal] = useState<null | 'bloqueo' | 'huerfanas' | 'anuladas' | 'web' | 'recordatorios' | 'resenas' | 'buscarHora' | 'hojaRuta' | 'sinHora' | 'inasistencias'>(null);
+  const [modal, setModal] = useState<null | 'bloqueo' | 'huerfanas' | 'anuladas' | 'web' | 'recordatorios' | 'resenas' | 'buscarHora' | 'hojaRuta' | 'sinHora' | 'inasistencias' | 'listaEspera'>(null);
   const cerrarModal = () => setModal(null);
   // Lista a la que se vuelve después de agendar desde ella (para seguir con el siguiente paciente)
-  const [volverA, setVolverA] = useState<null | 'sinHora' | 'inasistencias' | 'buscarHora'>(null);
+  const [volverA, setVolverA] = useState<null | 'sinHora' | 'inasistencias' | 'buscarHora' | 'listaEspera'>(null);
   // Cita que se está reprogramando: "Buscar hora" se abre en modo reprogramar (todas las horas del mismo doctor y duración)
   const [citaReprogramar, setCitaReprogramar] = useState<any>(null);
   const [citaEnlaceReagendar, setCitaEnlaceReagendar] = useState<any>(null);
   const [inasistenciasPorReagendar, setInasistenciasPorReagendar] = useState(0);
+  const [enListaEspera, setEnListaEspera] = useState(0);
+  // Box del día del doctor que se está viendo (sorteo diario de box)
+  const { dia: boxDelDia } = useBoxDia(getLocalDateISO(selectedDate), { activo: !cargandoPagina && filtroEspecialista !== 'Todos', clave: realtimeTrigger });
+  // Paciente de la lista de espera que se está agendando: al guardar la cita, sale de la lista
+  const entradaAgendando = useRef<EntradaEspera | null>(null);
 
   const dateInputRef = useRef<HTMLInputElement>(null);
   const fetchSeq = useRef(0);
@@ -111,6 +119,15 @@ export default function AgendaPage() {
       .catch(e => console.error('No se pudieron contar las inasistencias', e));
     return () => { activo = false; };
   }, [cargandoPagina, realtimeTrigger, filtroEspecialista, puedeVerAgendaCompleta]);
+
+  // Contador del botón "Lista de espera": pacientes esperando (del doctor filtrado o de cualquier doctor)
+  const contarEspera = () => {
+    if (!puedeVerAgendaCompleta) return;
+    contarListaEspera(filtroEspecialista !== 'Todos' ? filtroEspecialista : null)
+      .then(setEnListaEspera)
+      .catch(e => console.error('No se pudo contar la lista de espera', e));
+  };
+  useEffect(() => { if (!cargandoPagina) contarEspera(); }, [cargandoPagina, realtimeTrigger, filtroEspecialista, puedeVerAgendaCompleta]);
 
   // Llegada desde otra página (ej. Panel de Seguimiento):
   //   /agenda?agendar=<paciente_id>&motivo=...&doctor=<user_id>  → abre "Agendar" con el paciente listo
@@ -225,24 +242,6 @@ export default function AgendaPage() {
     return citasDia.filter(c => nombrePaciente(c.pacientes).toLowerCase().includes(term) || (c.pacientes?.rut || '').toLowerCase().includes(term));
   }, [citasDia, busquedaAgenda]);
 
-  // Al abrir el día de hoy, bajar solo hasta la cita en curso o la próxima (como la Vista Diaria).
-  // Solo una vez por día y especialista: el refresco en tiempo real no vuelve a mover la pantalla.
-  const autoScrollRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (vistaAgenda !== 'dia' || !esHoySeleccionado) { autoScrollRef.current = null; return; }
-    const clave = `${hoyISO}|${filtroEspecialista}`;
-    if (cambiandoFecha || busquedaAgenda || autoScrollRef.current === clave || citasFiltradas.length === 0) return;
-    const ahora = horaLocalAhoraISO().slice(0, 19);
-    const local = (s?: string | null) => String(s || '').replace(' ', 'T').slice(0, 19);
-    const objetivo = citasFiltradas.find(c => local(c.fin || c.inicio) > ahora);
-    if (!objetivo) { autoScrollRef.current = clave; return; } // todas las citas de hoy ya pasaron: se queda arriba
-    const t = setTimeout(() => {
-      autoScrollRef.current = clave;
-      document.getElementById(`cita-dia-${objetivo.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 400);
-    return () => clearTimeout(t);
-  }, [vistaAgenda, esHoySeleccionado, hoyISO, filtroEspecialista, cambiandoFecha, busquedaAgenda, citasFiltradas]);
-
   // El sobrecupo se calcula sobre TODAS las citas (no depende del buscador)
   const sobrecupoIds = useMemo(() => {
     const ids = new Set<string>();
@@ -326,6 +325,28 @@ export default function AgendaPage() {
       return;
     }
     abrirAgendar({ profesionalId: h.profesional_id, duracion: h.duracion, semanaInicio: h.fecha, diaSugerido: h.fecha, horas });
+  };
+
+  // Agendar a un paciente de la lista de espera (en la hora libre elegida, o abrir el calendario del doctor).
+  // Si quería adelantar una hora que ya tiene, esa cita se mueve (no se crea otra).
+  const agendarDesdeListaEspera = async (e: EntradaEspera, hora?: HoraElegida) => {
+    const doctorId = hora?.profesionalId || e.profesional_id || e.cita_actual?.profesional_id || undefined;
+    const horas = hora ? [{ fecha: hora.fecha, hora: hora.hora, duracion: hora.duracion }] : undefined;
+    const extra = hora ? { semanaInicio: hora.fecha, diaSugerido: hora.fecha, horas } : {};
+    if (e.tipo === 'adelantar' && e.cita_actual_id) {
+      const { data: cita, error } = await supabase.from('citas').select('*, pacientes(*)').eq('id', e.cita_actual_id).maybeSingle();
+      if (!error && cita && !['cancelada', 'no_asiste', 'atendido'].includes(cita.estado)) {
+        entradaAgendando.current = e;
+        setVolverA('listaEspera'); setModal(null);
+        abrirAgendar({ ...configReprogramar(cita), profesionalId: doctorId, duracion: e.duracion || undefined, ...extra });
+        return;
+      }
+    }
+    const { data: paciente, error } = await supabase.from('pacientes').select('*').eq('id', e.paciente_id).maybeSingle();
+    if (error || !paciente) { toast.error('No se encontró el paciente para agendar'); return; }
+    entradaAgendando.current = e;
+    setVolverA('listaEspera'); setModal(null);
+    abrirAgendar({ paciente, profesionalId: doctorId && profesionales.some(p => p.user_id === doctorId) ? doctorId : undefined, duracion: e.duracion || 30, motivo: e.motivo || '', ...extra });
   };
 
   async function actualizarEstadoCita(cita: any, nuevoEstado: string) {
@@ -414,6 +435,14 @@ export default function AgendaPage() {
             </button>
           )}
           {puedeVerAgendaCompleta && (
+            <button onClick={() => setModal('listaEspera')} className={`relative ${botonCabecera} border-sky-200 text-sky-700 hover:bg-sky-50`} title="Pacientes esperando que se libere una hora: a quién ofrecerle cada hora libre">
+              <Hourglass size={14} /> Lista de Espera
+              {enListaEspera > 0 && (
+                <span className="absolute -top-2 -right-2 bg-sky-500 text-white text-[10px] min-w-[1.25rem] h-5 px-1 flex items-center justify-center rounded-full font-black shadow-md">{enListaEspera}</span>
+              )}
+            </button>
+          )}
+          {puedeVerAgendaCompleta && (
             <button onClick={() => setModal('sinHora')} className={`relative ${botonCabecera} border-amber-300 text-amber-700 hover:bg-amber-50`} title="Pacientes con tratamiento pendiente que no tienen otra hora agendada">
               <CalendarPlus size={14} /> Sin Próxima Hora
               {citasSinProximaHora.length > 0 && (
@@ -432,6 +461,9 @@ export default function AgendaPage() {
               <Lock size={14} /> Bloquear
             </button>
           )}
+          <Link prefetch={false} href="/agenda/mapa" className={`${botonCabecera} border-slate-300 text-[#0A111F] hover:bg-slate-50`} title="Plano de la clínica: qué doctor está en cada box">
+            <MapPin className="text-[#C9A24B]" size={14} /> Mapa de Box
+          </Link>
           <Link prefetch={false} href="/diaria" className={`${botonCabecera} border-[#C9A24B]/30 text-slate-600 hover:bg-[#C9A24B]/5`}>
             <CalendarDays className="text-[#C9A24B]" size={14} /> <span className="truncate">Vista Diaria</span>
           </Link>
@@ -476,6 +508,15 @@ export default function AgendaPage() {
             <button onClick={() => setSelectedDate(new Date())} className="px-4 py-3 md:py-2.5 rounded-full bg-white border border-[#C9A24B]/40 text-[#8A6D2F] text-[11px] md:text-[10px] font-black uppercase tracking-widest shadow-sm hover:bg-[#C9A24B]/10 transition-colors shrink-0">Hoy</button>
           )}
         </div>
+
+        {vistaAgenda === 'dia' && filtroEspecialista !== 'Todos' && textoBox(boxDelDia, filtroEspecialista) && (
+          <Link prefetch={false} href="/agenda/mapa" className={`px-4 py-3 md:py-2.5 rounded-full text-[11px] font-black uppercase tracking-widest shadow-sm flex items-center justify-center gap-2 shrink-0 ${textoBox(boxDelDia, filtroEspecialista) === 'Sin box' ? 'bg-amber-50 border border-amber-200 text-amber-700' : 'bg-[#0A111F] text-white'}`} title="Box asignado por el sorteo del día">
+            <MapPin size={14} className="text-[#C9A24B]" />
+            {textoBox(boxDelDia, filtroEspecialista) === 'Sin box'
+              ? 'Sin box asignado'
+              : `${filtroEspecialista === usuarioLogueado ? (esHoySeleccionado ? 'Hoy estás en el ' : 'Estás en el ') : ''}${textoBox(boxDelDia, filtroEspecialista)}`}
+          </Link>
+        )}
       </div>
 
       {/* BUSCADOR + CONTADOR */}
@@ -590,10 +631,19 @@ export default function AgendaPage() {
         config={agendarConfig}
         onClose={() => {
           setAgendarConfig(null);
+          entradaAgendando.current = null;
           if (volverA) { setModal(volverA); setVolverA(null); } else setCitaReprogramar(null);
         }}
-        onGuardado={() => {
+        onGuardado={(info) => {
           fetchCitasAgenda();
+          // Paciente de la lista de espera: ya tiene hora, sale de la lista
+          const e = entradaAgendando.current;
+          if (e) {
+            entradaAgendando.current = null;
+            marcarAgendado(e.id, info?.citaId ?? null)
+              .then(() => { toast.success(`${nombrePaciente(e.pacientes)} salió de la lista de espera`); contarEspera(); })
+              .catch(err => { console.error(err); toast.error('La cita quedó, pero no se pudo sacar al paciente de la lista de espera'); });
+          }
           // Reprogramación guardada: ya no se vuelve a la lista de horas
           if (volverA === 'buscarHora') { setVolverA(null); setCitaReprogramar(null); }
         }}
@@ -613,6 +663,7 @@ export default function AgendaPage() {
       {citaEnlaceReagendar && <ModalEnlaceReagendar key={citaEnlaceReagendar.id} cita={citaEnlaceReagendar} onClose={() => setCitaEnlaceReagendar(null)} profesionales={profesionales} />}
       <ModalSinProximaHora abierto={modal === 'sinHora'} onClose={cerrarModal} citas={citasSinProximaHora} profesionales={profesionales} onAgendar={(c) => { setVolverA('sinHora'); agendarProximaHora(c); }} mostrarFecha={vistaAgenda === 'semana'} />
       <ModalInasistencias abierto={modal === 'inasistencias'} onClose={cerrarModal} profesionales={profesionales} usuarioLogueado={usuarioLogueado} filtroEspecialista={filtroEspecialista} onReagendar={reagendarInasistencia} />
+      <ModalListaEspera abierto={modal === 'listaEspera' && puedeVerAgendaCompleta} onClose={cerrarModal} profesionales={profesionales} usuarioLogueado={usuarioLogueado} filtroEspecialista={filtroEspecialista} onAgendar={agendarDesdeListaEspera} onCambio={contarEspera} />
       <ModalHojaRuta abierto={modal === 'hojaRuta'} onClose={cerrarModal} fechaInicial={getLocalDateISO(selectedDate)} especialistaInicial={filtroEspecialista} profesionales={profesionales} usuarioLogueado={usuarioLogueado} puedeVerAgendaCompleta={puedeVerAgendaCompleta} />
     </div>
   );
