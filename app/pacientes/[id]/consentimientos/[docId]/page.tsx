@@ -250,14 +250,14 @@ export default function DetalleConsentimientoPage() {
   };
 
   if (cargando) return (
-    <div className="h-screen flex flex-col items-center justify-center gap-4 bg-slate-50">
+    <div className="h-screen flex flex-col items-center justify-center gap-4">
       <Loader2 className="animate-spin text-blue-600" size={45} />
       <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest italic">Cargando documento legal...</p>
     </div>
   )
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-left pb-24" style={{ backgroundImage: "url('/fondo-pacientes.png')", backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' }}>
+    <div className="min-h-screen font-sans text-left pb-24">
       
       {/* Barra de navegación superior (Glassmorphism) */}
       <nav className="sticky top-0 bg-white/90 backdrop-blur-xl border-b border-white/60 px-6 md:px-10 py-4 flex justify-between items-center z-[100] shadow-sm">
