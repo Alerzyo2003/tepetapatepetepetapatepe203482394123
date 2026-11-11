@@ -12,6 +12,10 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch"
+import { procesarImagen, ES_IMAGEN } from '@/lib/imagenes'
+
+// Bucket privado donde se guardan los archivos (el mismo que usa "RX y Multimedia")
+const BUCKET = 'pacientes_docs'
 
 export default function PacienteArchivosPage() {
   const { id } = useParams()
@@ -74,6 +78,19 @@ export default function PacienteArchivosPage() {
     }
   }
 
+  // Los registros guardan la ruta dentro del bucket privado: hay que firmarla para poder verla
+  async function conUrlsFirmadas(docs: any[]) {
+    const rutas = Array.from(new Set(docs.flatMap(d => [d.url_archivo, d.url_miniatura])
+      .filter((r: any) => r && !String(r).startsWith('http'))))
+    const firmadas: Record<string, string> = {}
+    if (rutas.length) {
+      const { data: urls } = await supabase.storage.from(BUCKET).createSignedUrls(rutas as string[], 3600)
+      ;(urls || []).forEach((u: any) => { if (u.path && u.signedUrl) firmadas[u.path] = u.signedUrl })
+    }
+    const url = (r: any) => (!r ? null : String(r).startsWith('http') ? r : firmadas[r] || null)
+    return docs.map(d => ({ ...d, signedUrl: url(d.url_archivo), miniUrl: url(d.url_miniatura) }))
+  }
+
   async function fetchArchivos() {
     setCargando(true)
     try {
@@ -84,7 +101,7 @@ export default function PacienteArchivosPage() {
         .order('fecha_subida', { ascending: false })
       
       if (error) throw error
-      setArchivos(data || [])
+      setArchivos(await conUrlsFirmadas(data || []))
     } catch (err) {
       console.error(err)
     } finally {
@@ -101,32 +118,46 @@ export default function PacienteArchivosPage() {
       toast.error('Tipo de archivo no permitido');
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('El archivo no puede superar 10MB');
+    // Las imágenes se comprimen antes de subir; el archivo final no puede pasar de 10MB
+    if (file.size > (ES_IMAGEN(file.type) ? 30 * 1024 * 1024 : 10 * 1024 * 1024)) {
+      toast.error('El archivo es demasiado grande');
       return;
     }
 
     setSubiendo(true)
+    let rutasSubidas: string[] = []
     try {
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${id}/${Date.now()}.${fileExt}`
+      const { data: { user } } = await supabase.auth.getUser()
+
+      // Igual que en "RX y Multimedia": imágenes a WebP + miniatura, PDF tal cual
+      const img = await procesarImagen(file)
+      if (img.pesoFinal > 10 * 1024 * 1024) throw new Error('El archivo supera el límite de 10MB')
+
+      const base = `${id}/${Date.now()}_${Math.random().toString(36).substr(2, 5)}`
+      const fileName = `${base}.${img.extension}`
       const { error: storageError } = await supabase.storage
-        .from('documentos_pacientes')
-        .upload(fileName, file)
+        .from(BUCKET)
+        .upload(fileName, img.archivo, { contentType: img.tipo, cacheControl: '31536000' })
 
       if (storageError) throw storageError
+      rutasSubidas.push(fileName)
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('documentos_pacientes')
-        .getPublicUrl(fileName)
+      let miniName: string | null = null
+      if (img.miniatura) {
+        const { error: miniError } = await supabase.storage.from(BUCKET)
+          .upload(`${base}_mini.webp`, img.miniatura, { contentType: img.miniatura.type || 'image/webp', cacheControl: '31536000' })
+        if (!miniError) { miniName = `${base}_mini.webp`; rutasSubidas.push(miniName) }
+      }
 
       const nuevoArchivoData = {
         paciente_id: id,
         nombre_archivo: file.name,
-        url_archivo: publicUrl,
-        tipo_archivo: file.type,
-        titulo: file.name.split('.')[0].toUpperCase(),
-        descripcion: ''
+        url_archivo: fileName,
+        url_miniatura: miniName,
+        tipo_archivo: img.tipo,
+        titulo: file.name.replace(/\.[^.]+$/, '').toUpperCase(),
+        descripcion: '',
+        profesional_id: user?.id
       };
 
       const { error: dbError } = await supabase
@@ -134,6 +165,7 @@ export default function PacienteArchivosPage() {
         .insert([nuevoArchivoData])
 
       if (dbError) throw dbError
+      rutasSubidas = []
 
       // REGISTRAR AUDITORÍA AL SUBIR
       await registrarAuditoria(
@@ -146,9 +178,12 @@ export default function PacienteArchivosPage() {
       toast.success("Archivo subido correctamente")
       fetchArchivos()
     } catch (error: any) {
+      // Si no se pudo registrar, no dejar archivos huérfanos
+      if (rutasSubidas.length) await supabase.storage.from(BUCKET).remove(rutasSubidas)
       toast.error("Error al subir: " + error.message)
     } finally {
       setSubiendo(false)
+      e.target.value = ''
     }
   }
 
@@ -158,9 +193,14 @@ export default function PacienteArchivosPage() {
     }
 
     try {
-      const path = archivo.url_archivo.split('documentos_pacientes/').pop()
-      if (path) {
-        await supabase.storage.from('documentos_pacientes').remove([path])
+      const rutas = [archivo.url_archivo, archivo.url_miniatura]
+        .filter((r: any) => r && !String(r).startsWith('http'))
+      if (rutas.length) {
+        await supabase.storage.from(BUCKET).remove(rutas)
+      } else if (String(archivo.url_archivo || '').includes('documentos_pacientes/')) {
+        // Archivos antiguos subidos con URL pública
+        const path = archivo.url_archivo.split('documentos_pacientes/').pop()
+        if (path) await supabase.storage.from('documentos_pacientes').remove([path])
       }
       await supabase.from('documentos_pacientes').delete().eq('id', archivo.id)
       
@@ -283,31 +323,34 @@ export default function PacienteArchivosPage() {
               >
                 {/* PREVIEW */}
                 <div className="aspect-video bg-slate-50 relative overflow-hidden flex items-center justify-center shrink-0">
-                  {(arc.tipo_archivo || '').includes('image') ? (
+                  {(arc.tipo_archivo || '').includes('image') && (arc.miniUrl || arc.signedUrl) ? (
                     <img 
-                      src={arc.url_archivo} 
+                      src={arc.miniUrl || arc.signedUrl} 
+                      loading="lazy"
                       alt={arc.titulo} 
                       referrerPolicy="no-referrer"
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 cursor-pointer"
-                      onClick={() => setModalImagen(arc.url_archivo)}
+                      onClick={() => setModalImagen(arc.signedUrl)}
                     />
                   ) : (
-                    <div className="flex flex-col items-center gap-2">
+                    <div className="flex flex-col items-center gap-2 cursor-pointer" onClick={() => arc.signedUrl && window.open(arc.signedUrl, '_blank', 'noopener,noreferrer')}>
                       <FileText size={48} className="text-slate-200" />
-                      <span className="text-[8px] font-black text-slate-300 uppercase">Documento PDF</span>
+                      <span className="text-[8px] font-black text-slate-300 uppercase">{(arc.tipo_archivo || '').includes('pdf') ? 'Documento PDF' : 'Archivo'}</span>
                     </div>
                   )}
                   
                   {/* OVERLAY ACTIONS */}
                   <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-sm px-2">
-                    {(arc.tipo_archivo || '').includes('image') && (
-                      <button onClick={() => setModalImagen(arc.url_archivo)} className="p-2.5 bg-white rounded-xl text-slate-900 hover:bg-blue-600 hover:text-white transition-all" title="Ver imagen">
+                    {(arc.tipo_archivo || '').includes('image') && arc.signedUrl && (
+                      <button onClick={() => setModalImagen(arc.signedUrl)} className="p-2.5 bg-white rounded-xl text-slate-900 hover:bg-blue-600 hover:text-white transition-all" title="Ver imagen">
                         <Eye size={16} />
                       </button>
                     )}
-                    <a href={arc.url_archivo} target="_blank" rel="noopener noreferrer" className="p-2.5 bg-white rounded-xl text-slate-900 hover:bg-blue-600 hover:text-white transition-all" title="Descargar">
-                      <Download size={16} />
-                    </a>
+                    {arc.signedUrl && (
+                      <a href={arc.signedUrl} target="_blank" rel="noopener noreferrer" className="p-2.5 bg-white rounded-xl text-slate-900 hover:bg-blue-600 hover:text-white transition-all" title="Abrir en otra pestaña">
+                        {(arc.tipo_archivo || '').includes('image') ? <Download size={16} /> : <ExternalLink size={16} />}
+                      </a>
+                    )}
                     
                     {/* BOTÓN EDITAR */}
                     <button onClick={() => abrirModalEdicion(arc)} className="p-2.5 bg-white rounded-xl text-slate-900 hover:bg-amber-500 hover:text-white transition-all" title="Editar detalles">

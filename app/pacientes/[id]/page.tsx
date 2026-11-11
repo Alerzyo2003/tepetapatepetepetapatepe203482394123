@@ -63,7 +63,7 @@ export default function HistorialPage() {
         // Solo traemos las columnas estrictamente necesarias
         supabase.from('evoluciones').select('id, fecha_registro, descripcion_procedimiento, profesional_id').eq('paciente_id', paciente_id),
         supabase.from('presupuestos').select('id, created_at, nombre_tratamiento, total, estado, especialista_id').eq('paciente_id', paciente_id),
-        supabase.from('documentos_pacientes').select('id, fecha_subida, titulo, nombre_archivo, descripcion, url_archivo, creado_por').eq('paciente_id', paciente_id),
+        supabase.from('documentos_pacientes').select('id, fecha_subida, titulo, nombre_archivo, descripcion, url_archivo, url_miniatura, tipo_archivo, creado_por').eq('paciente_id', paciente_id),
         supabase.from('documentos_clinicos').select('id, fecha_creacion, titulo_documento, usuario_id').eq('paciente_id', paciente_id),
         supabase.from('pagos').select('id, presupuesto_id, tratamiento_id, plan_id, fecha_pago, created_at, concepto, descripcion, detalle, motivo, nombre_tratamiento, observaciones, notas, monto, metodo_pago').eq('paciente_id', paciente_id),
         supabase.from('citas').select('id, created_at, inicio, estado, motivo, profesional_id').eq('paciente_id', paciente_id),
@@ -100,6 +100,16 @@ export default function HistorialPage() {
         textIcon: 'text-[#a32cc4]'
       }))
 
+      // Los archivos se guardan como ruta en el bucket privado "pacientes_docs": se firman para poder verlos
+      const rutasArchivos = Array.from(new Set((archivos || []).flatMap((a: any) => [a.url_archivo, a.url_miniatura])
+        .filter((r: any) => r && !String(r).startsWith('http')))) as string[]
+      const firmadas: Record<string, string> = {}
+      if (rutasArchivos.length) {
+        const { data: urls } = await supabase.storage.from('pacientes_docs').createSignedUrls(rutasArchivos, 3600)
+        ;(urls || []).forEach((u: any) => { if (u.path && u.signedUrl) firmadas[u.path] = u.signedUrl })
+      }
+      const urlFirmada = (r: any) => (!r ? null : String(r).startsWith('http') ? r : firmadas[r] || null)
+
       const arcs = (archivos || []).map(a => ({
         ...a,
         tipo: 'archivo',
@@ -108,7 +118,8 @@ export default function HistorialPage() {
         body_title: `Archivo: ${a.titulo || a.nombre_archivo}`,
         body_desc: <span>{a.descripcion || 'Archivo cargado al expediente.'}</span>,
         desc_plana: a.descripcion || `Archivo cargado al expediente.`,
-        url_archivo: a.url_archivo,
+        url_archivo: urlFirmada(a.url_archivo),
+        url_preview: (a.tipo_archivo || '').includes('image') ? (urlFirmada(a.url_miniatura) || urlFirmada(a.url_archivo)) : null,
         leftIcon: <ImageIcon size={22} />,
         rightIcon: <Download size={18} strokeWidth={2} />,
         bgLine: 'bg-[#f59f00]', // Naranja
@@ -413,8 +424,12 @@ export default function HistorialPage() {
                       {/* Previsualización si es archivo */}
                       {item.tipo === 'archivo' && item.url_archivo && (
                         <div className="px-5 pl-7 pb-4 flex gap-4 bg-white">
-                          <div className="relative overflow-hidden rounded-lg border border-slate-200 w-24 h-16 shrink-0 bg-slate-100">
-                              <img src={item.url_archivo} referrerPolicy="no-referrer" className="w-full h-full object-cover" alt="Vista previa" />
+                          <div className="relative overflow-hidden rounded-lg border border-slate-200 w-24 h-16 shrink-0 bg-slate-100 flex items-center justify-center">
+                            {item.url_preview ? (
+                              <img src={item.url_preview} loading="lazy" referrerPolicy="no-referrer" className="w-full h-full object-cover" alt="Vista previa" />
+                            ) : (
+                              <FileText size={22} className="text-slate-300" />
+                            )}
                           </div>
                           <div className="flex flex-col justify-center gap-1">
                               <a href={item.url_archivo} target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold text-[#5a9c9b] uppercase hover:underline">Ver archivo</a>

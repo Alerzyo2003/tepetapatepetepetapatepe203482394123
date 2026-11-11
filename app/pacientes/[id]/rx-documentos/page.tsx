@@ -342,7 +342,7 @@ export default function DocumentosPage() {
   )
 
   return (
-    <div className="min-h-screen p-4 md:p-6 lg:p-10 font-sans text-left pb-24" style={{ backgroundImage: "url('/fondo-pacientes.png')", backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' }}>
+    <div className="min-h-screen p-4 md:p-6 lg:p-10 font-sans text-left pb-24">
       <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
         
         {/* HEADER PRINCIPAL */}

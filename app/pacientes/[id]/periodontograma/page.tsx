@@ -960,7 +960,7 @@ export default function PeriodontogramaPage() {
   )
 
   return (
-    <div className="min-h-screen p-4 md:p-10 font-sans text-left pb-24 print:p-0 print:m-0 print:bg-white print:overflow-visible" style={{ backgroundImage: "url('/fondo-pacientes.png')", backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' }}>
+    <div className="min-h-screen p-4 md:p-10 font-sans text-left pb-24 print:p-0 print:m-0 print:bg-white print:overflow-visible">
       
       {/* 
         =========================================================================

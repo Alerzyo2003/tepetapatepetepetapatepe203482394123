@@ -312,7 +312,7 @@ export default function RecetasPage() {
   )
 
   return (
-    <div className="min-h-screen p-4 sm:p-6 md:p-10 font-sans text-left pb-24 print:bg-white print:p-0 print:m-0 print:block" style={{ backgroundImage: "url('/fondo-pacientes.png')", backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' }}>
+    <div className="min-h-screen p-4 sm:p-6 md:p-10 font-sans text-left pb-24 print:bg-white print:p-0 print:m-0 print:block">
       
       {/* HEADER PRINCIPAL */}
       <header className="bg-white/90 backdrop-blur-xl p-5 md:p-8 rounded-[2rem] md:rounded-[2.5rem] shadow-xl border border-white/60 flex flex-col md:flex-row justify-between items-start md:items-center text-left print:hidden mb-6 md:mb-8 gap-5 md:gap-0">

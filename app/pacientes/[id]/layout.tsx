@@ -162,6 +162,11 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
 
   const esFicha = pathname.startsWith(`/pacientes/${id}`) && !pathname.includes('/datos') && !pathname.includes('/tratamientos') && !pathname.includes('/periodontograma') && !pathname.includes('/odontograma') && !pathname.includes('/archivos') && !pathname.includes('/pagos');
   const esTratamientos = pathname.includes('/tratamientos');
+  // Secciones que llevan la imagen de fondo de pacientes. Se pone aquí (ancho completo, bajo el header)
+  // y no dentro de cada página, porque dentro del contenedor centrado la imagen quedaba encajonada
+  // y se veían sus bordes blancos. Tratamientos maneja su propio fondo.
+  const conFondo = !esTratamientos && ['/periodontograma', '/odontograma', '/rx-documentos', '/recetas', '/documentos']
+    .some(seccion => pathname.includes(seccion));
   const alertas = antecedentes.filter(a => a.categoria === 'alerta');
   const enfermedades = antecedentes.filter(a => a.categoria === 'enfermedad');
   const medicamentos = antecedentes.filter(a => a.categoria === 'medicamento');
@@ -267,6 +272,10 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
 
       </header>
 
+      <div
+        className={`flex-1 flex flex-col w-full ${conFondo ? 'bg-cover bg-center bg-no-repeat lg:bg-fixed print:bg-none print:bg-white' : ''}`}
+        style={conFondo ? { backgroundImage: "url('/fondo-pacientes.png')" } : undefined}
+      >
       <main className={`w-full mx-auto flex-1 overflow-hidden ${esTratamientos ? '' : 'p-4 lg:p-6 max-w-6xl'}`}>
         {esFicha && (
           <nav className="bg-white p-2 rounded-2xl mb-4 border flex gap-1 overflow-x-auto max-w-full scroll-smooth">
@@ -281,6 +290,7 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
         )}
         {children}
       </main>
+      </div>
 
       {/* RENDERIZADO DE MODALES */}
       {mounted && (

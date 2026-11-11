@@ -248,14 +248,14 @@ export default function OdontogramaHistorialPage() {
   }
 
   if (cargando) return (
-    <div className="h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
+    <div className="h-screen flex flex-col items-center justify-center gap-4">
       <Loader2 className="animate-spin text-blue-600" size={45} />
       <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest italic">Cargando Odontograma Histórico...</p>
     </div>
   )
 
   return (
-    <div className="min-h-screen p-6 md:p-10 font-sans text-left pb-24" style={{ backgroundImage: "url('/fondo-pacientes.png')", backgroundSize: 'cover', backgroundPosition: 'center', backgroundAttachment: 'fixed' }} onClick={() => setMenuContextual(null)}>
+    <div className="min-h-screen p-6 md:p-10 font-sans text-left pb-24" onClick={() => setMenuContextual(null)}>
       <div className="max-w-7xl mx-auto space-y-8">
         
         {/* HEADER / NAVEGACIÓN */}
