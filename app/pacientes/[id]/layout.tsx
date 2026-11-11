@@ -165,11 +165,20 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
   // Secciones que llevan la imagen de fondo de pacientes. Se pone aquí (ancho completo, bajo el header)
   // y no dentro de cada página, porque dentro del contenedor centrado la imagen quedaba encajonada
   // y se veían sus bordes blancos. Tratamientos maneja su propio fondo.
-  const conFondo = !esTratamientos && (
-    pathname === `/pacientes/${id}` || // Resumen
+  // Pestañas con imagen propia; el resto de la ficha usa fondo-pacientes.png
+  const fondosPorSeccion: Record<string, string> = {
+    '/pagos': '/fondo-pagos.png',
+    '/archivos': '/fondo-archivos.png',
+  };
+  const seccionConFondoPropio = Object.keys(fondosPorSeccion).find(seccion => pathname.includes(seccion));
+  const usaFondoPacientes = pathname === `/pacientes/${id}` || // Resumen
     ['/evoluciones', '/antecedentes', '/consentimientos', '/periodontograma', '/odontograma', '/rx-documentos', '/recetas', '/documentos']
-      .some(seccion => pathname.includes(seccion))
-  );
+      .some(seccion => pathname.includes(seccion));
+  const imagenFondo = esTratamientos ? null
+    : seccionConFondoPropio ? fondosPorSeccion[seccionConFondoPropio]
+    : usaFondoPacientes ? '/fondo-pacientes.png'
+    : null;
+  const conFondo = !!imagenFondo;
   const alertas = antecedentes.filter(a => a.categoria === 'alerta');
   const enfermedades = antecedentes.filter(a => a.categoria === 'enfermedad');
   const medicamentos = antecedentes.filter(a => a.categoria === 'medicamento');
@@ -277,7 +286,7 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
 
       <div
         className={`flex-1 flex flex-col w-full ${conFondo ? 'bg-cover bg-center bg-no-repeat lg:bg-fixed print:bg-none print:bg-white' : ''}`}
-        style={conFondo ? { backgroundImage: "url('/fondo-pacientes.png')" } : undefined}
+        style={imagenFondo ? { backgroundImage: `url('${imagenFondo}')` } : undefined}
       >
       <main className={`w-full mx-auto flex-1 overflow-hidden ${esTratamientos ? '' : 'p-4 lg:p-6 max-w-6xl'}`}>
         {esFicha && (
