@@ -165,8 +165,11 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
   // Secciones que llevan la imagen de fondo de pacientes. Se pone aquí (ancho completo, bajo el header)
   // y no dentro de cada página, porque dentro del contenedor centrado la imagen quedaba encajonada
   // y se veían sus bordes blancos. Tratamientos maneja su propio fondo.
-  const conFondo = !esTratamientos && ['/periodontograma', '/odontograma', '/rx-documentos', '/recetas', '/documentos']
-    .some(seccion => pathname.includes(seccion));
+  const conFondo = !esTratamientos && (
+    pathname === `/pacientes/${id}` || // Resumen
+    ['/evoluciones', '/antecedentes', '/consentimientos', '/periodontograma', '/odontograma', '/rx-documentos', '/recetas', '/documentos']
+      .some(seccion => pathname.includes(seccion))
+  );
   const alertas = antecedentes.filter(a => a.categoria === 'alerta');
   const enfermedades = antecedentes.filter(a => a.categoria === 'enfermedad');
   const medicamentos = antecedentes.filter(a => a.categoria === 'medicamento');

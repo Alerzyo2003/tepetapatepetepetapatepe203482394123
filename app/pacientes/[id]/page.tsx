@@ -301,7 +301,7 @@ export default function HistorialPage() {
   )
 
   return (
-    <div className="w-full pb-10 px-4 md:px-0 bg-slate-50 min-h-screen pt-4">
+    <div className="w-full pb-10 px-4 md:px-0 min-h-screen pt-4">
       <div className="max-w-5xl mx-auto space-y-6">
         
         {/* HEADER */}
