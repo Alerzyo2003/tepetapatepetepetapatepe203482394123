@@ -73,7 +73,7 @@ export async function guardarEstadoCita(cita: any, nuevoEstado: string, ctx: Con
     const canal = supabase.channel(`notificaciones-${cita.profesional_id}`);
     canal.subscribe(async (status: string) => {
       if (status === 'SUBSCRIBED') {
-        await canal.send({ type: 'broadcast', event: 'PACIENTE_EN_ESPERA', payload: { nombre } });
+        await canal.send({ type: 'broadcast', event: 'PACIENTE_EN_ESPERA', payload: { nombre, citaId: cita.id } });
         supabase.removeChannel(canal);
       }
     });
