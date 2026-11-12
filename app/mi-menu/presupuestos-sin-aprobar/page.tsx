@@ -16,7 +16,7 @@ import { contactoVigente, fechaVolver, indexarContactos, textoResultado, ultimoC
 import { ETAPAS_SA, LISTA_SIN_APROBAR, aOportunidad, cargarSinAprobar, etapaSA, nombrePresupuesto, type DatosSA, type EtapaSA, type FilaSA } from '@/app/seguimiento/_lib/sinAprobar'
 import type { Oportunidad } from '@/app/seguimiento/_lib/reglas'
 import { abrirWhatsApp, fechaConHora, fechaISO, money, nombrePaciente, normalizar, sumarMeses, telefonoWA } from '@/app/seguimiento/_lib/util'
-import { variarMensaje } from '@/lib/mensajes'
+import { conWhatsAppClinica, variarMensaje } from '@/lib/mensajes'
 import Fila, { CLASE_TONO } from '@/app/seguimiento/_components/Fila'
 import ModalResultado from '@/app/seguimiento/_components/ModalResultado'
 
@@ -209,7 +209,7 @@ export default function PresupuestosSinAprobarPage() {
   }
   const enviarWhatsApp = (o: Oportunidad) => {
     const p = pacientes[o.pacienteId]
-    if (!abrirWhatsApp(p?.telefono, variarMensaje(o.mensaje(p)))) { toast.error('El paciente no tiene un teléfono válido'); return }
+    if (!abrirWhatsApp(p?.telefono, conWhatsAppClinica(variarMensaje(o.mensaje(p))))) { toast.error('El paciente no tiene un teléfono válido'); return }
     setEnCurso(o)
   }
   const confirmarEnvio = (ok: boolean) => {
@@ -237,7 +237,7 @@ export default function PresupuestosSinAprobarPage() {
           f.ultimaVisita ? f.ultimaVisita.toLocaleDateString('es-CL') : '', prox ? fechaConHora(prox.inicio) : '',
           f.alternativa ? f.alternativa.toLocaleDateString('es-CL') : '',
           c ? `${textoResultado(c.resultado)} ${String(c.created_at).slice(0, 10)}${c.nota ? ` · ${c.nota}` : ''}` : '',
-          ps === f.principal ? o.mensaje(p) : '',
+          ps === f.principal ? conWhatsAppClinica(o.mensaje(p)) : '',
         ])
       }
     }
