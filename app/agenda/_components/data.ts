@@ -1,5 +1,6 @@
 // Consultas a Supabase compartidas por la agenda
 import { supabase } from '@/lib/supabase'
+import { conWhatsAppClinica } from '@/lib/mensajes'
 import { toast } from 'sonner'
 import {
   abrirWhatsApp, construirMensajeInasistencia, esWebPendiente, getLocalDateISO, horaLocalAhoraISO, MESES_INASISTENCIAS,
@@ -215,9 +216,15 @@ const CLAVE_ENLACE_INASISTENCIA = 'inasistencias_incluir_enlace';
 export const leerIncluirEnlaceInasistencia = () => { try { return localStorage.getItem(CLAVE_ENLACE_INASISTENCIA) !== 'no'; } catch { return true; } };
 export const guardarIncluirEnlaceInasistencia = (v: boolean) => { try { localStorage.setItem(CLAVE_ENLACE_INASISTENCIA, v ? 'si' : 'no'); } catch {} };
 
+// Preferencia "estoy enviando desde el número de avisos (bot)": el mensaje lleva al paciente al WhatsApp real de la clínica.
+// Se marca en el modal No asistieron y vale para todos los WhatsApp de inasistencia de este computador (por defecto, no).
+const CLAVE_NUMERO_BOT = 'whatsapp_desde_numero_bot';
+export const leerDesdeNumeroBot = () => { try { return localStorage.getItem(CLAVE_NUMERO_BOT) === 'si'; } catch { return false; } };
+export const guardarDesdeNumeroBot = (v: boolean) => { try { localStorage.setItem(CLAVE_NUMERO_BOT, v ? 'si' : 'no'); } catch {} };
+
 // Abre WhatsApp con el mensaje de inasistencia y, si corresponde, el enlace para que el paciente elija su nueva hora.
 // Llamarla directo desde el clic: la pestaña se abre antes de crear el enlace para que el navegador no la bloquee.
-export async function enviarWhatsAppInasistencia(cita: any, profesionales: Profesional[], conEnlace = leerIncluirEnlaceInasistencia()) {
+export async function enviarWhatsAppInasistencia(cita: any, profesionales: Profesional[], conEnlace = leerIncluirEnlaceInasistencia(), desdeBot = leerDesdeNumeroBot()) {
   if (!telefonoWA(cita?.pacientes?.telefono)) { toast.error('El paciente no tiene un teléfono válido registrado'); return { enviado: false, conEnlace: false }; }
   let enlace: string | undefined;
   if (conEnlace) {
@@ -226,7 +233,8 @@ export async function enviarWhatsAppInasistencia(cita: any, profesionales: Profe
     if (r.ok) enlace = `${URL_REAGENDAR}/${r.token}`;
     else toast.warning('No se pudo crear el enlace para reagendar: el mensaje va sin enlace.');
   }
-  const enviado = abrirWhatsApp(cita.pacientes?.telefono, construirMensajeInasistencia(cita, profesionales, { enlace }));
+  const mensaje = construirMensajeInasistencia(cita, profesionales, { enlace });
+  const enviado = abrirWhatsApp(cita.pacientes?.telefono, desdeBot ? conWhatsAppClinica(mensaje, 'Hola, me escribieron de Clínica Dignidad para reagendar mi hora') : mensaje);
   return { enviado, conEnlace: !!enlace };
 }
 
