@@ -117,3 +117,28 @@ export function variarMensaje(texto: string): string {
   }
   return m
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mensajes enviados desde el número de avisos (bot): ese número no lee respuestas,
+// así que el mensaje invita a responder al WhatsApp real de la clínica con un enlace directo.
+// ─────────────────────────────────────────────────────────────────────────────
+export const WHATSAPP_CLINICA = '56966467641'
+export const WHATSAPP_CLINICA_TEXTO = '+56 9 6646 7641'
+
+export const enlaceWhatsAppClinica = (texto = 'Hola, me escribieron de Clínica Dignidad por mi tratamiento') =>
+  `https://wa.me/${WHATSAPP_CLINICA}?text=${encodeURIComponent(texto)}`
+
+export function conWhatsAppClinica(texto: string): string {
+  if (!texto) return texto
+  // Las frases que piden responder "este mensaje" pasan a apuntar al WhatsApp de la clínica
+  const m = texto
+    .replace(/solo respóndenos este mensaje y te ayudamos/gi, 'escríbenos a nuestro WhatsApp y te ayudamos')
+    .replace(/responder este mensaje/gi, 'escribirnos a nuestro WhatsApp')
+    .replace(/por este medio/gi, `por nuestro WhatsApp ${WHATSAPP_CLINICA_TEXTO}`)
+  const cierre = alAzar([
+    `Este número es solo para avisos. Para responder o agendar, escríbenos a nuestro WhatsApp oficial (${WHATSAPP_CLINICA_TEXTO}):`,
+    `Este número no recibe respuestas. Para agendar o hacer consultas, háblanos a nuestro WhatsApp de la clínica (${WHATSAPP_CLINICA_TEXTO}):`,
+    `Para responder o pedir tu hora, escríbenos a nuestro WhatsApp oficial (${WHATSAPP_CLINICA_TEXTO}), este número es solo de avisos:`,
+  ])
+  return `${m}\n\n${cierre}\n${enlaceWhatsAppClinica()}`
+}
