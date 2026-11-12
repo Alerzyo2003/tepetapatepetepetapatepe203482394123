@@ -12,6 +12,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import ModalHorarioEspecial from './_components/ModalHorarioEspecial'
 
+const CLAVE_DOCTOR_BOX = 'box_doctor_seleccionado'
+
 const DIAS = [
   { id: 1, label: 'Lunes' }, { id: 2, label: 'Martes' }, { id: 3, label: 'Miércoles' },
   { id: 4, label: 'Jueves' }, { id: 5, label: 'Viernes' }, { id: 6, label: 'Sábado' }, { id: 0, label: 'Domingo' }
@@ -212,13 +214,28 @@ export default function BoxConfigPage() {
     setSemanaInicio(newDate);
   }
 
+  // No se elige ningún especialista por defecto: antes se abría siempre en el primero de la lista
+  // (Dra. Antonia) y se le editaba el horario por error. El elegido queda en la URL (?doctor=) y en
+  // la pestaña, así que si la página se recarga o se vuelve a ella, sigue en el mismo especialista.
   async function fetchInicial() {
     const { data } = await supabase.from('profesionales').select('*').eq('activo', true).order('nombre')
     if (data?.length) {
       setProfesionales(data)
-      setProfesionalId(data[0].user_id)
+      let guardado: string | null = null
+      try { guardado = new URLSearchParams(window.location.search).get('doctor') || sessionStorage.getItem(CLAVE_DOCTOR_BOX) } catch {}
+      if (guardado && data.some((p: any) => p.user_id === guardado)) setProfesionalId(guardado)
     }
     setCargando(false)
+  }
+
+  const elegirProfesional = (id: string) => {
+    setProfesionalId(id)
+    try {
+      sessionStorage.setItem(CLAVE_DOCTOR_BOX, id)
+      const url = new URL(window.location.href)
+      url.searchParams.set('doctor', id)
+      window.history.replaceState(window.history.state, '', url.toString())
+    } catch {}
   }
 
   async function fetchDisponibilidad() {
@@ -623,18 +640,36 @@ export default function BoxConfigPage() {
 
           <div className="bg-slate-50 p-2.5 rounded-[2rem] border border-slate-100 flex items-center pr-6 gap-4 min-w-[280px]">
             <div className="w-12 h-12 rounded-full bg-[#0A111F] flex items-center justify-center text-[#C9A24B] font-black text-lg shadow-inner shrink-0">
-              {profesionalSeleccionado?.nombre?.[0]}
+              {profesionalSeleccionado?.nombre?.[0] || '?'}
             </div>
             <div className="flex flex-col text-left flex-1">
               <span className="text-[9px] font-black text-[#C9A24B] uppercase tracking-widest mb-0.5">Especialista</span>
-              <select className="bg-transparent font-black text-sm text-slate-800 uppercase outline-none cursor-pointer w-full" value={profesionalId} onChange={(e) => setProfesionalId(e.target.value)}>
+              <select className={`bg-transparent font-black text-sm uppercase outline-none cursor-pointer w-full ${profesionalId ? 'text-slate-800' : 'text-red-500'}`} value={profesionalId} onChange={(e) => elegirProfesional(e.target.value)}>
+                <option value="" disabled>— Elige un especialista —</option>
                 {profesionales.map(p => <option key={p.user_id} value={p.user_id}>Dr. {p.nombre} {p.apellido}</option>)}
               </select>
             </div>
           </div>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {!cargando && !profesionalId && (
+          <div className="bg-white/95 p-8 md:p-10 rounded-[2.5rem] shadow-sm border-2 border-[#C9A24B]/40 space-y-6">
+            <div>
+              <h2 className="text-lg font-black text-[#0A111F] uppercase tracking-tight">¿A qué especialista le vas a modificar el horario?</h2>
+              <p className="text-xs font-semibold text-slate-500 mt-1">Elige uno para ver y cambiar su horario, sus bloqueos y sus inasistencias. Se queda elegido aunque guardes cambios o recargues la página.</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {profesionales.map(p => (
+                <button key={p.user_id} type="button" onClick={() => elegirProfesional(p.user_id)} className="flex items-center gap-3 p-4 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-white hover:border-[#C9A24B] hover:shadow-md transition-all text-left">
+                  <span className="w-10 h-10 rounded-full bg-[#0A111F] text-[#C9A24B] font-black flex items-center justify-center shrink-0">{p.nombre?.[0]}</span>
+                  <span className="text-xs font-black text-slate-800 uppercase leading-tight">Dr. {p.nombre} {p.apellido}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className={`grid grid-cols-1 lg:grid-cols-12 gap-8 ${profesionalId ? '' : 'hidden'}`}>
           
           <div className="lg:col-span-4 space-y-8">
             
