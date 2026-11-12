@@ -128,11 +128,13 @@ export const WHATSAPP_CLINICA_TEXTO = '+56 9 6646 7641'
 export const enlaceWhatsAppClinica = (texto = 'Hola, me escribieron de Clínica Dignidad por mi tratamiento') =>
   `https://wa.me/${WHATSAPP_CLINICA}?text=${encodeURIComponent(texto)}`
 
-export function conWhatsAppClinica(texto: string): string {
+export function conWhatsAppClinica(texto: string, textoPrellenado?: string): string {
   if (!texto) return texto
   // Las frases que piden responder "este mensaje" pasan a apuntar al WhatsApp de la clínica
   const m = texto
     .replace(/solo respóndenos este mensaje y te ayudamos/gi, 'escríbenos a nuestro WhatsApp y te ayudamos')
+    .replace(/Respóndenos este mensaje/g, 'Escríbenos a nuestro WhatsApp')
+    .replace(/respóndenos (?:este mensaje|por aquí)/g, 'escríbenos a nuestro WhatsApp')
     .replace(/responder este mensaje/gi, 'escribirnos a nuestro WhatsApp')
     .replace(/por este medio/gi, `por nuestro WhatsApp ${WHATSAPP_CLINICA_TEXTO}`)
   const cierre = alAzar([
@@ -140,5 +142,5 @@ export function conWhatsAppClinica(texto: string): string {
     `Este número no recibe respuestas. Para agendar o hacer consultas, háblanos a nuestro WhatsApp de la clínica (${WHATSAPP_CLINICA_TEXTO}):`,
     `Para responder o pedir tu hora, escríbenos a nuestro WhatsApp oficial (${WHATSAPP_CLINICA_TEXTO}), este número es solo de avisos:`,
   ])
-  return `${m}\n\n${cierre}\n${enlaceWhatsAppClinica()}`
+  return `${m}\n\n${cierre}\n${enlaceWhatsAppClinica(textoPrellenado)}`
 }

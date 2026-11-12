@@ -5,10 +5,10 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { CalendarCheck2, CalendarPlus, CalendarSync, CalendarX, Loader2, MessageCircle, Phone, User } from 'lucide-react'
+import { Bot, CalendarCheck2, CalendarPlus, CalendarSync, CalendarX, Loader2, MessageCircle, Phone, User } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import ModalShell from './ModalShell'
-import { enviarWhatsAppInasistencia, guardarIncluirEnlaceInasistencia, leerIncluirEnlaceInasistencia, obtenerInasistencias } from './data'
+import { enviarWhatsAppInasistencia, guardarDesdeNumeroBot, guardarIncluirEnlaceInasistencia, leerDesdeNumeroBot, leerIncluirEnlaceInasistencia, obtenerInasistencias } from './data'
 import {
   buscarDoctor, fechaISODeStr, fechaLarga, formatNombreDoctor, getLocalDateISO, horaDeStr, horaLocalAhoraISO, nombrePaciente,
 } from './utils'
@@ -38,12 +38,14 @@ export default function ModalInasistencias({ abierto, onClose, profesionales, us
   const [filas, setFilas] = useState<Inasistencia[]>([]);
   const [cargando, setCargando] = useState(false);
   const [incluirEnlace, setIncluirEnlace] = useState(true);
+  const [desdeBot, setDesdeBot] = useState(false);
   const [generando, setGenerando] = useState<string | null>(null); // cita a la que se le está creando el enlace
   const req = useRef(0);
 
   // La misma preferencia vale para todos los WhatsApp de inasistencia (tarjeta de la cita, Vista Diaria, etc.)
-  useEffect(() => { setIncluirEnlace(leerIncluirEnlaceInasistencia()); }, []);
+  useEffect(() => { setIncluirEnlace(leerIncluirEnlaceInasistencia()); setDesdeBot(leerDesdeNumeroBot()); }, []);
   const cambiarIncluirEnlace = (v: boolean) => { setIncluirEnlace(v); guardarIncluirEnlaceInasistencia(v); };
+  const cambiarDesdeBot = (v: boolean) => { setDesdeBot(v); guardarDesdeNumeroBot(v); };
 
   useEffect(() => {
     if (!abierto) return;
@@ -64,7 +66,7 @@ export default function ModalInasistencias({ abierto, onClose, profesionales, us
   const enviarWhatsApp = async (f: Inasistencia) => {
     const c = f.cita;
     setGenerando(c.id);
-    const r = await enviarWhatsAppInasistencia(c, profesionales, incluirEnlace);
+    const r = await enviarWhatsAppInasistencia(c, profesionales, incluirEnlace, desdeBot);
     setGenerando(null);
     if (!r.enviado) return;
     toast(`¿Se envió el WhatsApp a ${nombrePaciente(c.pacientes)}?`, {
@@ -181,6 +183,18 @@ export default function ModalInasistencias({ abierto, onClose, profesionales, us
           <span className="text-xs font-bold text-slate-700">
             Incluir en el WhatsApp el enlace para que el paciente elija su nueva hora
             <span className="block text-[10px] font-semibold text-slate-500">Va como opción al final del mensaje. Dura 7 días y sirve una sola vez.</span>
+          </span>
+        </label>
+      )}
+      {pestana === 'pendientes' && (
+        <label className={`px-6 md:px-8 py-3 border-b border-slate-100 flex items-center gap-3 cursor-pointer select-none ${desdeBot ? 'bg-amber-50' : 'bg-white'}`}>
+          <input type="checkbox" checked={desdeBot} onChange={e => cambiarDesdeBot(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+          <Bot size={16} className={`shrink-0 ${desdeBot ? 'text-amber-600' : 'text-slate-400'}`} />
+          <span className="text-xs font-bold text-slate-700">
+            Estoy enviando desde el número de avisos (bot)
+            <span className="block text-[10px] font-semibold text-slate-500">
+              {desdeBot ? 'El mensaje pide responder al WhatsApp de la clínica (+56 9 6646 7641) y lleva el enlace para escribirle.' : 'Márcalo solo si no estás en el WhatsApp real de la clínica.'}
+            </span>
           </span>
         </label>
       )}
