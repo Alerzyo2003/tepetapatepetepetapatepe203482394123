@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { User, ClipboardList, Activity, Wallet, ArrowLeft, UserCircle, Loader2, Coins, Lock, Spline, CalendarClock, ImageIcon, History, CalendarDays } from 'lucide-react'
+import { User, ClipboardList, Activity, Wallet, ArrowLeft, UserCircle, Loader2, Coins, Lock, Spline, CalendarClock, ImageIcon, History, CalendarDays, ScanLine } from 'lucide-react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import dynamic from 'next/dynamic'
@@ -13,6 +13,7 @@ const ModalTicketCita = dynamic(() => import('@/components/Modales/ModalTicketCi
 const ModalEditarAntecedentes = dynamic(() => import('@/components/Modales/ModalEditarAntecedentes'), { ssr: false })
 const ModalHistorialCitas = dynamic(() => import('@/components/Modales/DropdownHistorial'), { ssr: false })
 const ModalProximasCitas = dynamic(() => import('@/components/Modales/DropdownProximasCitas'), { ssr: false })
+const ModalRxTomada = dynamic(() => import('@/components/Modales/ModalRxTomada'), { ssr: false })
 
 export default function PacienteLayout({ children }: { children: React.ReactNode }) {
   const params = useParams()
@@ -22,6 +23,7 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
   const [mounted, setMounted] = useState(false);
   
   const [paciente, setPaciente] = useState<any>(null)
+  const [modalRxAbierto, setModalRxAbierto] = useState(false)
   const [antecedentes, setAntecedentes] = useState<any[]>([])
   const [proximasCitas, setProximasCitas] = useState<any[]>([])
   const [citasAnteriores, setCitasAnteriores] = useState<any[]>([])
@@ -139,6 +141,10 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
   const rolesPermitidos = ['ADMIN', 'RECEPCIONISTA'];
   const puedeVerFinanzas = rolesPermitidos.includes(perfil?.rol);
   const puedeVerRecetas = ['DENTISTA', 'ADMIN', 'RECEPCIONISTA', 'ASISTENTE'].includes(perfil?.rol);
+  const puedeMarcarRx = ['DENTISTA', 'ADMIN', 'RECEPCIONISTA', 'ASISTENTE'].includes(perfil?.rol);
+  // Cita de hoy (si hay) para pre-marcar en "Rx tomada" las piezas que dice el motivo
+  const hoyLocal = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Santiago' });
+  const citaDeHoy = [...citasAnteriores, ...proximasCitas].find((c: any) => String(c.inicio || '').startsWith(hoyLocal) && !['cancelada', 'no_asiste'].includes(c.estado));
 
   if (!paciente) return (
     <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50">
@@ -275,6 +281,12 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
                </button>
              </div>
               
+             {puedeMarcarRx && (
+               <button onClick={() => setModalRxAbierto(true)} title="Marcar radiografías tomadas hoy para que queden por cobrar" className="bg-white border border-[#C9A24B]/60 flex items-center justify-center gap-1 text-[#8A6D2F] px-2.5 py-1.5 rounded-md text-[8px] font-black uppercase tracking-wide hover:bg-[#C9A24B]/10 shadow-sm transition-colors">
+                 <ScanLine size={10} /> <span className="whitespace-nowrap">Rx tomada</span>
+               </button>
+             )}
+
              <button onClick={() => setModalAgendarAbierto(true)} className="bg-[#C9A24B] flex items-center justify-center gap-1 text-white px-2.5 py-1.5 rounded-md text-[8px] font-black uppercase tracking-wide hover:bg-[#B38D3A] shadow-sm transition-colors flex-1 sm:flex-none max-w-[120px]">
                 <CalendarClock size={10} /> <span className="whitespace-nowrap">Agendar Cita</span>
              </button>
@@ -283,6 +295,17 @@ export default function PacienteLayout({ children }: { children: React.ReactNode
         </div>
 
       </header>
+
+      {modalRxAbierto && (
+        <ModalRxTomada
+          pacienteId={String(id)}
+          pacienteNombre={`${paciente?.nombre || ''} ${paciente?.apellido || ''}`.trim()}
+          motivoCita={citaDeHoy?.motivo || null}
+          citaId={citaDeHoy?.id || null}
+          mostrarIrAPagos={puedeVerFinanzas}
+          onClose={() => setModalRxAbierto(false)}
+        />
+      )}
 
       <div
         className={`flex-1 flex flex-col w-full ${conFondo ? 'bg-cover bg-center bg-no-repeat lg:bg-fixed print:bg-none print:bg-white' : ''}`}
