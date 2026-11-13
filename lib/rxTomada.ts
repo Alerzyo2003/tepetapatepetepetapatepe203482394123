@@ -167,3 +167,13 @@ export async function agregarRxTomada(opts: {
   }))
   return marcarRxTomadas({ pacienteId, pacienteNombre: opts.pacienteNombre, usuarioId: opts.usuarioId, usuarioNombre: opts.usuarioNombre, items, citaId: opts.citaId })
 }
+
+// Cambiar (o poner) la pieza de una Rx: muchas vienen sin pieza desde el presupuesto
+export async function cambiarPiezaRx(opts: { pacienteId: string; pacienteNombre: string; usuarioId: string | null; usuarioNombre: string; item: RxItem; diente: number | null }) {
+  const { pacienteId, pacienteNombre, usuarioId, usuarioNombre, item, diente } = opts
+  if (diente === item.diente) return
+  const { error } = await supabase.from('presupuesto_items').update({ diente_id: diente }).eq('id', item.id)
+  if (error) throw error
+  await auditar(usuarioId, pacienteId, 'UPDATE / RX PIEZA',
+    `${usuarioNombre} cambió la pieza de ${item.nombre} de ${pacienteNombre}: ${item.diente ? piezaTexto(item.diente) : 'sin pieza'} → ${diente ? piezaTexto(diente) : 'sin pieza'}.`, item.id)
+}
