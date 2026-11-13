@@ -2,14 +2,49 @@
 // Modal "Rx tomada": asistentes y recepción marcan qué radiografías se tomaron hoy (por pieza),
 // así quedan como deuda en Pagos y el paciente no se va sin pagarlas.
 import { useEffect, useMemo, useState } from 'react'
-import { CheckSquare, Loader2, Plus, RotateCcw, ScanLine, Square, Wallet, X } from 'lucide-react'
+import { CheckSquare, Loader2, Pencil, Plus, RotateCcw, ScanLine, Square, Wallet, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import {
-  agregarRxTomada, cargarCatalogoRx, cargarRxPaciente, desmarcarRxTomada, marcarRxTomadas, piezaTexto, piezasDelMotivo, type RxItem,
+  agregarRxTomada, cambiarPiezaRx, cargarCatalogoRx, cargarRxPaciente, desmarcarRxTomada, marcarRxTomadas, piezaTexto, piezasDelMotivo, type RxItem,
 } from '@/lib/rxTomada'
 
 const pesos = (n: number) => `$${Number(n || 0).toLocaleString('es-CL')}`
+
+// Pieza de la Rx: se puede escribir o corregir (ej. "3.6" o "36"; vacío = sin pieza)
+function PiezaEditable({ diente, clase, onGuardar }: { diente: number | null; clase: string; onGuardar: (d: number | null) => Promise<void> }) {
+  const [editando, setEditando] = useState(false)
+  const [valor, setValor] = useState('')
+  const [guardando, setGuardando] = useState(false)
+  const abrir = (e: React.MouseEvent) => { e.stopPropagation(); setValor(diente ? piezaTexto(diente) : ''); setEditando(true) }
+  const guardar = async () => {
+    if (guardando) return
+    const texto = valor.trim()
+    let nuevo: number | null = null
+    if (texto) {
+      const ps = [...piezasDelMotivo(texto)]
+      if (ps.length !== 1) { toast.error('Escribe una pieza válida, por ejemplo 3.6'); return }
+      nuevo = ps[0]
+    }
+    if (nuevo === diente) { setEditando(false); return }
+    setGuardando(true)
+    try { await onGuardar(nuevo); setEditando(false) } catch (e) { toast.error('No se pudo cambiar la pieza'); console.error(e) } finally { setGuardando(false) }
+  }
+  if (editando) return (
+    <span className="w-20 shrink-0 flex items-center" onClick={e => e.stopPropagation()}>
+      <input autoFocus value={valor} disabled={guardando} onChange={e => setValor(e.target.value)} placeholder="3.6"
+        onKeyDown={e => { if (e.key === 'Enter') guardar(); if (e.key === 'Escape') setEditando(false) }} onBlur={guardar}
+        className="w-full text-center rounded-xl py-1.5 font-black text-sm border-2 border-[#C9A24B] outline-none bg-white text-slate-800" />
+    </span>
+  )
+  return (
+    <button type="button" onClick={abrir} title={diente ? 'Cambiar pieza' : 'Agregar pieza'}
+      className={`w-20 shrink-0 text-center rounded-xl py-1.5 font-black text-sm flex items-center justify-center gap-1 group/pieza hover:ring-2 hover:ring-[#C9A24B] ${clase}`}>
+      {diente ? piezaTexto(diente) : <span className="text-[9px] uppercase tracking-wide">+ Pieza</span>}
+      <Pencil size={10} className="opacity-50 group-hover/pieza:opacity-100" />
+    </button>
+  )
+}
 
 export default function ModalRxTomada({ pacienteId, pacienteNombre, motivoCita, citaId, onClose, onGuardado, mostrarIrAPagos = true }: {
   pacienteId: string
@@ -91,6 +126,13 @@ export default function ModalRxTomada({ pacienteId, pacienteNombre, motivoCita, 
     } catch (e: any) { toast.error(e?.message || 'No se pudo deshacer') } finally { setGuardando(false) }
   }
 
+  const cambiarPieza = async (item: RxItem, diente: number | null) => {
+    await cambiarPiezaRx({ ...base, item, diente })
+    toast.success(diente ? `Pieza cambiada a ${piezaTexto(diente)}` : 'Se quitó la pieza')
+    await cargar()
+    onGuardado?.()
+  }
+
   const abrirAgregar = async () => {
     setAgregando(true)
     if (!catalogo.length) setCatalogo(await cargarCatalogoRx())
@@ -136,16 +178,16 @@ export default function ModalRxTomada({ pacienteId, pacienteNombre, motivoCita, 
                   const on = marcadas.has(p.id)
                   const sugerida = !!p.diente && piezasCita.has(p.diente)
                   return (
-                    <button key={p.id} type="button" onClick={() => alternar(p.id)}
-                      className={`w-full flex items-center gap-3 p-3 rounded-2xl border text-left transition-all ${on ? 'border-[#C9A24B] bg-[#C9A24B]/10 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+                    <div key={p.id} role="button" tabIndex={0} onClick={() => alternar(p.id)} onKeyDown={e => { if (e.key === ' ' && e.target === e.currentTarget) { e.preventDefault(); alternar(p.id) } }}
+                      className={`w-full flex items-center gap-3 p-3 rounded-2xl border text-left transition-all cursor-pointer select-none ${on ? 'border-[#C9A24B] bg-[#C9A24B]/10 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
                       {on ? <CheckSquare size={20} className="text-[#C9A24B] shrink-0" /> : <Square size={20} className="text-slate-300 shrink-0" />}
-                      <span className={`w-14 shrink-0 text-center rounded-xl py-1.5 font-black text-sm ${p.diente ? 'bg-[#0A111F] text-white' : 'bg-slate-100 text-slate-400'}`}>{piezaTexto(p.diente)}</span>
+                      <PiezaEditable diente={p.diente} clase={p.diente ? 'bg-[#0A111F] text-white' : 'bg-slate-100 text-slate-500 border border-dashed border-slate-300'} onGuardar={d => cambiarPieza(p, d)} />
                       <span className="flex-1 min-w-0">
                         <span className="block text-xs font-black text-slate-800 truncate">{p.nombre}{sugerida && <span className="ml-2 text-[9px] font-black text-emerald-600 uppercase">según la cita</span>}</span>
                         <span className="block text-[10px] font-semibold text-slate-500 truncate">{p.presupuesto}{p.doctor ? ` · Dr/a. ${p.doctor}` : ''}</span>
                       </span>
                       <span className="text-xs font-black text-slate-700 shrink-0">{pesos(p.precio)}</span>
-                    </button>
+                    </div>
                   )
                 })}
               </div>
@@ -183,7 +225,7 @@ export default function ModalRxTomada({ pacienteId, pacienteNombre, motivoCita, 
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Marcadas hoy</p>
                   {tomadasHoy.map(t => (
                     <div key={t.id} className="flex items-center gap-3 p-3 rounded-2xl bg-emerald-50/60 border border-emerald-100">
-                      <span className="w-14 shrink-0 text-center rounded-xl py-1.5 font-black text-sm bg-emerald-600 text-white">{piezaTexto(t.diente)}</span>
+                      <PiezaEditable diente={t.diente} clase="bg-emerald-600 text-white" onGuardar={d => cambiarPieza(t, d)} />
                       <span className="flex-1 min-w-0">
                         <span className="block text-xs font-black text-slate-800 truncate">{t.nombre}</span>
                         <span className="block text-[10px] font-semibold text-slate-500 truncate">
