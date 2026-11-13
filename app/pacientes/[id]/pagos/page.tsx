@@ -6,11 +6,12 @@ import { supabase } from '@/lib/supabase'
 import {  
   Loader2, Coins, ReceiptText, CheckCircle2,
   CreditCard, Banknote, Landmark, History, EyeOff, ChevronUp,
-  ChevronDown, Printer, Trash2, FileText, Wallet, Plus, User, X, CheckSquare
+  ChevronDown, Printer, Trash2, FileText, Wallet, Plus, User, X, CheckSquare, ScanLine
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { asegurarMiCaja, obtenerMiCaja } from '@/lib/cajas'
 import { motion, AnimatePresence } from 'framer-motion'
+import ModalRxTomada from '@/components/Modales/ModalRxTomada'
 
 type MedioPago = {
     id: string;
@@ -58,6 +59,7 @@ export default function PagosPacientePage() {
 
   // ESTADOS PARA EL MODAL DE ABONO LIBRE (SALDO A FAVOR)
   const [modalAbonoLibreAbierto, setModalAbonoLibreAbierto] = useState(false)
+  const [modalRxAbierto, setModalRxAbierto] = useState(false)
   const [montoAbonoLibre, setMontoAbonoLibre] = useState<number | ''>('')
   const [metodoAbonoLibre, setMetodoAbonoLibre] = useState('Transferencia')
   const [numeroBoletaAbonoLibre, setNumeroBoletaAbonoLibre] = useState('')
@@ -675,6 +677,15 @@ export default function PagosPacientePage() {
 
   return (
     <>
+      {modalRxAbierto && (
+        <ModalRxTomada
+          pacienteId={String(paciente_id)}
+          pacienteNombre={`${pacienteInfo?.nombre || ''} ${pacienteInfo?.apellido || ''}`.trim()}
+          mostrarIrAPagos={false}
+          onClose={() => setModalRxAbierto(false)}
+          onGuardado={() => cargarDatosFinancieros()}
+        />
+      )}
       <div className="p-6 md:p-10 text-left h-full print:hidden">
         
         {/* CABECERA SUPERIOR */}
@@ -698,6 +709,9 @@ export default function PagosPacientePage() {
             </div>
 
             <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
+                <button onClick={() => setModalRxAbierto(true)} className="bg-white text-[#0A111F] px-5 py-3.5 rounded-2xl font-black text-[10px] uppercase shadow-sm border border-[#C9A24B]/50 hover:bg-[#C9A24B]/10 transition-all flex items-center gap-2 whitespace-nowrap shrink-0">
+                  <ScanLine size={15} className="text-[#C9A24B]" /> Rx tomada
+                </button>
                 <button disabled={!puedeVerFinanzas} onClick={() => setModalAbonoLibreAbierto(true)} className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-6 py-3.5 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-all flex items-center gap-2 whitespace-nowrap shrink-0 disabled:opacity-50 border border-emerald-400">
                   <Plus size={16} strokeWidth={3} /> Ingresar Saldo a Favor
                 </button>
