@@ -9,10 +9,11 @@ import { AnimatePresence, motion } from 'framer-motion'
 import {
   Activity, Ban, CalendarClock, CalendarDays, CalendarPlus, CalendarSync, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList,
   Clock, Globe, LayoutGrid, Link as LinkIcon, Loader2, Lock, MapPin, MessageCircle, MessageSquare, MoreVertical, Plus,
-  Save, Search, Timer, User, Users, Wallet, X,
+  Save, ScanLine, Search, Timer, User, Users, Wallet, X,
 } from 'lucide-react'
 
 import ModalShell from '../agenda/_components/ModalShell'
+import ModalRxTomada from '@/components/Modales/ModalRxTomada'
 import ModalAgendar from '../agenda/_components/ModalAgendar'
 import ModalBloqueo, { type BloqueoInicial } from '../agenda/_components/ModalBloqueo'
 import ModalBuscarHora from '../agenda/_components/ModalBuscarHora'
@@ -63,6 +64,7 @@ export default function VistaDiariaPage() {
   const [menuAbiertoId, setMenuAbiertoId] = useState<string | null>(null);
   const [comentario, setComentario] = useState<{ cita: any; texto: string } | null>(null);
   const [citaEnlaceReagendar, setCitaEnlaceReagendar] = useState<any>(null);
+  const [citaRx, setCitaRx] = useState<any>(null);
   const [guardandoComentario, setGuardandoComentario] = useState(false);
   const [agendarConfig, setAgendarConfig] = useState<AgendarConfig | null>(null);
   const [modal, setModal] = useState<null | 'buscarHora' | 'hojaRuta' | 'bloqueo'>(null);
@@ -563,6 +565,7 @@ export default function VistaDiariaPage() {
                             onDragEnd={terminarArrastre}
                             onReagendar={() => abrirAgendar(configReprogramar(cita))}
                             onEnlaceReagendar={() => { setMenuAbiertoId(null); setCitaEnlaceReagendar(cita); }}
+                            onRxTomada={() => { setMenuAbiertoId(null); setCitaRx(cita); }}
                             onComentario={() => { setMenuAbiertoId(null); setComentario({ cita, texto: cita.motivo || '' }); }}
                             onRecordatorio={() => { setMenuAbiertoId(null); enviarRecordatorioIndividual(cita, profesionales); }}
                             onInasistencia={() => { setMenuAbiertoId(null); enviarWhatsAppInasistencia(cita, profesionales); }}
@@ -640,6 +643,17 @@ export default function VistaDiariaPage() {
         puedeVerAgendaCompleta={puedeVerAgendaCompleta}
         especialistaInicial={puedeVerAgendaCompleta ? 'Todos' : (usuarioLogueado || 'Todos')}
       />
+      {citaRx && (
+        <ModalRxTomada
+          key={citaRx.id}
+          pacienteId={citaRx.paciente_id}
+          pacienteNombre={`${citaRx.pacientes?.nombre || ''} ${citaRx.pacientes?.apellido || ''}`.trim()}
+          motivoCita={citaRx.motivo}
+          citaId={citaRx.id}
+          mostrarIrAPagos={puedeVerFinanzas}
+          onClose={() => setCitaRx(null)}
+        />
+      )}
       {citaEnlaceReagendar && <ModalEnlaceReagendar key={citaEnlaceReagendar.id} cita={citaEnlaceReagendar} onClose={() => setCitaEnlaceReagendar(null)} profesionales={profesionales} />}
       <ModalHojaRuta
         abierto={modal === 'hojaRuta'}
@@ -715,6 +729,7 @@ interface TarjetaProps {
   onDragEnd: () => void;
   onReagendar: () => void;
   onEnlaceReagendar: () => void;
+  onRxTomada: () => void;
   onComentario: () => void;
   onRecordatorio: () => void;
   onInasistencia: () => void;
@@ -724,7 +739,7 @@ interface TarjetaProps {
 
 function TarjetaCitaGrilla({
   cita, unico: unicoDoctor, esSobrecupo, carril, totalCarriles, ahoraMs, menuAbierto, arrastrando, esLaArrastrada, puedeVerFinanzas,
-  onToggleMenu, onDragStart, onDragEnd, onReagendar, onEnlaceReagendar, onComentario, onRecordatorio, onInasistencia, onControl, onCambiarEstado,
+  onToggleMenu, onDragStart, onDragEnd, onReagendar, onEnlaceReagendar, onRxTomada, onComentario, onRecordatorio, onInasistencia, onControl, onCambiarEstado,
 }: TarjetaProps) {
   // Si comparte espacio con otra cita, usa el diseño compacto aunque sea el único doctor
   const unico = unicoDoctor && totalCarriles === 1;
@@ -834,6 +849,7 @@ function TarjetaCitaGrilla({
             <ItemLink href={`/pacientes/${cita.paciente_id}/tratamientos`} icono={<Activity size={14} />} texto="Tratamientos" />
             {puedeVerFinanzas && <ItemLink href={`/pacientes/${cita.paciente_id}/pagos`} icono={<Wallet size={14} />} texto="Pagos" />}
             <ItemLink href={`/pacientes/${cita.paciente_id}/datos`} icono={<User size={14} />} texto="Datos personales" />
+            {!web && <ItemBoton onClick={onRxTomada} icono={<ScanLine size={14} />} texto="Rx tomada (cobrar radiografía)" color="hover:bg-amber-50 hover:text-amber-700" />}
 
             <div className="h-px bg-slate-100 my-1 mx-2"></div>
             <p className="px-4 pt-1 pb-1 text-[8px] font-black text-slate-400 uppercase tracking-widest">Cita</p>
