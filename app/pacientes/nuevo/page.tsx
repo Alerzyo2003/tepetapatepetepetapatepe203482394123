@@ -1,6 +1,8 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import AvisoRutRepetido from '@/components/AvisoRutRepetido'
+import { buscarPacientesMismoRut, rutParaGuardar, rutParaMostrar } from '@/lib/rut'
 import { useRouter } from 'next/navigation'
 import { 
   UserPlus, ArrowLeft, Save, Loader2, CheckCircle2, 
@@ -77,23 +79,16 @@ export default function NuevoPaciente() {
         // Se guarda tal cual lo escribió el usuario. Si está vacío, genera uno automático.
         if (!rutFinal) rutFinal = `OTRO-DOC-${Date.now()}`;
     } else {
-        // Si es RUT chileno: limpiamos todo lo que no sea número o letra K
-        let cleanRut = rutFinal.replace(/[^0-9K]/g, '');
-        // Insertamos el guion justo antes del último carácter
-        if (cleanRut.length > 1) {
-            rutFinal = cleanRut.slice(0, -1) + '-' + cleanRut.slice(-1);
-        } else {
-            rutFinal = cleanRut; // Por si acaso ingresó solo 1 carácter
-        }
+        // RUT chileno: siempre 12345678-9 (sin puntos, sin ceros a la izquierda, con guion)
+        rutFinal = rutParaGuardar(rutFinal);
     }
 
     try {
       if (rutFinal) {
-        const { data: existente } = await supabase
-          .from('pacientes')
-          .select('nombre, apellido, activo, motivo_deshabilitado')
-          .eq('rut', rutFinal)
-          .maybeSingle()
+        // Reconoce el RUT aunque esté guardado con o sin puntos/guion (o sin dígito verificador)
+        const existente = esOtroDocumento
+          ? (await supabase.from('pacientes').select('nombre, apellido, activo, motivo_deshabilitado, rut').eq('rut', rutFinal).maybeSingle()).data
+          : (await buscarPacientesMismoRut(rutFinal))[0] || null
 
         if (existente) {
           if (existente.activo === false) {
@@ -103,7 +98,7 @@ export default function NuevoPaciente() {
                   icon: <AlertTriangle className="text-amber-500" />
               })
           } else {
-              toast.error(`El documento ${rutFinal} ya existe`, {
+              toast.error(`El documento ${rutParaMostrar(existente.rut) || rutFinal} ya existe`, {
                   description: `Pertenece a ${existente.nombre} ${existente.apellido}`,
                   duration: 5000
               })
@@ -270,6 +265,7 @@ export default function NuevoPaciente() {
                       onChange={(e) => setForm({...form, rut: e.target.value})}
                     />
                   </div>
+                  <AvisoRutRepetido rut={form.rut || ''} esOtroDocumento={esOtroDocumento} />
                 </div>
                 
                 <InputWithIcon icon={CalendarDays} type="date" label="Fecha Nacimiento *" value={form.fecha_nacimiento} onChange={(v:any) => setForm({...form, fecha_nacimiento: v})} required />

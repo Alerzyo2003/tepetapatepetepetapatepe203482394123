@@ -1,6 +1,8 @@
 'use client'
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import AvisoRutRepetido from '@/components/AvisoRutRepetido'
+import { buscarPacientesMismoRut, rutParaGuardar, rutParaMostrar } from '@/lib/rut'
 import { filtroPalabraPaciente } from '@/lib/busquedaPacientes'
 import {
   X, Search, ChevronLeft, ChevronRight, Loader2, Clock,
@@ -577,6 +579,15 @@ const handleDrop = async (e: React.DragEvent, profId: string, fecha: string, hor
     setTratamientosPaciente(data || []); setTratamientoSeleccionadoId('MANUAL'); setNuevoTratamientoNombre(citaEnReprogramacion ? citaEnReprogramacion.motivo : '');
   };
 
+  // Desde el aviso de RUT repetido: se deja de crear la ficha nueva y se usa la existente
+  const usarPacienteDelRut = async (p: { id: string }) => {
+    const { data } = await supabase.from('pacientes').select('*').eq('id', p.id).single();
+    if (!data) return;
+    setModoNuevoPaciente(false);
+    setNuevoPaciente(prev => ({ ...prev, nombre: '', apellido: '', rut: '', telefono: '' }));
+    await seleccionarPacienteExistente(data);
+  };
+
   const handleGuardar = async () => {
     if (cargandoAccion) return;
     if (modoNuevoPaciente && (!nuevoPaciente.nombre.trim() || !nuevoPaciente.apellido.trim())) {
@@ -593,7 +604,13 @@ const handleDrop = async (e: React.DragEvent, profId: string, fecha: string, hor
         if (esOtroDocumento) {
           if (!rutFinal) rutFinal = `OTRO-DOC-${Date.now()}`;
         } else {
-            rutFinal = rutFinal.replace(/[^0-9kK-]/g, '');
+            rutFinal = rutParaGuardar(rutFinal);
+            const repetidos = await buscarPacientesMismoRut(rutFinal);
+            if (repetidos.length) {
+              const r = repetidos[0];
+              toast.error(`Ese RUT ya pertenece a ${r.nombre} ${r.apellido} (${rutParaMostrar(r.rut)})`, { description: 'No se creó otra ficha. Usa el paciente que ya existe.', duration: 7000 });
+              setCargandoAccion(false); return;
+            }
         }
         // Sin RUT: valor único para no chocar con otro paciente sin RUT
         if (!rutFinal) rutFinal = `SIN-RUT-${Date.now()}`;
@@ -1243,6 +1260,7 @@ const handleDrop = async (e: React.DragEvent, profId: string, fecha: string, hor
                                         value={nuevoPaciente.rut} 
                                         onChange={e => setNuevoPaciente(prev => ({...prev, rut: e.target.value}))}
                                     />
+                                    <AvisoRutRepetido rut={nuevoPaciente.rut} esOtroDocumento={esOtroDocumento} onUsarPaciente={usarPacienteDelRut} />
                                 </div>
 
                                 <input placeholder="Teléfono" className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold uppercase outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={nuevoPaciente.telefono} onChange={e => setNuevoPaciente(prev => ({ ...prev, telefono: e.target.value }))} />

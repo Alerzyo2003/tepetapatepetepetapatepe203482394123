@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import AvisoRutRepetido from '@/components/AvisoRutRepetido'
+import { buscarPacientesMismoRut, esRutChileno, rutParaGuardar, rutParaMostrar } from '@/lib/rut'
 import { 
   Save, Loader2, Info, User, FileDigit, CalendarDays, 
   Building2, MapPin, Map, Smartphone, Phone, Mail, 
@@ -130,7 +132,8 @@ export default function DatosPersonalesPage() {
     
     setGuardando(true)
     const payload = {
-      rut: datos.rut ? datos.rut.replace(/\./g, '').toUpperCase().trim() : null,
+      // RUT chileno siempre como 12345678-9; documentos extranjeros tal cual
+      rut: datos.rut ? (!datos.extranjero && esRutChileno(datos.rut) ? rutParaGuardar(datos.rut) : datos.rut.replace(/\./g, '').toUpperCase().trim()) : null,
       nombre: datos.nombre || null,
       apellido: datos.apellido || null,
       fecha_nacimiento: datos.fecha_nacimiento === '' ? null : datos.fecha_nacimiento,
@@ -155,6 +158,15 @@ export default function DatosPersonalesPage() {
     }
 
     try {
+      if (payload.rut && !datos.extranjero) {
+        const repetidos = await buscarPacientesMismoRut(payload.rut, String(id));
+        if (repetidos.length) {
+          const r = repetidos[0];
+          toast.error(`Ese RUT ya pertenece a ${r.nombre} ${r.apellido} (${rutParaMostrar(r.rut)})`, { description: 'No se guardó. Si es la misma persona, hay que unir las fichas.', duration: 8000 });
+          setGuardando(false);
+          return;
+        }
+      }
       const { error: updateError } = await supabase
         .from('pacientes')
         .update(payload)
@@ -233,7 +245,10 @@ export default function DatosPersonalesPage() {
           />
           <InputGroup label="Nombre Legal *" value={datos.nombre} onChange={(v:any) => setDatos({...datos, nombre: v})} icon={User} />
           <InputGroup label="Apellidos *" value={datos.apellido} onChange={(v:any) => setDatos({...datos, apellido: v})} icon={User} />
-          <InputGroup label="RUT *" value={datos.rut} onChange={(v:any) => setDatos({...datos, rut: v})} icon={FileDigit} />
+          <div>
+            <InputGroup label="RUT *" value={datos.rut} onChange={(v:any) => setDatos({...datos, rut: v})} icon={FileDigit} />
+            <AvisoRutRepetido rut={datos.rut || ''} esOtroDocumento={!!datos.extranjero} excluirId={String(id)} />
+          </div>
           <InputGroup label="Fecha Nacimiento *" type="date" value={datos.fecha_nacimiento} onChange={(v:any) => setDatos({...datos, fecha_nacimiento: v})} icon={CalendarDays} />
         </div>
       </section>
