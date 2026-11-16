@@ -1,6 +1,7 @@
 'use client'
 import React, { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
 import DOMPurify from 'isomorphic-dompurify'
@@ -8,10 +9,23 @@ import {
   History, Clock, Calendar, Stethoscope, Loader2, Image as ImageIcon, 
   X, DollarSign, User, Wallet, Building2, ClipboardList, Info, 
   Eye, CreditCard, ClipboardEdit, ClipboardCheck, Edit, Download, FileText, 
-  FileSignature, Home, Save, Bold, Italic, Underline, Highlighter, Eraser, List
+  FileSignature, Home, Save, Bold, Italic, Underline, Highlighter, Eraser, List, Printer
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
+
+// El comentario de los pagos guarda en JSON qué prestaciones se pagaron: se muestra legible
+const textoPago = (comentario?: string | null) => {
+  if (!comentario || !comentario.trim().startsWith('[')) return comentario || ''
+  try {
+    const lista = JSON.parse(comentario)
+    return Array.isArray(lista)
+      ? lista.map((x: any) => `${String(x.prestacion || '').split(' | ')[0]}${x.diente ? ` (pieza ${x.diente})` : ''}`).join('; ')
+      : comentario
+  } catch { return comentario }
+}
+
+const ResumenFichaImpresion = dynamic(() => import('@/components/ResumenFichaImpresion'), { ssr: false })
 
 export default function HistorialPage() {
   const { id: paciente_id } = useParams()
@@ -20,6 +34,7 @@ export default function HistorialPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [filtro, setFiltro] = useState<'todas' | 'mias'>('todas')
   const [mounted, setMounted] = useState(false)
+  const [imprimiendo, setImprimiendo] = useState(false)
 
   // Estados para Modal de Vista
   const [itemAVer, setItemAVer] = useState<any>(null)
@@ -65,7 +80,7 @@ export default function HistorialPage() {
         supabase.from('presupuestos').select('id, created_at, nombre_tratamiento, total, estado, especialista_id').eq('paciente_id', paciente_id),
         supabase.from('documentos_pacientes').select('id, fecha_subida, titulo, nombre_archivo, descripcion, url_archivo, url_miniatura, tipo_archivo, creado_por').eq('paciente_id', paciente_id),
         supabase.from('documentos_clinicos').select('id, fecha_creacion, titulo_documento, usuario_id').eq('paciente_id', paciente_id),
-        supabase.from('pagos').select('id, presupuesto_id, tratamiento_id, plan_id, fecha_pago, created_at, concepto, descripcion, detalle, motivo, nombre_tratamiento, observaciones, notas, monto, metodo_pago').eq('paciente_id', paciente_id),
+        supabase.from('pagos').select('id, presupuesto_id, fecha_pago, comentario, nota, detalle_cuota, monto, metodo_pago, estado').eq('paciente_id', paciente_id).neq('estado', 'Anulado'),
         supabase.from('citas').select('id, created_at, inicio, estado, motivo, profesional_id').eq('paciente_id', paciente_id),
         supabase.from('profesionales').select('user_id, nombre, apellido')
       ])
@@ -161,7 +176,7 @@ export default function HistorialPage() {
       const pagosAgrupados: Record<string, any[]> = {};
 
       (pagos || []).forEach(p => {
-        const presId = p.presupuesto_id || p.tratamiento_id || p.plan_id;
+        const presId = p.presupuesto_id;
         if (presId) {
             if (!pagosAgrupados[presId]) pagosAgrupados[presId] = [];
             pagosAgrupados[presId].push(p);
@@ -171,7 +186,7 @@ export default function HistorialPage() {
       });
 
       const pgsGenerales = pagosNormales.map(pg => {
-        const conceptoReal = pg.concepto || pg.descripcion || pg.detalle || pg.motivo || pg.nombre_tratamiento || pg.observaciones || pg.notas || 'Abono General';
+        const conceptoReal = textoPago(pg.comentario) || pg.nota || pg.detalle_cuota || 'Abono General';
         return {
           ...pg,
           tipo: 'pago',
@@ -197,7 +212,7 @@ export default function HistorialPage() {
             return d1 > d2 ? (p.fecha_pago || p.created_at) : max;
         }, subPagos[0].fecha_pago || subPagos[0].created_at);
 
-        const nombrePlan = planInfo?.nombre_tratamiento || subPagos[0]?.concepto || subPagos[0]?.descripcion || 'Tratamiento / Plan';
+        const nombrePlan = planInfo?.nombre_tratamiento || 'Tratamiento / Plan';
 
         return {
            id: `grupo-${pres_id}`,
@@ -316,7 +331,16 @@ export default function HistorialPage() {
             </div>
           </div>
 
-          <div className="flex w-full sm:w-auto items-center p-1 bg-white rounded-[1.2rem] border border-slate-100 shadow-sm">
+          <div className="flex w-full sm:w-auto items-center gap-3 print:hidden">
+          <button
+            onClick={() => { setImprimiendo(true); toast.info('Preparando resumen para imprimir...') }}
+            disabled={imprimiendo}
+            title="Imprimir o guardar en PDF el resumen completo de la ficha"
+            className="shrink-0 px-5 py-3 rounded-[1.2rem] bg-[#0B2136] text-white text-[10px] font-bold uppercase flex items-center justify-center gap-2 shadow-sm hover:bg-[#104a5a] transition-colors disabled:opacity-60"
+          >
+            {imprimiendo ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />} Imprimir resumen
+          </button>
+          <div className="flex flex-1 sm:flex-none items-center p-1 bg-white rounded-[1.2rem] border border-slate-100 shadow-sm">
             <button 
               onClick={() => setFiltro('todas')} 
               className={`flex-1 sm:flex-none px-6 py-2.5 rounded-xl text-[10px] font-bold uppercase transition-all flex items-center justify-center gap-2 ${
@@ -333,6 +357,7 @@ export default function HistorialPage() {
             >
               <User size={14} /> Mías
             </button>
+          </div>
           </div>
         </div>
 
@@ -461,6 +486,10 @@ export default function HistorialPage() {
         </div>
       </div>
 
+      {imprimiendo && (
+        <ResumenFichaImpresion pacienteId={String(paciente_id)} onTerminar={() => setImprimiendo(false)} />
+      )}
+
       {/* PORTALS: MODALES */}
       {mounted && createPortal(
         <>
@@ -510,7 +539,7 @@ export default function HistorialPage() {
                            <h4 className="font-bold uppercase text-[10px] text-slate-500 tracking-widest pt-2 pl-1">Desglose de Pagos ({itemAVer.pagos.length})</h4>
                            <div className="space-y-3">
                              {itemAVer.pagos.map((pago: any) => {
-                               const detallePago = pago.concepto || pago.descripcion || pago.detalle || pago.motivo;
+                               const detallePago = textoPago(pago.comentario) || pago.nota || pago.detalle_cuota;
                                return (
                                  <div key={pago.id} className="bg-white border border-slate-100 p-5 rounded-2xl shadow-sm">
                                    <p className="text-[15px] font-black text-slate-800">${Number(pago.monto).toLocaleString('es-CL')}</p>
