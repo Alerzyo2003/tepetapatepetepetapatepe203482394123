@@ -2,6 +2,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import AvisoRutRepetido from '@/components/AvisoRutRepetido'
+import { buscarPacientesMismoRut, rutParaGuardar, rutParaMostrar } from '@/lib/rut'
 import { filtroPalabraPaciente } from '@/lib/busquedaPacientes'
 import {
   X, Search, ChevronLeft, ChevronRight, Loader2, Clock,
@@ -411,6 +413,15 @@ if (estaOcupadoPorSeleccion) return toast.warning("El horario choca con otra sel
     setTratamientosPaciente(data || []); setTratamientoSeleccionadoId('MANUAL'); setNuevoTratamientoNombre(citaEnReprogramacion ? citaEnReprogramacion.motivo : '');
   };
 
+  // Desde el aviso de RUT repetido: se deja de crear la ficha nueva y se usa la existente
+  const usarPacienteDelRut = async (p: { id: string }) => {
+    const { data } = await supabase.from('pacientes').select('*').eq('id', p.id).single();
+    if (!data) return;
+    setModoNuevoPaciente(false);
+    setNuevoPaciente(prev => ({ ...prev, nombre: '', apellido: '', rut: '', telefono: '' }));
+    await seleccionarPacienteExistente(data);
+  };
+
   const handleGuardar = async () => {
     if (cargandoAccion) return;
     if (modoNuevoPaciente && !citaEnReprogramacion && (!nuevoPaciente.nombre.trim() || !nuevoPaciente.apellido.trim())) {
@@ -423,7 +434,17 @@ if (estaOcupadoPorSeleccion) return toast.warning("El horario choca con otra sel
       let pNombreFull = pacienteSeleccionado ? `${pacienteSeleccionado.nombre} ${pacienteSeleccionado.apellido}` : "";
       if (modoNuevoPaciente && !citaEnReprogramacion) {
         // Sin RUT: valor único para no chocar con otro paciente sin RUT
-        const rutLimpio = nuevoPaciente.rut.replace(/[^0-9kK]/g, '').toUpperCase().trim() || `SIN-RUT-${Date.now()}`;
+        // RUT siempre como 12345678-9 (antes se guardaba sin guion y no se reconocía como el mismo paciente)
+        const rutEscrito = rutParaGuardar(nuevoPaciente.rut);
+        if (rutEscrito) {
+          const repetidos = await buscarPacientesMismoRut(rutEscrito);
+          if (repetidos.length) {
+            const r = repetidos[0];
+            toast.error(`Ese RUT ya pertenece a ${r.nombre} ${r.apellido} (${rutParaMostrar(r.rut)})`, { description: 'No se creó otra ficha. Usa el paciente que ya existe.', duration: 7000 });
+            setCargandoAccion(false); return;
+          }
+        }
+        const rutLimpio = rutEscrito || `SIN-RUT-${Date.now()}`;
         const { data: pNew, error: pErr } = await supabase.from('pacientes').insert([{
           nombre: nuevoPaciente.nombre.toUpperCase().trim(),
           apellido: nuevoPaciente.apellido.toUpperCase().trim(),
@@ -993,6 +1014,7 @@ if (estaOcupadoPorSeleccion) return toast.warning("El horario choca con otra sel
                                 <input placeholder="Nombre" className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold uppercase outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={nuevoPaciente.nombre} onChange={e => setNuevoPaciente(prev => ({ ...prev, nombre: e.target.value }))} />
                                 <input placeholder="Apellido" className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold uppercase outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={nuevoPaciente.apellido} onChange={e => setNuevoPaciente(prev => ({ ...prev, apellido: e.target.value }))} />
                                 <input placeholder="RUT" className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold uppercase outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={nuevoPaciente.rut} onChange={e => setNuevoPaciente(prev => ({ ...prev, rut: e.target.value }))} />
+                                <AvisoRutRepetido rut={nuevoPaciente.rut} onUsarPaciente={usarPacienteDelRut} />
                                 <input placeholder="Teléfono" className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold uppercase outline-none focus:ring-4 focus:ring-blue-500/10 transition-all" value={nuevoPaciente.telefono} onChange={e => setNuevoPaciente(prev => ({ ...prev, telefono: e.target.value }))} />
                               </div>
                             ) : (

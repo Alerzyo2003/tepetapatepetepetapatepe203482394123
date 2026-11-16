@@ -3,6 +3,8 @@
 // Incluye el ticket "¡Cita lista!" con el envío por WhatsApp.
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import AvisoRutRepetido from '@/components/AvisoRutRepetido'
+import { buscarPacientesMismoRut, rutParaGuardar, rutParaMostrar } from '@/lib/rut'
 import { filtroPalabraPaciente } from '@/lib/busquedaPacientes'
 import { toast } from 'sonner'
 import {
@@ -289,6 +291,15 @@ function FormularioAgendar({
     setInasistenciasPaciente(inasist[paciente.id] || 0);
   }
 
+  // Desde el aviso de RUT repetido: se deja de crear la ficha nueva y se usa la existente
+  const usarPacienteDelRut = async (p: { id: string }) => {
+    const { data } = await supabase.from('pacientes').select('*').eq('id', p.id).single();
+    if (!data) return;
+    setModoNuevoPaciente(false);
+    setNuevoPaciente(PACIENTE_VACIO);
+    await seleccionarPacienteExistente(data);
+  };
+
   const quitarPaciente = () => {
     setPacienteSeleccionado(null); setBusqueda(''); setTratamientosPaciente([]);
     setTratamientoSeleccionadoId(null); setInasistenciasPaciente(0);
@@ -310,7 +321,15 @@ function FormularioAgendar({
 
       if (modoNuevoPaciente && !citaEnReprogramacion) {
         let rutFinal = nuevoPaciente.rut.toUpperCase().trim();
-        if (esOtroDocumento) { if (!rutFinal) rutFinal = `OTRO-DOC-${Date.now()}`; } else { rutFinal = rutFinal.replace(/[^0-9kK-]/g, ''); }
+        if (esOtroDocumento) { if (!rutFinal) rutFinal = `OTRO-DOC-${Date.now()}`; } else {
+          rutFinal = rutParaGuardar(rutFinal);
+          const repetidos = await buscarPacientesMismoRut(rutFinal);
+          if (repetidos.length) {
+            const r = repetidos[0];
+            toast.error(`Ese RUT ya pertenece a ${r.nombre} ${r.apellido} (${rutParaMostrar(r.rut)})`, { description: 'No se creó otra ficha. Usa el paciente que ya existe.', duration: 7000 });
+            setCargandoAccion(false); return;
+          }
+        }
         if (!rutFinal) rutFinal = `SIN-RUT-${Date.now()}`;
         const telefonoFinal = formatearTelefonoParaGuardar(nuevoPaciente.telefono);
 
@@ -442,6 +461,7 @@ function FormularioAgendar({
                 <input type="text" placeholder={esOtroDocumento ? "N° Pasaporte / Documento" : "RUT (Sin puntos, con guión)"} className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:border-[#C9A24B]" value={nuevoPaciente.rut} onChange={e => setNuevoPaciente({ ...nuevoPaciente, rut: e.target.value })} />
                 <input type="tel" placeholder="Teléfono (9 dígitos)" className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none focus:border-[#C9A24B]" value={nuevoPaciente.telefono} onChange={e => setNuevoPaciente({ ...nuevoPaciente, telefono: e.target.value })} />
               </div>
+              <AvisoRutRepetido rut={nuevoPaciente.rut} esOtroDocumento={esOtroDocumento} onUsarPaciente={usarPacienteDelRut} />
               <label className="flex items-center gap-2 text-[11px] font-bold text-slate-500 uppercase tracking-widest cursor-pointer w-fit">
                 <input type="checkbox" checked={esOtroDocumento} onChange={e => setEsOtroDocumento(e.target.checked)} className="accent-[#C9A24B] w-4 h-4" /> Extranjero / otro documento
               </label>
