@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 import { Bot, CalendarCheck2, CalendarPlus, CalendarSync, CalendarX, Loader2, MessageCircle, Phone, User } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { cargarReagendamiento } from '@/lib/reagendamientoEnlaces'
 import ModalShell from './ModalShell'
 import { enviarWhatsAppInasistencia, guardarDesdeNumeroBot, guardarIncluirEnlaceInasistencia, leerDesdeNumeroBot, leerIncluirEnlaceInasistencia, obtenerInasistencias } from './data'
 import {
@@ -41,6 +42,9 @@ export default function ModalInasistencias({ abierto, onClose, profesionales, us
   const [desdeBot, setDesdeBot] = useState(false);
   const [generando, setGenerando] = useState<string | null>(null); // cita a la que se le está creando el enlace
   const req = useRef(0);
+  // Contador: cuántos se reagendaron solos con el enlace en el mismo período
+  const [porEnlace, setPorEnlace] = useState<{ reagendaron: number; conEnlace: number } | null>(null);
+  const reqEnlace = useRef(0);
 
   // La misma preferencia vale para todos los WhatsApp de inasistencia (tarjeta de la cita, Vista Diaria, etc.)
   useEffect(() => { setIncluirEnlace(leerIncluirEnlaceInasistencia()); setDesdeBot(leerDesdeNumeroBot()); }, []);
@@ -55,6 +59,16 @@ export default function ModalInasistencias({ abierto, onClose, profesionales, us
       .then(r => { if (n === req.current) setFilas(r); })
       .catch(e => { console.error(e); if (n === req.current) toast.error('No se pudieron cargar las inasistencias'); })
       .finally(() => { if (n === req.current) setCargando(false); });
+  }, [abierto, dias, filtroEspecialista]);
+
+  useEffect(() => {
+    if (!abierto) return;
+    const n = ++reqEnlace.current;
+    const desde = new Date(Date.now() - dias * 86400000).toISOString();
+    const hasta = new Date(Date.now() + 60000).toISOString();
+    cargarReagendamiento(desde, hasta, filtroEspecialista !== 'Todos' ? filtroEspecialista : null)
+      .then(r => { if (n === reqEnlace.current) setPorEnlace({ reagendaron: r.reagendaron, conEnlace: r.pacientesConEnlace }); })
+      .catch(e => { console.error('Contador de reagendamiento por enlace', e); if (n === reqEnlace.current) setPorEnlace(null); });
   }, [abierto, dias, filtroEspecialista]);
 
   const pendientes = filas.filter(f => !f.siguiente);
@@ -176,6 +190,19 @@ export default function ModalInasistencias({ abierto, onClose, profesionales, us
           ))}
         </div>
       </div>
+      {porEnlace && (
+        <div className="px-6 md:px-8 py-3 border-b border-slate-100 bg-emerald-50/70 flex items-center gap-3">
+          <div className="shrink-0 min-w-[44px] h-11 px-2 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-lg font-black tabular-nums">{porEnlace.reagendaron}</div>
+          <p className="text-xs font-bold text-slate-700 leading-snug">
+            {porEnlace.reagendaron === 1 ? 'paciente se reagendó solo' : 'pacientes se reagendaron solos'} con el enlace en los últimos {dias} días
+            <span className="block text-[10px] font-semibold text-slate-500">
+              {porEnlace.conEnlace
+                ? `Se les mandó el enlace a ${porEnlace.conEnlace} paciente${porEnlace.conEnlace === 1 ? '' : 's'} en ese período.`
+                : 'No se ha mandado ningún enlace en ese período.'}
+            </span>
+          </p>
+        </div>
+      )}
       {pestana === 'pendientes' && (
         <label className="px-6 md:px-8 py-3 border-b border-slate-100 bg-violet-50/60 flex items-center gap-3 cursor-pointer select-none">
           <input type="checkbox" checked={incluirEnlace} onChange={e => cambiarIncluirEnlace(e.target.checked)} className="w-4 h-4 accent-violet-600" />
