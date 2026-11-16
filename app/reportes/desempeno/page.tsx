@@ -26,6 +26,7 @@ import {
   BarList, Card, EmptyState, Kpi, LegendItem, ListaContactos, MetaVentas, MiniStat, Modal, PanelDecisiones, PulseSpinner, SectionTitle, Seccion, TextoComparacion,
   type FilaContacto,
 } from './_components/ui'
+import SeccionReagendamiento from './_components/SeccionReagendamiento'
 
 const COLORES_REPARTO = ['#0d9488', '#b45309', '#38bdf8']
 const TOOLTIP_STYLE = { borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', fontSize: '12px' }
@@ -784,6 +785,9 @@ export default function PanelDesempenoNegocio() {
               </Card>
             </div>
           </Seccion>
+
+          {/* ── 07 REAGENDAMIENTO POR ENLACE ── */}
+          <SeccionReagendamiento numero={7} anio={anio} mes={mes} filtroDoc={filtroDoc} profesionales={profesionales} />
         </div>
       </div>
 
