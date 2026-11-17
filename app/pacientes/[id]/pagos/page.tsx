@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import {  
   Loader2, Coins, ReceiptText, CheckCircle2,
   CreditCard, Banknote, Landmark, History, EyeOff, ChevronUp,
-  ChevronDown, Printer, Trash2, FileText, Wallet, Plus, User, X, CheckSquare, ScanLine
+  ChevronDown, Printer, Trash2, FileText, Wallet, Plus, User, X, CheckSquare, ScanLine, Pencil
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { asegurarMiCaja, obtenerMiCaja } from '@/lib/cajas'
@@ -24,7 +24,7 @@ type MedioPago = {
 
 export default function PagosPacientePage() {
   const params = useParams();
-  const paciente_id = params?.id as string; // CORRECCIÓN AQUÍ: Casting explícito a string
+  const paciente_id = params?.id as string; 
  
   const [cargando, setCargando] = useState(true)
   const [cargandoAccion, setCargandoAccion] = useState(false)
@@ -39,25 +39,23 @@ export default function PagosPacientePage() {
   const [perfil, setPerfil] = useState<any>(null);
   const puedeVerFinanzas = perfil?.rol === 'ADMIN' || perfil?.rol === 'RECEPCIONISTA';
   const router = useRouter();
-  // Sin permiso para ver pagos: a la agenda
+  
   useEffect(() => {
     if (perfil && !puedeVerFinanzas) router.replace(RUTA_SIN_PERMISO);
   }, [perfil, puedeVerFinanzas, router]);
 
   const [usuarioLogueado, setUsuarioLogueado] = useState<any>(null);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
-  // Caja abierta DEL USUARIO (cada admin/recepcionista tiene la suya; se abre sola con el primer pago)
+  
   const [cajaActivaId, setCajaActivaId] = useState<string | null>(null);
   const [numeroMiCaja, setNumeroMiCaja] = useState<number | null>(null);
 
-  // ESTADOS PARA PAGO SELECTIVO Y MÚLTIPLES MÉTODOS
   const [pagosSeleccionados, setPagosSeleccionados] = useState<Record<string, number>>({})
   
   const [mediosPago, setMediosPago] = useState<MedioPago[]>([{
       id: 'default', metodo: 'Transferencia', monto: 0, numeroBoleta: '', numeroTransferencia: '', banco: ''
   }])
 
-  // ESTADOS PARA EL MODAL DE ABONO LIBRE (SALDO A FAVOR)
   const [modalAbonoLibreAbierto, setModalAbonoLibreAbierto] = useState(false)
   const [modalRxAbierto, setModalRxAbierto] = useState(false)
   const [montoAbonoLibre, setMontoAbonoLibre] = useState<number | ''>('')
@@ -67,14 +65,15 @@ export default function PagosPacientePage() {
   const [bancoAbonoLibre, setBancoAbonoLibre] = useState('')
   const [notaAbonoLibre, setNotaAbonoLibre] = useState('')
 
-  // Comentario opcional del pago (se guarda en pagos.nota)
   const [notaPago, setNotaPago] = useState('')
  
   const [pagoAImprimir, setPagoAImprimir] = useState<any>(null)
 
+  const [editandoPagoId, setEditandoPagoId] = useState<string | null>(null)
+  const [nuevoMetodoPago, setNuevoMetodoPago] = useState<string>('')
+
   const montoTotalAPagar = Object.values(pagosSeleccionados).reduce((a, b) => a + b, 0);
 
-  // EFECTO PARA AUTO-DISTRIBUIR MONTOS CUANDO CAMBIA EL TOTAL
   useEffect(() => {
     if (montoTotalAPagar > 0) {
         setMediosPago(prev => {
@@ -107,7 +106,6 @@ export default function PagosPacientePage() {
 
   const getDetalles = (comentario: string) => { try { return JSON.parse(comentario || '[]'); } catch(e) { return []; } }
 
-  // FUNCIÓN: Registrar evento en la tabla de auditoría
   const registrarAuditoria = async (accion: string, tabla: string, registroId: string | null, datosAnteriores: any, datosNuevos: any, detalles: string) => {
     try {
       await supabase.from('auditoria_clinica').insert([{
@@ -207,18 +205,26 @@ export default function PagosPacientePage() {
       const agruparPagos = (pagosBrutos: any[]) => {
           const grupos: any = {};
           pagosBrutos.forEach(p => {
+              const comentariosParsed = getDetalles(p.comentario);
+              
+              let descripcionTratamiento = 'Abono general';
+              if (comentariosParsed.length > 0) {
+                  const d = comentariosParsed[0];
+                  descripcionTratamiento = `${d.prestacion}${d.diente ? ` (Pza ${d.diente})` : ''}`;
+              }
+
               if (!grupos[p.fecha_pago]) {
                   grupos[p.fecha_pago] = {
                       ...p,
                       monto: Number(p.monto),
-                      metodos_detalle: [{ metodo: p.metodo_pago, monto: Number(p.monto), boleta: p.numero_boleta, ref: p.numero_referencia }],
-                      comentarios_raw: [...getDetalles(p.comentario)],
+                      metodos_detalle: [{ id: p.id, metodo: p.metodo_pago, monto: Number(p.monto), boleta: p.numero_boleta, ref: p.numero_referencia, descripcion: descripcionTratamiento }],
+                      comentarios_raw: [...comentariosParsed],
                       rawPagos: [p]
                   };
               } else {
                   grupos[p.fecha_pago].monto += Number(p.monto);
-                  grupos[p.fecha_pago].metodos_detalle.push({ metodo: p.metodo_pago, monto: Number(p.monto), boleta: p.numero_boleta, ref: p.numero_referencia });
-                  grupos[p.fecha_pago].comentarios_raw.push(...getDetalles(p.comentario));
+                  grupos[p.fecha_pago].metodos_detalle.push({ id: p.id, metodo: p.metodo_pago, monto: Number(p.monto), boleta: p.numero_boleta, ref: p.numero_referencia, descripcion: descripcionTratamiento });
+                  grupos[p.fecha_pago].comentarios_raw.push(...comentariosParsed);
                   grupos[p.fecha_pago].rawPagos.push(p);
                   if (!grupos[p.fecha_pago].nota && p.nota) grupos[p.fecha_pago].nota = p.nota;
                   
@@ -317,7 +323,6 @@ export default function PagosPacientePage() {
     });
   };
 
-  // Devuelve la caja abierta del usuario; si no tiene, se la abre automáticamente
   const prepararMiCaja = async (): Promise<string | null> => {
     if (!puedeVerFinanzas) { toast.error("Solo administración y recepción pueden registrar pagos."); return null; }
     if (!usuarioLogueado?.id) { toast.error("Sesión no válida. Vuelve a iniciar sesión."); return null; }
@@ -354,7 +359,6 @@ export default function PagosPacientePage() {
         const saldoActual = Number(pacienteInfo?.saldo_a_favor || 0);
         const detalleAbono = [{ prestacion: "Ingreso Manual a Saldo a Favor", diente: null, precio: montoNuevo, doctor: "-", abonado_ahora: montoNuevo }];
 
-        // Pago + saldo a favor en una sola operación (función registrar_pago en Supabase)
         const { data: idsPago, error: errPago } = await supabase.rpc('registrar_pago', {
             p_lineas: [{
                 paciente_id: paciente_id,
@@ -375,7 +379,6 @@ export default function PagosPacientePage() {
         const { data: nuevoPago, error: errLeer } = await supabase.from('pagos').select('*').eq('id', idNuevoPago).single();
         if (errLeer) throw errLeer;
         
-        // AUDITORÍA: Abono Libre
         await registrarAuditoria(
             'INSERT_ABONO_MANUAL',
             'pagos',
@@ -481,8 +484,6 @@ export default function PagosPacientePage() {
             }
         }
 
-        // Pagos, abonos de las prestaciones y saldo a favor en una sola operación:
-        // si algo falla no se guarda nada (función registrar_pago en Supabase)
         const { data: idsPago, error: errPago } = await supabase.rpc('registrar_pago', { p_lineas: lineasPago, p_saldo_usado: totalSaldoUsado });
         if (errPago) throw errPago;
         idsGenerados = Array.isArray(idsPago) ? idsPago.map(String) : [];
@@ -492,7 +493,6 @@ export default function PagosPacientePage() {
 
         toast.success(`Pago procesado con éxito.`);
         
-        // AUDITORÍA: Pagos a Tratamientos
         await registrarAuditoria(
             'INSERT_PAGO_TRATAMIENTO',
             'pagos, presupuesto_items',
@@ -547,7 +547,6 @@ export default function PagosPacientePage() {
 
     if (!window.confirm(mensajeConfirmacion)) return;
 
-    // Pedir motivo de anulación obligatorio
     const motivo = window.prompt("Por favor, ingresa el motivo de la anulación (Obligatorio):");
     if (!motivo || motivo.trim() === '') {
         return toast.info("Anulación cancelada. Es obligatorio ingresar un motivo.");
@@ -556,7 +555,6 @@ export default function PagosPacientePage() {
     setCargandoAccion(true);
     try {
       const saldoActual = Number(pacienteInfo?.saldo_a_favor || 0);
-      // Todo en una sola operación (función pasar_pagos_a_saldo en Supabase)
       const { data: resultado, error: errAnular } = await supabase.rpc('pasar_pagos_a_saldo', {
         p_pago_ids: pago.rawPagos.map((p: any) => String(p.id)),
         p_motivo: motivo.trim(),
@@ -569,7 +567,6 @@ export default function PagosPacientePage() {
           ? `Anuló un ingreso manual agrupado de $${pago.monto.toLocaleString('es-CL')}. Se descuenta de SALDO A FAVOR. Motivo: ${motivo.trim()}`
           : `Quitó un pago agrupado a tratamiento de $${pago.monto.toLocaleString('es-CL')} y lo pasó a SALDO A FAVOR (el pago sigue vigente como abono libre). Motivo: ${motivo.trim()}`;
 
-      // AUDITORÍA: Anulación
       const idsPagos = pago.rawPagos.map((p:any) => p.id).join(', ');
       await registrarAuditoria(
           'UPDATE_ANULACION_PAGO',
@@ -603,7 +600,6 @@ export default function PagosPacientePage() {
       const saldoAnterior = Number(pacienteInfo?.saldo_a_favor || 0);
       await supabase.from('pacientes').update({ saldo_a_favor: nuevoSaldo }).eq('id', paciente_id);
       
-      // AUDITORÍA: Edición manual de saldo
       await registrarAuditoria(
           'UPDATE_EDICION_SALDO',
           'pacientes',
@@ -618,7 +614,40 @@ export default function PagosPacientePage() {
     } catch (e) { toast.error("Error al actualizar el saldo."); } finally { setCargandoAccion(false); }
   }
 
-  // IMPRESIÓN CON HTML2PDF
+  const guardarNuevoMetodoPago = async (pagoId: string, metodoAnterior: string) => {
+    if (!nuevoMetodoPago || nuevoMetodoPago === metodoAnterior) {
+        setEditandoPagoId(null);
+        return;
+    }
+
+    setCargandoAccion(true);
+    try {
+        const { error } = await supabase
+            .from('pagos')
+            .update({ metodo_pago: nuevoMetodoPago })
+            .eq('id', pagoId);
+
+        if (error) throw error;
+
+        await registrarAuditoria(
+            'UPDATE_METODO_PAGO',
+            'pagos',
+            pagoId,
+            { metodo_anterior: metodoAnterior },
+            { metodo_nuevo: nuevoMetodoPago },
+            `Cambió método de pago de ${metodoAnterior} a ${nuevoMetodoPago} para solventar error de digitación.`
+        );
+
+        toast.success('Método de pago actualizado');
+        setEditandoPagoId(null);
+        await cargarDatosFinancieros();
+    } catch (error: any) {
+        toast.error('Error al actualizar', { description: error.message });
+    } finally {
+        setCargandoAccion(false);
+    }
+  };
+
   const imprimirComprobante = async (pago: any) => {
     setPagoAImprimir(pago);
     const toastId = toast.loading("Preparando comprobante profesional...");
@@ -686,9 +715,9 @@ export default function PagosPacientePage() {
           onGuardado={() => cargarDatosFinancieros()}
         />
       )}
-      <div className="p-6 md:p-10 text-left h-full print:hidden">
+      <div className="p-6 md:p-10 text-left h-full print:hidden max-w-full overflow-x-hidden">
         
-        {/* CABECERA SUPERIOR */}
+        {/* CABECERA */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 bg-white/90 backdrop-blur-xl p-8 rounded-[2.5rem] shadow-xl border border-white/60">
             <div className="flex items-center gap-4">
               <div className="p-4 rounded-[1.5rem] bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shadow-xl shadow-emerald-500/20">
@@ -718,10 +747,11 @@ export default function PagosPacientePage() {
             </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* CONTENEDOR PRINCIPAL: AHORA APILADO VERTICALMENTE */}
+        <div className="flex flex-col gap-10">
           
-          {/* PANEL PRINCIPAL: COBRO DE DEUDAS */}
-          <div className="lg:col-span-7 space-y-6">
+          {/* SECCIÓN SUPERIOR: COBRO DE DEUDAS (100% de ancho) */}
+          <div className="space-y-6 w-full">
             <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden flex flex-col sm:flex-row justify-between items-center sm:items-start gap-6 border border-slate-800">
               <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none text-white"><Coins size={120} /></div>
               <div className="relative z-10 w-full">
@@ -747,12 +777,11 @@ export default function PagosPacientePage() {
               </div>
             </div>
 
-            {/* DETALLE DE LO QUE SE DEBE - SELECCIONABLE */}
             {deudas.length > 0 && (
               <div className="bg-white/90 backdrop-blur-xl p-6 md:p-8 rounded-[2.5rem] border border-white/60 shadow-xl">
                    <div className="flex justify-between items-center mb-6">
                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><CheckSquare size={14} /> Selecciona tratamientos a pagar</h4>
-                       <button onClick={() => { if (Object.keys(pagosSeleccionados).length === deudas.length) setPagosSeleccionados({}); else { const todos: Record<string, number> = {}; deudas.forEach(d => { todos[d.id] = d.deuda; }); setPagosSeleccionados(todos); } }} className="text-[9px] font-black uppercase text-emerald-600 hover:text-emerald-800 transition-colors">
+                       <button onClick={() => { if (Object.keys(pagosSeleccionados).length === deudas.length) setPagosSeleccionados({}); else { const todos: Record<string, number> = {}; deudas.forEach(d => { todos[d.id] = d.deuda; }); setPagosSeleccionados(todos); } }} className="text-[9px] font-black uppercase text-emerald-600 hover:text-emerald-800 transition-colors text-right">
                           {Object.keys(pagosSeleccionados).length === deudas.length ? 'Deseleccionar Todos' : 'Seleccionar Todos'}
                        </button>
                    </div>
@@ -763,18 +792,24 @@ export default function PagosPacientePage() {
                         const montoPagar = pagosSeleccionados[d.id] || 0;
 
                         return (
-                            <div key={d.id} className={`flex flex-col md:flex-row justify-between items-start md:items-center p-4 md:p-5 rounded-2xl border transition-colors shadow-sm ${isSelected ? 'bg-emerald-50/50 border-emerald-300' : 'bg-slate-50/80 border-slate-200/60 hover:bg-white cursor-pointer'}`} onClick={() => { if (!isSelected) toggleSeleccionPago(d.id, d.deuda) }}>
-                                <div className="flex items-start gap-3 flex-1 pr-4 mb-3 md:mb-0 w-full" onClick={(e) => { if (isSelected) { e.stopPropagation(); toggleSeleccionPago(d.id, d.deuda) } }}>
+                            <div key={d.id} className={`flex flex-col md:flex-row justify-between items-start md:items-center p-4 md:p-5 rounded-2xl border transition-colors shadow-sm gap-4 ${isSelected ? 'bg-emerald-50/50 border-emerald-300' : 'bg-slate-50/80 border-slate-200/60 hover:bg-white cursor-pointer'}`} onClick={() => { if (!isSelected) toggleSeleccionPago(d.id, d.deuda) }}>
+                                <div className="flex items-start gap-3 w-full" onClick={(e) => { if (isSelected) { e.stopPropagation(); toggleSeleccionPago(d.id, d.deuda) } }}>
                                     <div className="pt-1 shrink-0 cursor-pointer"><input type="checkbox" className="w-4 h-4 accent-emerald-500 cursor-pointer" checked={isSelected} readOnly /></div>
-                                    <div className="text-left w-full cursor-pointer">
+                                    <div className="text-left w-full cursor-pointer overflow-hidden">
                                         <div className="flex items-center gap-3 mb-1.5 flex-wrap">
-                                            <p className={`text-xs font-black uppercase leading-none ${isSelected ? 'text-emerald-900' : 'text-slate-800'}`}>{d.nombreDisplay} {d.diente_id ? `(Pieza ${d.diente_id})` : ''}</p>
+                                            <p className={`text-xs font-black uppercase leading-none break-words w-full sm:w-auto ${isSelected ? 'text-emerald-900' : 'text-slate-800'}`}>{d.nombreDisplay} {d.diente_id ? `(Pieza ${d.diente_id})` : ''}</p>
                                             <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest leading-none ${d.estado === 'realizado' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-amber-100 text-amber-700 border border-amber-200'}`}>{d.estado}</span>
                                         </div>
-                                        <p className={`text-[9px] font-bold tracking-widest ${isSelected ? 'text-emerald-700/60' : 'text-slate-400'}`}>{d.doctor} | Pactado: ${Number(d.precio_pactado).toLocaleString('es-CL')} | Pagado: <span className={isSelected ? 'text-emerald-700' : 'text-slate-600'}>${Number(d.abonado).toLocaleString('es-CL')}</span></p>
+                                        <p className={`text-[9px] font-bold tracking-widest flex flex-col sm:flex-row gap-1 sm:gap-2 ${isSelected ? 'text-emerald-700/60' : 'text-slate-400'}`}>
+                                            <span>{d.doctor}</span> 
+                                            <span className="hidden sm:inline">|</span> 
+                                            <span>Pactado: ${Number(d.precio_pactado).toLocaleString('es-CL')}</span> 
+                                            <span className="hidden sm:inline">|</span> 
+                                            <span>Pagado: <span className={isSelected ? 'text-emerald-700' : 'text-slate-600'}>${Number(d.abonado).toLocaleString('es-CL')}</span></span>
+                                        </p>
                                     </div>
                                 </div>
-                                <div className="text-right shrink-0 w-full md:w-auto flex flex-row md:flex-col justify-between items-center md:items-end gap-2 pl-7 md:pl-0 border-t border-slate-200 md:border-0 pt-3 md:pt-0">
+                                <div className="text-left md:text-right shrink-0 w-full md:w-auto flex flex-row md:flex-col justify-between items-center md:items-end gap-2 border-t border-slate-200 md:border-0 pt-3 md:pt-0">
                                     <p className="text-sm font-black text-red-500">Deuda: ${d.deuda.toLocaleString('es-CL')}</p>
                                     {isSelected && (
                                         <div className="flex items-center gap-2">
@@ -810,70 +845,70 @@ export default function PagosPacientePage() {
                         : <p>No tienes caja abierta: <span className="font-black">se abrirá automáticamente</span> al registrar el primer pago.</p>}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {mediosPago.map((medio, index) => (
-                        <div key={medio.id} className="relative p-2 border border-slate-200 bg-slate-50/50 rounded-md space-y-1.5 shadow-sm">
+                        <div key={medio.id} className="relative p-4 border border-slate-200 bg-slate-50/50 rounded-xl space-y-3 shadow-sm">
                             {mediosPago.length > 1 && (
-                                <button onClick={() => eliminarMedioPago(medio.id)} className="absolute top-0.5 right-0.5 text-slate-400 hover:text-red-500 hover:bg-red-50 p-0.5 rounded transition-colors">
-                                    <Trash2 size={10} />
+                                <button onClick={() => eliminarMedioPago(medio.id)} className="absolute top-2 right-2 text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors">
+                                    <Trash2 size={14} />
                                 </button>
                             )}
                             
-                            <div className="flex items-center gap-1.5 mb-1">
-                                <span className="w-3.5 h-3.5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[8px] font-black">{index + 1}</span>
-                                <h5 className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Medio de Pago</h5>
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-black">{index + 1}</span>
+                                <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Medio de Pago</h5>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-1.5">
-                                <div className="space-y-0.5">
-                                    <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest pl-0.5">Método</label>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest pl-1">Método</label>
                                     <div className="relative">
-                                        <select disabled={!puedeVerFinanzas || montoTotalAPagar <= 0} className="w-full py-1 pl-5 pr-1 bg-white hover:bg-slate-50 focus:bg-white border border-slate-200/60 focus:border-emerald-500/50 rounded text-[9px] font-bold uppercase text-slate-700 outline-none focus:ring-1 focus:ring-emerald-500/10 appearance-none shadow-sm disabled:opacity-50" value={medio.metodo} onChange={(e) => updateMedioPago(medio.id, 'metodo', e.target.value)}>
+                                        <select disabled={!puedeVerFinanzas || montoTotalAPagar <= 0} className="w-full py-2 pl-7 pr-3 bg-white hover:bg-slate-50 focus:bg-white border border-slate-200/60 focus:border-emerald-500/50 rounded-lg text-xs font-bold uppercase text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/10 appearance-none shadow-sm disabled:opacity-50" value={medio.metodo} onChange={(e) => updateMedioPago(medio.id, 'metodo', e.target.value)}>
                                             <option value="Transferencia">Transferencia</option>
                                             <option value="Tarjeta de Crédito">Tarjeta de Crédito</option>
                                             <option value="Tarjeta de Débito">Tarjeta de Débito</option>
                                             <option value="Efectivo">Efectivo</option>
                                             {saldoAFavor > 0 && <option value="Saldo a Favor">Saldo a Favor</option>}
                                         </select>
-                                        <div className="absolute left-1.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-                                            {medio.metodo.includes('Tarjeta') ? <CreditCard size={10} /> : medio.metodo === 'Efectivo' ? <Banknote size={10} /> : medio.metodo === 'Saldo a Favor' ? <Wallet size={10}/> : <Landmark size={10} />}
+                                        <div className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                                            {medio.metodo.includes('Tarjeta') ? <CreditCard size={14} /> : medio.metodo === 'Efectivo' ? <Banknote size={14} /> : medio.metodo === 'Saldo a Favor' ? <Wallet size={14}/> : <Landmark size={14} />}
                                         </div>
-                                        <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={10}/>
+                                        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14}/>
                                     </div>
                                 </div>
 
-                                <div className="space-y-0.5">
-                                    <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest pl-0.5">Monto</label>
+                                <div className="space-y-1">
+                                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest pl-1">Monto</label>
                                     <div className="relative">
-                                        <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-emerald-600 font-black text-[9px]">$</span>
-                                        <input type="number" disabled={!puedeVerFinanzas || mediosPago.length === 1 || montoTotalAPagar <= 0} className="w-full py-1 pl-4 pr-1 bg-white border border-emerald-200 text-emerald-700 rounded text-[10px] font-black outline-none focus:ring-1 focus:ring-emerald-500/10 transition-all shadow-sm disabled:opacity-80 disabled:bg-slate-50" value={medio.monto} onChange={(e) => handleMontoManualChange(medio.id, Number(e.target.value))} />
+                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-emerald-600 font-black text-xs">$</span>
+                                        <input type="number" disabled={!puedeVerFinanzas || mediosPago.length === 1 || montoTotalAPagar <= 0} className="w-full py-2 pl-6 pr-3 bg-white border border-emerald-200 text-emerald-700 rounded-lg text-xs font-black outline-none focus:ring-2 focus:ring-emerald-500/10 transition-all shadow-sm disabled:opacity-80 disabled:bg-slate-50" value={medio.monto} onChange={(e) => handleMontoManualChange(medio.id, Number(e.target.value))} />
                                     </div>
                                 </div>
                             </div>
 
                             {medio.metodo !== 'Saldo a Favor' && (
-                                <div className="space-y-1.5 pt-0.5">
-                                    <div className="space-y-0.5">
-                                        <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest pl-0.5">N° Boleta SII (*)</label>
+                                <div className="space-y-3 pt-2">
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest pl-1">N° Boleta SII (*)</label>
                                         <div className="relative">
-                                            <input type="text" disabled={!puedeVerFinanzas || montoTotalAPagar <= 0} placeholder="Ej: 1542" className={`w-full py-1 pl-5 pr-1 bg-white border rounded text-[9px] font-bold uppercase text-slate-800 outline-none focus:ring-1 transition-all shadow-sm ${!medio.numeroBoleta.trim() && montoTotalAPagar > 0 ? 'border-amber-300 focus:border-amber-500 focus:ring-amber-500/10' : 'border-slate-200/60 focus:border-emerald-500/50'}`} value={medio.numeroBoleta} onChange={(e) => updateMedioPago(medio.id, 'numeroBoleta', e.target.value)} />
-                                            <FileText className="absolute left-1.5 top-1/2 -translate-y-1/2 text-slate-400" size={10} />
+                                            <input type="text" disabled={!puedeVerFinanzas || montoTotalAPagar <= 0} placeholder="Ej: 1542" className={`w-full py-2 pl-7 pr-3 bg-white border rounded-lg text-xs font-bold uppercase text-slate-800 outline-none focus:ring-2 transition-all shadow-sm ${!medio.numeroBoleta.trim() && montoTotalAPagar > 0 ? 'border-amber-300 focus:border-amber-500 focus:ring-amber-500/10' : 'border-slate-200/60 focus:border-emerald-500/50'}`} value={medio.numeroBoleta} onChange={(e) => updateMedioPago(medio.id, 'numeroBoleta', e.target.value)} />
+                                            <FileText className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                                         </div>
                                     </div>
                                     {medio.metodo === 'Transferencia' && (
-                                        <div className="grid grid-cols-2 gap-1.5">
-                                            <div className="space-y-0.5">
-                                                <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest pl-0.5">N° Transf (*)</label>
-                                                <input type="text" disabled={!puedeVerFinanzas || montoTotalAPagar <= 0} placeholder="Ej: TR-1092" className={`w-full py-1 px-1.5 bg-white border rounded text-[9px] font-bold uppercase shadow-sm outline-none focus:ring-1 transition-all ${!medio.numeroTransferencia.trim() && montoTotalAPagar > 0 ? 'border-amber-300' : 'border-slate-200/60'}`} value={medio.numeroTransferencia} onChange={(e) => updateMedioPago(medio.id, 'numeroTransferencia', e.target.value)} />
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest pl-1">N° Transf (*)</label>
+                                                <input type="text" disabled={!puedeVerFinanzas || montoTotalAPagar <= 0} placeholder="Ej: TR-1092" className={`w-full py-2 px-3 bg-white border rounded-lg text-xs font-bold uppercase shadow-sm outline-none focus:ring-2 transition-all ${!medio.numeroTransferencia.trim() && montoTotalAPagar > 0 ? 'border-amber-300' : 'border-slate-200/60'}`} value={medio.numeroTransferencia} onChange={(e) => updateMedioPago(medio.id, 'numeroTransferencia', e.target.value)} />
                                             </div>
-                                            <div className="space-y-0.5">
-                                                <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest pl-0.5">Banco (*)</label>
+                                            <div className="space-y-1">
+                                                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest pl-1">Banco (*)</label>
                                                 <div className="relative">
-                                                    <select disabled={!puedeVerFinanzas || montoTotalAPagar <= 0} className={`w-full py-1 pl-1.5 pr-4 bg-white border rounded text-[9px] font-bold uppercase shadow-sm appearance-none outline-none focus:ring-1 transition-all ${!medio.banco.trim() && montoTotalAPagar > 0 ? 'border-amber-300' : 'border-slate-200/60'}`} value={medio.banco} onChange={(e) => updateMedioPago(medio.id, 'banco', e.target.value)}>
+                                                    <select disabled={!puedeVerFinanzas || montoTotalAPagar <= 0} className={`w-full py-2 pl-3 pr-6 bg-white border rounded-lg text-xs font-bold uppercase shadow-sm appearance-none outline-none focus:ring-2 transition-all ${!medio.banco.trim() && montoTotalAPagar > 0 ? 'border-amber-300' : 'border-slate-200/60'}`} value={medio.banco} onChange={(e) => updateMedioPago(medio.id, 'banco', e.target.value)}>
                                                         <option value="" disabled>Seleccionar</option>
                                                         {listaBancos.map(b => <option key={b.nombre} value={b.nombre}>{b.nombre}</option>)}
                                                     </select>
-                                                    <ChevronDown className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={10}/>
+                                                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={14}/>
                                                 </div>
                                             </div>
                                         </div>
@@ -885,22 +920,22 @@ export default function PagosPacientePage() {
                 </div>
 
                 <div className="flex justify-center pt-2">
-                    <button onClick={agregarMedioPago} disabled={!puedeVerFinanzas || montoTotalAPagar <= 0} className="px-6 py-2 border-2 border-dashed border-emerald-300 text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-50 transition-colors flex items-center gap-2 disabled:opacity-50">
-                        <Plus size={14} strokeWidth={3} /> Añadir otra forma de pago
+                    <button onClick={agregarMedioPago} disabled={!puedeVerFinanzas || montoTotalAPagar <= 0} className="px-6 py-2.5 border-2 border-dashed border-emerald-300 text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-50 transition-colors flex items-center gap-2 disabled:opacity-50">
+                        <Plus size={16} strokeWidth={3} /> Añadir forma de pago
                     </button>
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Comentario (opcional)</label>
                     <textarea rows={2} maxLength={500} disabled={!puedeVerFinanzas || montoTotalAPagar <= 0}
-                        placeholder="Ej: Paga el resto la próxima semana / pagó su hija / descuento autorizado por la Dra."
-                        className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/10 resize-none shadow-sm disabled:opacity-50"
+                        placeholder="Ej: Paga el resto la próxima semana / pagó su hija"
+                        className="w-full p-4 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/10 resize-none shadow-sm disabled:opacity-50"
                         value={notaPago} onChange={(e) => setNotaPago(e.target.value)} />
                 </div>
 
-                <button onClick={procesarPagoCaja} disabled={cargandoAccion || montoTotalAPagar <= 0 || !puedeVerFinanzas} className="w-full py-5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 flex items-center justify-center gap-3 border border-emerald-400">
-                  {cargandoAccion ? <Loader2 className="animate-spin" size={18}/> : <CheckCircle2 size={18} strokeWidth={2.5}/>}
-                  {montoTotalAPagar <= 0 ? 'Selecciona un tratamiento arriba' : `Confirmar Pago por $${montoTotalAPagar.toLocaleString('es-CL')}`}
+                <button onClick={procesarPagoCaja} disabled={cargandoAccion || montoTotalAPagar <= 0 || !puedeVerFinanzas} className="w-full py-5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 flex items-center justify-center gap-3 border border-emerald-400">
+                  {cargandoAccion ? <Loader2 className="animate-spin" size={20}/> : <CheckCircle2 size={20} strokeWidth={2.5}/>}
+                  {montoTotalAPagar <= 0 ? 'Selecciona un tratamiento' : `Confirmar $${montoTotalAPagar.toLocaleString('es-CL')}`}
                 </button>
               </motion.div>
             ) : (
@@ -912,21 +947,21 @@ export default function PagosPacientePage() {
             )}
           </div>
 
-          {/* PANEL SECUNDARIO: HISTORIAL DE PAGOS */}
-          <aside className="lg:col-span-5">
-            <div className="bg-white/90 backdrop-blur-xl rounded-[2.5rem] p-8 border border-white/60 shadow-xl h-full">
+          {/* SECCIÓN INFERIOR: HISTORIAL DE PAGOS (100% de ancho) */}
+          <aside className="w-full">
+            <div className="bg-white/90 backdrop-blur-xl rounded-[2.5rem] p-8 border border-white/60 shadow-xl h-full w-full overflow-hidden">
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2"><History size={14} /> Historial de Pagos</h4>
                 {historialPagos.length === 0 ? (
                     <div className="text-center py-16 opacity-50"><ReceiptText size={40} className="mx-auto text-slate-400 mb-3" /><p className="text-[10px] font-bold uppercase text-slate-500 tracking-widest">No hay pagos registrados</p></div>
                 ) : (
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left min-w-[500px]">
+                        <table className="w-full text-left min-w-full">
                             <thead>
                                 <tr className="border-b border-slate-100">
-                                    <th className="p-3 text-[9px] font-black text-slate-400 uppercase"># Pago</th>
-                                    <th className="p-3 text-[9px] font-black text-slate-400 uppercase">Medio(s)</th>
-                                    <th className="p-3 text-[9px] font-black text-slate-400 uppercase text-right">Monto</th>
-                                    <th className="p-3 text-[9px] font-black text-slate-400 uppercase text-center">Acciones</th>
+                                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase"># Pago</th>
+                                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase">Medio(s)</th>
+                                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase text-right">Monto</th>
+                                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase text-center">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -937,76 +972,109 @@ export default function PagosPacientePage() {
                                     
                                     return (
                                         <React.Fragment key={pago.fecha_pago}>
-                                            <tr className={`transition-colors text-xs ${isExpanded ? 'bg-blue-50/50' : 'hover:bg-slate-50/80'}`}>
-                                                <td className="p-3.5 align-top">
+                                            <tr className={`transition-colors text-sm ${isExpanded ? 'bg-blue-50/50' : 'hover:bg-slate-50/80'}`}>
+                                                <td className="p-4 align-top whitespace-nowrap">
                                                     <p className="font-black text-slate-700 uppercase">#{pago.rawPagos[0]?.id?.substring(0, 6)}</p>
-                                                    <p className="text-[9px] font-bold text-slate-400">{new Date(pago.fecha_pago).toLocaleDateString('es-CL')}</p>
+                                                    <p className="text-[10px] font-bold text-slate-400">{new Date(pago.fecha_pago).toLocaleDateString('es-CL')}</p>
                                                 </td>
-                                                <td className="p-3.5 align-top">
-                                                    <p className="font-bold text-slate-600 line-clamp-2 max-w-[120px] leading-tight mb-1">{pago.metodo_pago}</p>
+                                                <td className="p-4 align-top">
+                                                    <p className="font-bold text-slate-600 line-clamp-2 max-w-[250px] leading-tight mb-1">{pago.metodo_pago}</p>
                                                     {pago.metodos_detalle.length > 1 && (
-                                                        <span className="text-[8px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-md font-bold uppercase">Múltiple</span>
+                                                        <span className="text-[9px] bg-slate-200 text-slate-600 px-2 py-0.5 rounded-md font-bold uppercase">Múltiple</span>
                                                     )}
                                                     {pago.nota && (
-                                                        <p className="mt-1 text-[9px] italic text-amber-700 line-clamp-2 max-w-[160px]" title={pago.nota}>💬 {pago.nota}</p>
+                                                        <p className="mt-1.5 text-[10px] italic text-amber-700 line-clamp-2 max-w-[250px]" title={pago.nota}>💬 {pago.nota}</p>
                                                     )}
                                                 </td>
-                                                <td className="p-3.5 align-top text-right">
-                                                    <p className={`font-black text-sm ${isAnulado ? 'text-red-500 line-through' : 'text-emerald-600'}`}>
+                                                <td className="p-4 align-top text-right whitespace-nowrap">
+                                                    <p className={`font-black text-base ${isAnulado ? 'text-red-500 line-through' : 'text-emerald-600'}`}>
                                                         ${Number(pago.monto).toLocaleString('es-CL')}
                                                     </p>
                                                 </td>
-                                                <td className="p-3.5 align-top text-center">
-                                                    <div className="flex items-center justify-center gap-1">
-                                                        <button onClick={() => setExpandedRow(isExpanded ? null : pago.fecha_pago)} className="p-2 text-slate-400 hover:bg-slate-200/80 rounded-xl transition-colors">{isExpanded ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}</button>
-                                                        <button onClick={() => imprimirComprobante(pago)} className="p-2 text-slate-400 hover:bg-slate-200/80 rounded-xl transition-colors"><Printer size={14} /></button>
-                                                        {!isAnulado && (<button onClick={() => reversarPago(pago)} className="p-2 text-red-400 hover:bg-red-50 rounded-xl transition-colors"><Trash2 size={14} /></button>)}
+                                                <td className="p-4 align-top text-center whitespace-nowrap">
+                                                    <div className="flex items-center justify-center gap-1.5">
+                                                        <button onClick={() => setExpandedRow(isExpanded ? null : pago.fecha_pago)} className="p-2 text-slate-400 hover:bg-slate-200/80 rounded-xl transition-colors">{isExpanded ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
+                                                        <button onClick={() => imprimirComprobante(pago)} className="p-2 text-slate-400 hover:bg-slate-200/80 rounded-xl transition-colors"><Printer size={16} /></button>
+                                                        {!isAnulado && (<button onClick={() => reversarPago(pago)} className="p-2 text-red-400 hover:bg-red-50 rounded-xl transition-colors"><Trash2 size={16} /></button>)}
                                                     </div>
                                                 </td>
                                             </tr>
                                             {isExpanded && (
                                                 <tr>
                                                     <td colSpan={4} className="p-0">
-                                                        <motion.div initial={{height: 0, opacity: 0}} animate={{height: 'auto', opacity: 1}} className="bg-slate-100/80 p-4 m-2 rounded-2xl border border-slate-200/60">
+                                                        <motion.div initial={{height: 0, opacity: 0}} animate={{height: 'auto', opacity: 1}} className="bg-slate-100/80 p-5 m-3 rounded-2xl border border-slate-200/60">
                                                             
                                                             {pago.nota && (
-                                                                <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-3">
-                                                                    <h5 className="text-[9px] font-black text-amber-700 uppercase mb-1">Comentario</h5>
-                                                                    <p className="text-[11px] text-slate-700 whitespace-pre-wrap">{pago.nota}</p>
+                                                                <div className="mb-5 bg-amber-50 border border-amber-200 rounded-xl p-4">
+                                                                    <h5 className="text-[10px] font-black text-amber-700 uppercase mb-1.5">Comentario</h5>
+                                                                    <p className="text-xs text-slate-700 whitespace-pre-wrap">{pago.nota}</p>
                                                                 </div>
                                                             )}
-                                                            <h5 className="text-[9px] font-black text-slate-500 uppercase mb-2">Desglose de Tratamientos</h5>
+                                                            <h5 className="text-[10px] font-black text-slate-500 uppercase mb-3">Desglose de Tratamientos</h5>
                                                             {dt.length > 0 ? (
-                                                                <div className="space-y-2 mb-4">
+                                                                <div className="space-y-2.5 mb-5">
                                                                     {dt.map((d:any, i:number) => (
-                                                                        <div key={i} className="flex justify-between items-start bg-white p-3 rounded-xl shadow-sm border border-slate-100">
-                                                                            <div>
-                                                                                <p className="text-[10px] font-black text-slate-700 uppercase">{d.prestacion} {d.diente ? `(Pza ${d.diente})` : ''}</p>
-                                                                                <p className="text-[9px] font-bold text-slate-400">{d.doctor}</p>
+                                                                        <div key={i} className="flex justify-between items-start bg-white p-4 rounded-xl shadow-sm border border-slate-100 gap-3">
+                                                                            <div className="flex-1">
+                                                                                <p className="text-xs font-black text-slate-700 uppercase break-words">{d.prestacion} {d.diente ? `(Pza ${d.diente})` : ''}</p>
+                                                                                <p className="text-[10px] font-bold text-slate-400 mt-0.5">{d.doctor}</p>
                                                                             </div>
-                                                                            <p className="text-[10px] font-bold text-emerald-600">${Number(d.abonado_ahora).toLocaleString('es-CL')}</p>
+                                                                            <p className="text-sm font-bold text-emerald-600 whitespace-nowrap">${Number(d.abonado_ahora).toLocaleString('es-CL')}</p>
                                                                         </div>
                                                                     ))}
                                                                 </div>
-                                                            ) : <p className="text-xs text-slate-400 italic mb-4">Este pago fue un abono directo a la cuenta.</p>}
+                                                            ) : <p className="text-sm text-slate-400 italic mb-5">Este pago fue un abono directo a la cuenta.</p>}
 
-                                                            <h5 className="text-[9px] font-black text-slate-500 uppercase mb-2">Métodos de Pago Utilizados</h5>
-                                                            <div className="space-y-2">
+                                                            <h5 className="text-[10px] font-black text-slate-500 uppercase mb-3">Métodos de Pago Utilizados (Desglosado por Ítem)</h5>
+                                                            <div className="space-y-2.5">
                                                                 {pago.metodos_detalle?.map((md: any, idx: number) => (
-                                                                    <div key={idx} className="flex justify-between items-center bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm">
-                                                                        <div>
-                                                                            <p className="text-[10px] font-bold text-slate-700 uppercase">{md.metodo}</p>
-                                                                            <p className="text-[9px] text-slate-400">
+                                                                    <div key={idx} className="flex flex-col sm:flex-row justify-between sm:items-center bg-white p-4 rounded-xl border border-slate-100 shadow-sm gap-3">
+                                                                        <div className="flex-1 overflow-hidden">
+                                                                            {editandoPagoId === md.id ? (
+                                                                                <div className="flex flex-col gap-2 mb-1.5">
+                                                                                    <select 
+                                                                                        className="w-full max-w-[220px] text-xs font-bold text-slate-700 uppercase border border-slate-300 rounded-lg px-2 py-1.5 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                                                                                        value={nuevoMetodoPago}
+                                                                                        onChange={(e) => setNuevoMetodoPago(e.target.value)}
+                                                                                    >
+                                                                                        <option value="Transferencia">Transferencia</option>
+                                                                                        <option value="Tarjeta de Crédito">Tarjeta de Crédito</option>
+                                                                                        <option value="Tarjeta de Débito">Tarjeta de Débito</option>
+                                                                                        <option value="Efectivo">Efectivo</option>
+                                                                                    </select>
+                                                                                    <div className="flex gap-4">
+                                                                                        <button onClick={() => setEditandoPagoId(null)} className="text-[10px] font-black uppercase text-slate-500 hover:text-slate-700">Cancelar</button>
+                                                                                        <button onClick={() => guardarNuevoMetodoPago(md.id, md.metodo)} disabled={cargandoAccion} className="text-[10px] font-black uppercase text-emerald-600 hover:text-emerald-800 disabled:opacity-50">Guardar</button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div className="flex items-center gap-3 flex-wrap">
+                                                                                    <p className="text-xs font-bold text-slate-700 uppercase">{md.metodo}</p>
+                                                                                    {!isAnulado && puedeVerFinanzas && md.metodo !== 'Saldo a Favor' && (
+                                                                                        <button onClick={() => { setEditandoPagoId(md.id); setNuevoMetodoPago(md.metodo); }} className="text-slate-400 hover:text-blue-500 transition-colors bg-slate-50 p-1.5 rounded-lg" title="Editar método de pago">
+                                                                                            <Pencil size={13} />
+                                                                                        </button>
+                                                                                    )}
+                                                                                </div>
+                                                                            )}
+                                                                            {md.descripcion && (
+                                                                                <p className="text-[10px] text-slate-500 font-bold mb-1 mt-1.5 truncate" title={md.descripcion}>
+                                                                                    ↳ Destino: <span className="text-slate-600 font-medium">{md.descripcion}</span>
+                                                                                </p>
+                                                                            )}
+                                                                            <p className="text-[10px] text-slate-400 mt-1">
                                                                                 {md.boleta && md.boleta !== 'S/N' ? `Bol: ${md.boleta} ` : ''}
                                                                                 {md.ref ? `| ${md.ref}` : ''}
                                                                             </p>
                                                                         </div>
-                                                                        <p className="text-[10px] font-black text-emerald-600">${Number(md.monto).toLocaleString('es-CL')}</p>
+                                                                        <p className="text-sm font-black text-emerald-600 sm:text-right whitespace-nowrap">
+                                                                            ${Number(md.monto).toLocaleString('es-CL')}
+                                                                        </p>
                                                                     </div>
                                                                 ))}
                                                             </div>
 
-                                                            {isAnulado && pago.perfiles && (<div className="mt-4 pt-3 border-t border-red-200 text-center"><p className="text-[9px] font-bold text-red-500">Anulada por {pago.perfiles.nombre_completo} el {new Date(pago.fecha_anulacion).toLocaleDateString('es-CL')}</p></div>)}
+                                                            {isAnulado && pago.perfiles && (<div className="mt-5 pt-4 border-t border-red-200 text-center"><p className="text-[10px] font-bold text-red-500">Anulada por {pago.perfiles.nombre_completo} el {new Date(pago.fecha_anulacion).toLocaleDateString('es-CL')}</p></div>)}
                                                         </motion.div>
                                                     </td>
                                                 </tr>
@@ -1023,7 +1091,6 @@ export default function PagosPacientePage() {
         </div>
       </div>
 
-      {/* MODAL INGRESO MANUAL DE BILLETERA VIRTUAL */}
       <AnimatePresence>
         {modalAbonoLibreAbierto && (
           <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/40 backdrop-blur-md p-4">
@@ -1091,11 +1158,9 @@ export default function PagosPacientePage() {
         )}
       </AnimatePresence>
 
-      {/* CONTENEDOR OCULTO PARA EL GENERADOR DE PDF */}
       <div style={{ position: 'absolute', top: '-9999px', left: '0' }}>
          <div id="comprobante-impresion-pdf" style={{ width: '720px', boxSizing: 'border-box', backgroundColor: '#ffffff', color: '#111827', padding: '30px', fontFamily: 'Arial, sans-serif' }}>
             
-            {/* Cabecera */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                   <img src="/logo.png" alt="Logo" style={{ height: '50px', width: 'auto' }} crossOrigin="anonymous" />
@@ -1110,7 +1175,6 @@ export default function PagosPacientePage() {
                </div>
             </div>
 
-            {/* Paciente */}
             <div style={{ marginBottom: '20px' }}>
                <h3 style={{ fontSize: '12px', fontWeight: 'bold', margin: '0 0 8px 0', borderBottom: '1px solid #ddd', paddingBottom: '4px' }}>Paciente:</h3>
                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#333' }}>
@@ -1127,7 +1191,6 @@ export default function PagosPacientePage() {
                </div>
             </div>
 
-            {/* Tratamientos */}
             <div style={{ marginBottom: '25px' }}>
                <h3 style={{ fontSize: '12px', fontWeight: 'bold', margin: '0 0 8px 0', borderBottom: '1px solid #ddd', paddingBottom: '4px' }}>Tratamientos pagados:</h3>
                <p style={{ fontSize: '11px', fontWeight: 'bold', margin: '0 0 2px 0' }}>Plan de Tratamiento General</p>
@@ -1172,7 +1235,6 @@ export default function PagosPacientePage() {
                </div>
             </div>
 
-            {/* Transacción */}
             <div style={{ marginBottom: '40px' }}>
                <h3 style={{ fontSize: '12px', fontWeight: 'bold', margin: '0 0 8px 0', borderBottom: '1px solid #ddd', paddingBottom: '4px' }}>Transacción:</h3>
                <table style={{ width: '100%', fontSize: '10px', borderCollapse: 'collapse' }}>
@@ -1204,7 +1266,6 @@ export default function PagosPacientePage() {
                </div>
             </div>
 
-            {/* Footer */}
             <div style={{ fontSize: '9px', color: '#666', textAlign: 'center', paddingTop: '20px' }}>
                <p style={{ fontWeight: 'bold', margin: '0 0 2px 0', color: '#333' }}>CENTRO MEDICO Y DENTAL DIGNIDAD SPA</p>
                <p style={{ margin: '0 0 2px 0' }}>Venancia Leiva 1871, Región Metropolitana, La Pintana</p>
