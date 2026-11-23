@@ -78,8 +78,8 @@ export default function HistorialPage() {
         // Solo traemos las columnas estrictamente necesarias
         supabase.from('evoluciones').select('id, fecha_registro, descripcion_procedimiento, profesional_id').eq('paciente_id', paciente_id),
         supabase.from('presupuestos').select('id, created_at, nombre_tratamiento, total, estado, especialista_id').eq('paciente_id', paciente_id),
-        supabase.from('documentos_pacientes').select('id, fecha_subida, titulo, nombre_archivo, descripcion, url_archivo, url_miniatura, tipo_archivo, creado_por').eq('paciente_id', paciente_id),
-        supabase.from('documentos_clinicos').select('id, fecha_creacion, titulo_documento, usuario_id').eq('paciente_id', paciente_id),
+        supabase.from('documentos_pacientes').select('id, fecha_subida, titulo, nombre_archivo, descripcion, url_archivo, url_miniatura, tipo_archivo').eq('paciente_id', paciente_id),
+        supabase.from('documentos_clinicos').select('id, fecha_creacion, titulo_documento, especialista_id, llenado_por').eq('paciente_id', paciente_id),
         supabase.from('pagos').select('id, presupuesto_id, fecha_pago, comentario, nota, detalle_cuota, monto, metodo_pago, estado').eq('paciente_id', paciente_id).neq('estado', 'Anulado'),
         supabase.from('citas').select('id, created_at, inicio, estado, motivo, profesional_id').eq('paciente_id', paciente_id),
         supabase.from('profesionales').select('user_id, nombre, apellido')
