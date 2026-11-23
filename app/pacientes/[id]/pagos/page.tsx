@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { RUTA_SIN_PERMISO } from '@/lib/permisos'
 import { supabase } from '@/lib/supabase'
@@ -339,6 +339,18 @@ export default function PagosPacientePage() {
     }
   }
 
+  // Clave de la operación de cobro: si se corta internet y se reintenta, el servidor reconoce
+  // que ese pago ya quedó registrado y no lo duplica. Se renueva solo cuando el pago se confirma.
+  // La clave se mantiene solo si se reintenta exactamente el mismo cobro (mismos montos, medios y prestaciones).
+  const claveAbonoRef = useRef<{ huella: string; clave: string } | null>(null)
+  const clavePagoRef = useRef<{ huella: string; clave: string } | null>(null)
+  const nuevaClave = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`)
+  const claveDe = (ref: React.MutableRefObject<{ huella: string; clave: string } | null>, lineas: any[], extra: any) => {
+    const huella = JSON.stringify([lineas.map(({ fecha_pago, ...resto }) => resto), extra])
+    if (!ref.current || ref.current.huella !== huella) ref.current = { huella, clave: nuevaClave() }
+    return ref.current.clave
+  }
+
   const procesarAbonoLibre = async () => {
     if (!montoAbonoLibre || Number(montoAbonoLibre) <= 0) return toast.error("Ingrese un monto válido");
     
@@ -359,8 +371,7 @@ export default function PagosPacientePage() {
         const saldoActual = Number(pacienteInfo?.saldo_a_favor || 0);
         const detalleAbono = [{ prestacion: "Ingreso Manual a Saldo a Favor", diente: null, precio: montoNuevo, doctor: "-", abonado_ahora: montoNuevo }];
 
-        const { data: idsPago, error: errPago } = await supabase.rpc('registrar_pago', {
-            p_lineas: [{
+        const lineasAbono = [{
                 paciente_id: paciente_id,
                 monto: montoNuevo,
                 metodo_pago: metodoAbonoLibre,
@@ -371,10 +382,14 @@ export default function PagosPacientePage() {
                 comentario: JSON.stringify(detalleAbono),
                 nota: notaAbonoLibre.trim() || null,
                 caja_id: cajaId
-            }],
+            }];
+        const { data: idsPago, error: errPago } = await supabase.rpc('registrar_pago', {
+            p_lineas: lineasAbono,
             p_saldo_usado: 0,
+            p_clave: claveDe(claveAbonoRef, lineasAbono, 0),
         });
         if (errPago) throw errPago;
+        claveAbonoRef.current = null;
         const idNuevoPago = Array.isArray(idsPago) ? idsPago[0] : null;
         const { data: nuevoPago, error: errLeer } = await supabase.from('pagos').select('*').eq('id', idNuevoPago).single();
         if (errLeer) throw errLeer;
@@ -399,7 +414,7 @@ export default function PagosPacientePage() {
                 metodos_detalle: [{ metodo: nuevoPago.metodo_pago, monto: nuevoPago.monto, boleta: nuevoPago.numero_boleta, ref: nuevoPago.numero_referencia }]
             });
         }
-    } catch (e: any) { toast.error("Error al procesar el ingreso manual", { description: e?.message }); } finally { setCargandoAccion(false); }
+    } catch (e: any) { toast.error("No se pudo confirmar el ingreso", { description: 'Revisa tu conexión y vuelve a intentarlo: si ya había quedado registrado, no se duplicará.' }); } finally { setCargandoAccion(false); }
   }
 
   const procesarPagoCaja = async () => {
@@ -484,8 +499,9 @@ export default function PagosPacientePage() {
             }
         }
 
-        const { data: idsPago, error: errPago } = await supabase.rpc('registrar_pago', { p_lineas: lineasPago, p_saldo_usado: totalSaldoUsado });
+        const { data: idsPago, error: errPago } = await supabase.rpc('registrar_pago', { p_lineas: lineasPago, p_saldo_usado: totalSaldoUsado, p_clave: claveDe(clavePagoRef, lineasPago, totalSaldoUsado) });
         if (errPago) throw errPago;
+        clavePagoRef.current = null;
         idsGenerados = Array.isArray(idsPago) ? idsPago.map(String) : [];
         if (totalSaldoUsado > 0) {
             setPacienteInfo((prev: any) => ({ ...prev, saldo_a_favor: Number(prev?.saldo_a_favor || 0) - totalSaldoUsado }));
@@ -533,7 +549,7 @@ export default function PagosPacientePage() {
         await cargarDatosFinancieros();
         if(window.confirm("¿Desea imprimir el comprobante de pago ahora?")) imprimirComprobante(pagoConsolidadoParaImprimir);
 
-    } catch (e: any) { toast.error("No se registró el pago", { description: e?.message || 'Intenta nuevamente.' }); } finally { setCargandoAccion(false); }
+    } catch (e: any) { toast.error("No se pudo confirmar el pago", { description: 'Revisa tu conexión y vuelve a apretar Pagar: si el pago ya había quedado registrado, no se duplicará.' }); } finally { setCargandoAccion(false); }
   }
 
   const reversarPago = async (pago: any) => {
