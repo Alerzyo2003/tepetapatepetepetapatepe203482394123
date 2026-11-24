@@ -11,6 +11,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import ModalHorarioEspecial from './_components/ModalHorarioEspecial'
+import { HistorialBox, LineaAutoria, useNombresUsuarios } from './_components/Autoria'
 
 const CLAVE_DOCTOR_BOX = 'box_doctor_seleccionado'
 
@@ -52,6 +53,8 @@ export default function BoxConfigPage() {
   const [profesionales, setProfesionales] = useState<any[]>([])
   const [profesionalId, setProfesionalId] = useState('')
   const [disponibilidad, setDisponibilidad] = useState<any[]>([])
+  const nombresUsuarios = useNombresUsuarios()
+  const [recargarHistorial, setRecargarHistorial] = useState(0)
   const [todosLosBloqueos, setTodosLosBloqueos] = useState<any[]>([])
   const [cargando, setCargando] = useState(true)
   const [guardando, setGuardando] = useState(false)
@@ -245,6 +248,7 @@ export default function BoxConfigPage() {
       .eq('profesional_id', profesionalId)
       .order('dia_semana', { ascending: true })
     setDisponibilidad(data || [])
+    setRecargarHistorial(n => n + 1)
   }
 
   async function fetchBloqueos() {
@@ -256,6 +260,7 @@ export default function BoxConfigPage() {
       .select('*')
       .eq('profesional_id', prof.id)
     setTodosLosBloqueos(data || [])
+    setRecargarHistorial(n => n + 1)
   }
 
   const cancelarEdicion = () => {
@@ -825,6 +830,7 @@ export default function BoxConfigPage() {
                           </p>
                           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Sin atención</p>
                           {b.motivo && <p className="text-[9px] font-semibold text-slate-400 mt-1 truncate max-w-[150px]">Motivo: {b.motivo}</p>}
+                          <LineaAutoria fila={b} nombres={nombresUsuarios} verbo="Bloqueó" />
                         </div>
                         <div className="flex gap-2">
                           <button onClick={() => revisarPacientesPendientes(b.fecha)} className="w-10 h-10 flex items-center justify-center text-blue-500 hover:bg-blue-50 bg-white rounded-full shadow-sm border border-blue-100 transition-all" title="Ver pacientes pendientes por reagendar">
@@ -888,6 +894,7 @@ export default function BoxConfigPage() {
                         <div className="flex justify-between items-center mt-2">
                            <div className="bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
                              <span className="text-[11px] font-bold text-slate-600">{b.hora_inicio.substring(0,5)} a {b.hora_fin.substring(0,5)}</span>
+                             <LineaAutoria fila={b} nombres={nombresUsuarios} />
                            </div>
                            <div className="flex gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-all">
                              <button onClick={() => editarBloque(b)} className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-blue-500 hover:bg-blue-50 transition-all" title="Editar bloque">
@@ -926,6 +933,7 @@ export default function BoxConfigPage() {
                                 <div className="text-left">
                                   <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest block mb-0.5">Horario</span>
                                   <span className="text-[11px] font-black text-[#0A111F]">{b.hora_inicio.substring(0,5)} a {b.hora_fin.substring(0,5)}</span>
+                                  <LineaAutoria fila={b} nombres={nombresUsuarios} />
                                 </div>
                                 <div className="w-8 h-8 rounded-full bg-[#C9A24B]/10 text-[#C9A24B] flex items-center justify-center text-[9px] font-black tracking-tighter border border-[#C9A24B]/20">
                                   B{b.box_id}
@@ -946,6 +954,8 @@ export default function BoxConfigPage() {
                   })}
                 </div>
               </div>
+
+              <HistorialBox userId={profesionalId || null} profesionalId={profesionalSeleccionado?.id || null} recargar={recargarHistorial} />
             </div>
           </div>
         </div>
