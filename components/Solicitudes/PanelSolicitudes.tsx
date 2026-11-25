@@ -61,7 +61,7 @@ export default function PanelSolicitudes({ modo }: { modo: 'agenda' | 'general' 
 
   useEffect(() => { cargar() }, [cargar])
   useEffect(() => {
-    supabase.from('profesionales').select('id, nombre, apellido').eq('activo', true).order('nombre').then(({ data }) => setProfesionales(data || []))
+    supabase.from('profesionales').select('id, nombre, apellido, user_id').eq('activo', true).order('nombre').then(({ data }) => setProfesionales(data || []))
     supabase.from('perfiles').select('id, nombre_completo').then(({ data }) => {
       const m: Record<string, string> = {}
       ;(data || []).forEach((p: any) => { m[p.id] = p.nombre_completo || 'Usuario' })
@@ -176,8 +176,11 @@ const inputCls = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 t
 
 function SeccionAgenda({ sec, filas, profesionales, nombres, esAdmin, miId, onCambio, cambiarEstado, guardarRespuesta, borrar }: any) {
   const Icono = sec.icono
-  const vacio = { profesional_id: '', profesional_texto: '', fecha_texto: '', horario_texto: '', detalle: '' }
+  // Si quien escribe es un profesional, se preselecciona a sí mismo (puede cambiarlo para pedir por otro doctor)
+  const miProfId = profesionales.find((p: any) => p.user_id && p.user_id === miId)?.id || ''
+  const vacio = { profesional_id: miProfId, profesional_texto: '', fecha_texto: '', horario_texto: '', detalle: '' }
   const [nueva, setNueva] = useState<any>(vacio)
+  useEffect(() => { if (miProfId) setNueva((n: any) => (n.profesional_id ? n : { ...n, profesional_id: miProfId })) }, [miProfId])
   const [guardando, setGuardando] = useState(false)
   const nombreProf = (f: any) => f.profesionales ? `${f.profesionales.nombre || ''} ${f.profesionales.apellido || ''}`.trim() : ''
 
