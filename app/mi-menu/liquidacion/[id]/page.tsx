@@ -3,6 +3,7 @@ import { useParams } from 'next/navigation'
 import React, { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
+import { conveniosEnCuotas, esConvenioEnCuotas } from '@/lib/convenios'
 import { descargarExcel } from '@/lib/excel'
 import { ChevronLeft, Printer, Download, DollarSign, Loader2, CheckCircle2, History, AlertCircle, Eye, X, Wallet } from 'lucide-react'
 import Link from 'next/link'
@@ -85,7 +86,7 @@ export default function MiDetalleLiquidacionPage() {
         const { data } = await supabase.from('pagos')
           .select(`
             id, monto, fecha_pago, profesional_id, paciente_id,
-            pacientes ( id, nombre, apellido ),
+            pacientes ( id, nombre, apellido, prevision ),
             presupuesto_items ( id, presupuesto_id, profesional_id, nombre_prestacion, precio_pactado, costo_laboratorio, lab_pagado_por_dr, estado, tipo_reparto, porcentaje_forzado, progreso, abonado, diente_id, cara, observacion )
           `)
           .or('estado.is.null,estado.neq.Anulado') // incluye pagos sin estado
@@ -132,6 +133,7 @@ export default function MiDetalleLiquidacionPage() {
         observacion: a.observacion
       }));
 
+      const setCuotas = await conveniosEnCuotas();
       const abonosFormateados = todosLosPagos.filter((pago: any) => {
         const pItem = Array.isArray(pago.presupuesto_items) ? pago.presupuesto_items[0] : (pago.presupuesto_items || {});
         const docId = pago.profesional_id || pItem.profesional_id || null;
@@ -141,6 +143,8 @@ export default function MiDetalleLiquidacionPage() {
         const abonadoTotal = Number(pItem.abonado || 0);
         
         // REGLA INQUEBRANTABLE (Liquidables solo si 100% pagado)
+        // Convenios en cuotas (sindicatos): cada cuota entra en el mes que se paga, sin esperar el 100%
+        if (precioPactado > 0 && esConvenioEnCuotas(pago.pacientes?.prevision, setCuotas)) return true;
         return precioPactado > 0 && abonadoTotal >= precioPactado - 1; // tolerancia de $1 por redondeos
       }).map((pago: any) => {
         const pItem = Array.isArray(pago.presupuesto_items) ? pago.presupuesto_items[0] : (pago.presupuesto_items || {});

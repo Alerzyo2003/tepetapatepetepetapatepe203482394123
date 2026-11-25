@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { conveniosEnCuotas, esConvenioEnCuotas } from '@/lib/convenios'
 // 1. IMPORTAMOS CREATEPORTAL
 import { createPortal } from 'react-dom'
 import { 
@@ -36,7 +37,7 @@ const fechaMs = (f: any) => new Date(f ? String(f).replace(' ', 'T') : 0).getTim
 // - solo pagos de prestaciones pagadas al 100% (tolerancia $1) y evolucionadas (terminadas)
 // - se suman todos los pagos hasta fin de mes (aunque sean de meses anteriores) y las atenciones directas
 // - a eso se le descuenta lo ya pagado en liquidaciones cerradas, repartido del pago más antiguo al más nuevo
-function pendienteDelDoctor(prof: any, atenciones: any[], pagos: any[], cierres: any[]) {
+function pendienteDelDoctor(prof: any, atenciones: any[], pagos: any[], cierres: any[], setCuotas: Set<string>) {
   const porcentajeDr = pctComision(prof.porcentaje_comision) / 100
   const produccion: { fecha: any; restante: number }[] = []
 
@@ -49,7 +50,8 @@ function pendienteDelDoctor(prof: any, atenciones: any[], pagos: any[], cierres:
     if (!item) continue
     if ((item.profesional_id || pago.profesional_id || null) !== prof.user_id) continue
     const precio = Number(item.precio_pactado || 0)
-    if (!(precio > 0 && Number(item.abonado || 0) >= precio - 1)) continue // REGLA: solo si está pagada al 100%
+    const enCuotas = precio > 0 && esConvenioEnCuotas((Array.isArray(pago.pacientes) ? pago.pacientes[0] : pago.pacientes)?.prevision, setCuotas) // convenios en cuotas: cada cuota cuenta en su mes
+    if (!enCuotas && !(precio > 0 && Number(item.abonado || 0) >= precio - 1)) continue // REGLA: solo si está pagada al 100%
 
     const monto = Number(pago.monto || 0)
     const fraccion = Math.min(1, monto / (precio || monto || 1))
@@ -131,10 +133,12 @@ export default function LiquidacionesPage() {
 
       // 3. Obtener pagos/abonos cobrados estrictamente en el mes seleccionado
       // (antes se cortaba en 1.000 pagos y descartaba los pagos sin estado)
+      const setCuotasAdm = await conveniosEnCuotas()
       const abonosData = await traerTodo((a, b) => supabase
         .from('pagos')
         .select(`
           id, monto, fecha_pago, profesional_id, item_id,
+          pacientes ( prevision ),
           presupuesto_items ( profesional_id, precio_pactado, costo_laboratorio, lab_pagado_por_dr, estado, tipo_reparto, porcentaje_forzado )
         `)
         .gte('fecha_pago', inicioRango)
@@ -155,7 +159,7 @@ export default function LiquidacionesPage() {
       const [pagosHistoricos, atencionesHistoricas, cierresHistoricos] = await Promise.all([
         traerTodo((a, b) => supabase
           .from('pagos')
-          .select('id, monto, fecha_pago, profesional_id, item_id, presupuesto_items ( profesional_id, precio_pactado, abonado, costo_laboratorio, lab_pagado_por_dr, estado, tipo_reparto, porcentaje_forzado )')
+          .select('id, monto, fecha_pago, profesional_id, item_id, pacientes ( prevision ), presupuesto_items ( profesional_id, precio_pactado, abonado, costo_laboratorio, lab_pagado_por_dr, estado, tipo_reparto, porcentaje_forzado )')
           .not('item_id', 'is', null)
           .lte('fecha_pago', finRango)
           .or('estado.is.null,estado.neq.Anulado')
@@ -263,7 +267,7 @@ if (tipoReparto === 'doctor') {
 
         const totalYaPagadoHistorico = historialPagosMap[p.id] || 0;
         // Solo prestaciones pagadas al 100% y evolucionadas, menos lo ya liquidado (igual que el detalle del doctor)
-        const saldoPendienteDoctor = Math.round(pendienteDelDoctor(p, atencionesHistoricas, pagosHistoricos, cierresHistoricos));
+        const saldoPendienteDoctor = Math.round(pendienteDelDoctor(p, atencionesHistoricas, pagosHistoricos, cierresHistoricos, setCuotasAdm));
 
         const completamentePagado = totalYaPagadoHistorico > 0 && saldoPendienteDoctor <= 0;
 

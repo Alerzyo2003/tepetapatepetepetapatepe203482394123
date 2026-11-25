@@ -8,6 +8,7 @@ import { descargarExcel } from '@/lib/excel'
 import { ChevronLeft, Printer, DollarSign, Loader2, FlaskConical, CheckCircle2, History, AlertCircle, Download, Eye, X, Wallet } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { conveniosEnCuotas, esConvenioEnCuotas } from '@/lib/convenios'
 import { motion, AnimatePresence } from 'framer-motion'
 
 // Función para evitar que caracteres especiales rompan el formato del Excel
@@ -130,7 +131,7 @@ export default function MiDetalleLiquidacionPage() {
           .from('pagos')
           .select(`
             id, monto, fecha_pago, profesional_id, paciente_id, convenio,
-            pacientes ( id, nombre, apellido ),
+            pacientes ( id, nombre, apellido, prevision ),
             presupuesto_items ( 
               id, presupuesto_id, profesional_id, nombre_prestacion, precio_pactado, 
               abonado, costo_laboratorio, lab_pagado_por_dr, 
@@ -184,6 +185,7 @@ export default function MiDetalleLiquidacionPage() {
         observacion: a.observacion
       }));
 
+      const setCuotas = await conveniosEnCuotas();
       const abonosFormateados = todosLosPagos.filter((pago: any) => {
         const pItem = Array.isArray(pago.presupuesto_items) ? pago.presupuesto_items[0] : (pago.presupuesto_items || {});
         const docId = pItem.profesional_id || pago.profesional_id || null;
@@ -193,6 +195,8 @@ export default function MiDetalleLiquidacionPage() {
         const abonadoTotal = Number(pItem.abonado || 0);
 
         // REGLA INQUEBRANTABLE (Liquidables solo si 100% pagado)
+        // Convenios en cuotas (sindicatos): cada cuota entra en el mes que se paga, sin esperar el 100%
+        if (precioPactado > 0 && esConvenioEnCuotas(pago.pacientes?.prevision, setCuotas)) return true;
         return precioPactado > 0 && abonadoTotal >= precioPactado - 1; // tolerancia de $1 por redondeos
       }).map((pago: any) => {
         const pItem = Array.isArray(pago.presupuesto_items) ? pago.presupuesto_items[0] : (pago.presupuesto_items || {});
