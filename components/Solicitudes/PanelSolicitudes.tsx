@@ -27,7 +27,7 @@ const SECCIONES_AGENDA: { id: Categoria; titulo: string; icono: any; colFecha: s
   { id: 'horario_especial', titulo: '3. Horario especial', icono: CalendarClock, colFecha: 'Fecha', colHorario: 'Horario especial solicitado' },
 ]
 
-const TIPOS_GENERAL = ['Editar pago', 'Corregir N° de voucher / boleta', 'Cambiar medio de pago', 'Anular pago', 'Corregir datos del paciente', 'Otro']
+const TIPOS_GENERAL = ['General', 'Editar pago', 'Corregir N° de voucher / boleta', 'Cambiar medio de pago', 'Anular pago', 'Corregir datos del paciente', 'Otro']
 
 const fechaCorta = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleString('es-CL', { timeZone: 'America/Santiago', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : ''
