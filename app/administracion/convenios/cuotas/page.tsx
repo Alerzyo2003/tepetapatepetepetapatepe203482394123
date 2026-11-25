@@ -54,7 +54,7 @@ export default function CuotasConveniosPage() {
       .in('presupuestos.paciente_id', lista.map((p: any) => p.id))
     // Solo cuentan los tratamientos iniciados: el plan está activo/finalizado, o alguna de sus prestaciones ya se inició (realizada, con avance o con abono).
     // Los borradores y planes sin iniciar no generan deuda en este panel.
-    const todos = (its || []).filter((i: any) => !String(i.presupuestos?.estado || '').toLowerCase().includes('anul'))
+    const todos = ((its || []) as any[]).filter((i: any) => !String(i.presupuestos?.estado || '').toLowerCase().includes('anul'))
     const iniciada = (i: any) => String(i.estado || '').toLowerCase() !== 'pendiente' || Number(i.progreso || 0) > 0 || Number(i.abonado || 0) > 0
     const planesIniciados = new Set<string>()
     for (const i of todos) {
