@@ -26,30 +26,40 @@ export default function AvisoSolicitudes({ userId, rol, onPendientes }: {
     if (!userId || !rol) return
     const esAdmin = rol === 'ADMIN'
 
-    // Cuenta: administración ve todas las pendientes; el resto solo ve cuántas de las suyas siguen abiertas
+    const avisadas = new Set<string>()   // para no avisar dos veces la misma (tiempo real + revisión periódica)
+    let primera = true
+
+    const avisar = (s: any) => {
+      if (!esAdmin || !s?.id || avisadas.has(s.id) || s.creado_por === userId) return
+      avisadas.add(s.id)
+      sonidoSolicitud()
+      const que = ETIQUETA[s.categoria] || 'Solicitud'
+      toast.info(`Nueva solicitud: ${que}`, {
+        description: [s.tipo, s.profesional_texto, s.fecha_texto, s.detalle].filter(Boolean).join(' · ').slice(0, 140) || 'Revisa el panel para resolverla.',
+        duration: 12000,
+        action: { label: 'Ver', onClick: () => { window.location.href = s.categoria === 'general' ? '/mi-menu/solicitudes' : '/mi-menu/solicitudes-agenda' } },
+      })
+    }
+
+    // Cuenta y revisión: administración ve todas las pendientes; el resto solo las suyas.
+    // Además de lo "en vivo", se revisa cada 20 s por si la conexión en vivo se cayó.
     const contar = async () => {
-      let q = supabase.from('solicitudes').select('id, categoria', { count: 'exact' }).in('estado', ['pendiente', 'en_proceso'])
+      let q = supabase.from('solicitudes').select('id, categoria, tipo, profesional_texto, fecha_texto, detalle, creado_por').in('estado', ['pendiente', 'en_proceso'])
       if (!esAdmin) q = q.eq('creado_por', userId)
-      const { data, count, error } = await q
+      const { data, error } = await q
       if (error) return
-      cb.current?.(count ?? (data || []).length, (data || []).filter((s: any) => s.categoria === 'general').length)
+      const filas = data || []
+      cb.current?.(filas.length, filas.filter((x: any) => x.categoria === 'general').length)
+      if (primera) { filas.forEach((x: any) => avisadas.add(x.id)); primera = false }
+      else filas.forEach(avisar)
     }
     contar()
+    const timer = setInterval(contar, 20000)
+    const alVolver = () => { if (document.visibilityState === 'visible') contar() }
+    document.addEventListener('visibilitychange', alVolver)
 
     const canal = supabase.channel(`solicitudes-${userId}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'solicitudes' }, (payload: any) => {
-        const s = payload.new
-        if (esAdmin && s.creado_por !== userId) {
-          sonidoSolicitud()
-          const que = ETIQUETA[s.categoria] || 'Solicitud'
-          toast.info(`Nueva solicitud: ${que}`, {
-            description: [s.tipo, s.profesional_texto, s.fecha_texto, s.detalle].filter(Boolean).join(' · ').slice(0, 140) || 'Revisa el panel para resolverla.',
-            duration: 12000,
-            action: { label: 'Ver', onClick: () => { window.location.href = s.categoria === 'general' ? '/mi-menu/solicitudes' : '/mi-menu/solicitudes-agenda' } },
-          })
-        }
-        contar()
-      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'solicitudes' }, (payload: any) => { avisar(payload.new); contar() })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'solicitudes' }, (payload: any) => {
         const s = payload.new, antes = payload.old || {}
         if (!esAdmin && s.creado_por === userId && antes.estado !== s.estado && (s.estado === 'listo' || s.estado === 'rechazado')) {
@@ -62,7 +72,7 @@ export default function AvisoSolicitudes({ userId, rol, onPendientes }: {
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'solicitudes' }, () => { contar() })
       .subscribe()
 
-    return () => { supabase.removeChannel(canal) }
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', alVolver); supabase.removeChannel(canal) }
   }, [userId, rol])
 
   return null

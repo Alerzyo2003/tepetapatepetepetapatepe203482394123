@@ -246,6 +246,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                         <div className="flex items-center gap-3.5">
                           <span className={`transition-transform duration-300 ${showMiMenu ? 'text-[#C9A24B]' : 'group-hover:text-[#C9A24B] group-hover:scale-110'}`}><Stethoscope size={20}/></span>
                           <span className={`text-[14px] tracking-wide ${showMiMenu ? 'font-bold' : 'font-semibold'}`}>Mi menú</span>
+                          {solPend.total > 0 && <span className="rounded-full bg-[#C9A24B] px-1.5 py-0.5 text-center text-[10px] font-black leading-none text-[#0A111F]">{solPend.total}</span>}
                         </div>
                         <ChevronDown size={16} className={`transition-transform duration-300 ${showMiMenu ? 'rotate-180 text-[#C9A24B]' : ''}`} />
                       </button>
