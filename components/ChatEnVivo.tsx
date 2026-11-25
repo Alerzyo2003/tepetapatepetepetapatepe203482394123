@@ -5,6 +5,7 @@ import { MessageSquareText, X, Send, Loader2, ChevronLeft, MessageSquarePlus, Pa
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import EmojiPicker, { Theme, EmojiStyle } from 'emoji-picker-react'
+import { sonidoEnviar, sonidoRecibir } from '@/lib/sonidos'
 
 // --- Función auxiliar para fechas amigables ---
 const formatFechaAmigable = (fechaIso: string) => {
@@ -35,30 +36,15 @@ export default function ChatGlobal({ session }: { session: any }) {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
-  const audioRef = useRef<HTMLAudioElement>(null) // Audio para recibir
-  const audioSendRef = useRef<HTMLAudioElement>(null) // Audio para enviar
   const chatActivoRef = useRef(chatActivo)
   const isOpenRef = useRef(isOpen)
 
   useEffect(() => { chatActivoRef.current = chatActivo }, [chatActivo])
   useEffect(() => { isOpenRef.current = isOpen }, [isOpen])
 
-  // --- Sonidos ULTRA soft ---
-  const reproducirSonidoRecibir = () => {
-    if (audioRef.current) {
-      audioRef.current.volume = 0.15; // Volumen sutil
-      audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(() => {});
-    }
-  }
-
-  const reproducirSonidoEnviar = () => {
-    if (audioSendRef.current) {
-      audioSendRef.current.volume = 0.1; // Aún más sutil para el envío
-      audioSendRef.current.currentTime = 0;
-      audioSendRef.current.play().catch(() => {});
-    }
-  }
+  // Sonidos generados en el navegador (lib/sonidos): no dependen de internet ni de archivos externos
+  const reproducirSonidoRecibir = sonidoRecibir
+  const reproducirSonidoEnviar = sonidoEnviar
 
   useEffect(() => {
     if (!miUsuario?.id) return;
@@ -143,7 +129,7 @@ export default function ChatGlobal({ session }: { session: any }) {
         })
         
         // Sonido de recibir
-        if (payload.new.emisor_id !== miUsuario?.id) {
+        if (payload.new.emisor_id !== miUsuario?.id && isOpenRef.current) {
           reproducirSonidoRecibir();
         }
 
@@ -242,9 +228,6 @@ export default function ChatGlobal({ session }: { session: any }) {
   return (
     <div className="fixed bottom-6 right-6 md:bottom-8 md:right-8 z-[99999] font-sans flex flex-col items-end">
       
-      {/* Audios para notificaciones (Recibir y Enviar) */}
-      <audio ref={audioRef} src="https://assets.mixkit.co/active_storage/sfx/2360/2360-preview.mp3" preload="auto" />
-      <audio ref={audioSendRef} src="https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3" preload="auto" />
       
       <input type="file" accept="image/*" ref={fileInputRef} onChange={subirImagen} className="hidden" />
 

@@ -15,6 +15,7 @@ import {
 import Link from 'next/link'
 import './globals.css'
 import ChatGlobal from '@/components/ChatEnVivo'
+import AvisoSolicitudes from '@/components/Solicitudes/AvisoSolicitudes'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   
   const [session, setSession] = useState<any>(null)
   const [perfil, setPerfil] = useState<any>(null)
+  const [solPend, setSolPend] = useState({ total: 0, general: 0 })
   const [mounted, setMounted] = useState(false)
   const [busqueda, setBusqueda] = useState('')
   const [resultados, setResultados] = useState<any[]>([])
@@ -270,6 +272,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                                 <SidebarSubLink href="/mi-menu/evaluaciones-implantes" label="Evaluaciones de implantes" onClick={() => setMobileMenuOpen(false)} />
                               )}
 
+                              {/* Todo el personal: solicitudes a administración */}
+                              <SidebarSubLink href="/mi-menu/solicitudes-agenda" label="Solicitudes de agenda" badge={solPend.total - solPend.general} onClick={() => setMobileMenuOpen(false)} />
+                              {['RECEPCIONISTA', 'ASISTENTE', 'ADMIN'].includes(perfil?.rol) && (
+                                <SidebarSubLink href="/mi-menu/solicitudes" label="Solicitudes a administración" badge={solPend.general} onClick={() => setMobileMenuOpen(false)} />
+                              )}
+
                               {/* Recepcionistas, Asistentes y Admins: presupuestos sin aprobar */}
                               {['RECEPCIONISTA', 'ASISTENTE', 'ADMIN'].includes(perfil?.rol) && (
                                 <SidebarSubLink href="/mi-menu/presupuestos-sin-aprobar" label="Presupuestos sin aprobar" onClick={() => setMobileMenuOpen(false)} />
@@ -436,12 +444,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {isAuthPage && <main className="flex-1 w-full bg-[#FBF8F2]">{children}</main>}
         
         {!isAuthPage && session && <ChatGlobal session={session} />}
+        {!isAuthPage && session && perfil && <AvisoSolicitudes userId={session.user.id} rol={perfil.rol} onPendientes={(total, general) => setSolPend({ total, general })} />}
       </body>
     </html>
   )
 }
 
-function SidebarSubLink({ href, label, onClick }: { href: string, label: string, onClick: () => void }) {
+function SidebarSubLink({ href, label, onClick, badge = 0 }: { href: string, label: string, onClick: () => void, badge?: number }) {
   const pathname = usePathname();
   const isActive = pathname === href;
   
@@ -459,6 +468,7 @@ function SidebarSubLink({ href, label, onClick }: { href: string, label: string,
       
       {!isActive && <Circle size={4} className="text-white/20 ml-1" />}
       <span className={isActive ? 'font-bold ml-1' : ''}>{label}</span>
+      {badge > 0 && <span className="ml-auto min-w-[18px] rounded-full bg-[#C9A24B] px-1.5 py-0.5 text-center text-[10px] font-black leading-none text-[#0A111F]">{badge}</span>}
     </Link>
   )
 }
