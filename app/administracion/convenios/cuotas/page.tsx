@@ -142,9 +142,38 @@ export default function CuotasConveniosPage() {
   )
 }
 
+// Reparte la cuota entre las prestaciones del tratamiento en proporción a lo que cada una aún debe,
+// así todos los doctores reciben su parte en forma pareja. Redondea a pesos enteros sin perder ni agregar un peso.
+function repartirCuota(monto: number, items: any[]) {
+  const totalDeuda = items.reduce((a, i) => a + i.deuda, 0)
+  if (totalDeuda <= 0 || monto <= 0) return items.map(() => 0)
+  const base = items.map(i => Math.floor((monto * i.deuda) / totalDeuda))
+  let resto = Math.round(monto) - base.reduce((a, b) => a + b, 0)
+  const orden = items.map((i, k) => ({ k, frac: (monto * i.deuda) / totalDeuda - base[k] })).sort((a, b) => b.frac - a.frac)
+  for (const { k } of orden) {
+    if (resto <= 0) break
+    if (base[k] < items[k].deuda) { base[k] += 1; resto -= 1 }
+  }
+  return base
+}
+
 function PagoCuota({ paciente, doctores, bancos, user, convenio, onListo }: any) {
-  const pendientes = paciente.items.filter((i: any) => i.deuda > 0)
+  // Un tratamiento (presupuesto) = una cuota general que se divide entre sus prestaciones con deuda
+  const planes = useMemo(() => {
+    const m = new Map<string, any>()
+    for (const i of paciente.items.filter((x: any) => x.deuda > 0)) {
+      const g = m.get(i.presupuesto_id) || { id: i.presupuesto_id, nombre: i.presupuestos?.nombre_tratamiento || 'Tratamiento', items: [] }
+      g.items.push(i); m.set(i.presupuesto_id, g)
+    }
+    return Array.from(m.values()).map(g => ({
+      ...g,
+      precio: g.items.reduce((a: number, i: any) => a + Number(i.precio_pactado || 0), 0),
+      abonado: g.items.reduce((a: number, i: any) => a + Number(i.abonado || 0), 0),
+      deuda: g.items.reduce((a: number, i: any) => a + i.deuda, 0),
+    }))
+  }, [paciente.items])
   const [montos, setMontos] = useState<Record<string, string>>({})
+  const [ver, setVer] = useState<string | null>(null)
   const [metodo, setMetodo] = useState('Transferencia')
   const [banco, setBanco] = useState('')
   const [ref, setRef] = useState('')
@@ -156,9 +185,9 @@ function PagoCuota({ paciente, doctores, bancos, user, convenio, onListo }: any)
   const total = Object.values(montos).reduce((a, v) => a + (Number(v) || 0), 0)
 
   const registrar = async () => {
-    const lineasSel = pendientes.filter((i: any) => Number(montos[i.id]) > 0)
-    if (!lineasSel.length) return toast.error('Escribe el monto de la cuota en al menos una prestación')
-    for (const i of lineasSel) if (Number(montos[i.id]) > i.deuda + 1) return toast.error(`La cuota de “${i.nombre_prestacion}” supera su deuda (${clp(i.deuda)})`)
+    const sel = planes.filter((g: any) => Number(montos[g.id]) > 0)
+    if (!sel.length) return toast.error('Escribe el monto de la cuota en algún tratamiento')
+    for (const g of sel) if (Number(montos[g.id]) > g.deuda + 1) return toast.error(`La cuota de “${g.nombre}” supera su deuda (${clp(g.deuda)})`)
     if (!boleta.trim()) return toast.error('Ingresa el N° de boleta')
     if (metodo === 'Transferencia' && (!banco.trim() || !ref.trim())) return toast.error('Ingresa el banco y el N° de transferencia')
     if (!user?.id) return toast.error('Sesión no válida')
@@ -168,29 +197,34 @@ function PagoCuota({ paciente, doctores, bancos, user, convenio, onListo }: any)
       const { caja, recienAbierta } = await asegurarMiCaja(user.id, user.email || 'Administración')
       if (recienAbierta) toast.info(`Se abrió tu caja #${caja.numero_caja}. El pago quedará en ella.`)
       const fecha = new Date().toISOString()
-      const lineas = lineasSel.map((i: any) => {
-        const monto = Number(montos[i.id])
-        return {
-          paciente_id: paciente.id,
-          monto,
-          metodo_pago: metodo,
-          numero_boleta: boleta.trim(),
-          numero_referencia: metodo === 'Transferencia' ? `${banco.trim()} - Ref: ${ref.trim()}` : null,
-          profesional_id: i.profesional_id,
-          item_id: i.id,
-          fecha_pago: fecha,
-          comentario: JSON.stringify([{ id: i.id, prestacion: i.nombre_prestacion, diente: i.diente_id, precio: i.precio_pactado, doctor: doctores[i.profesional_id] || '-', abonado_ahora: monto }]),
-          nota: nota.trim() || `Cuota convenio ${convenio.trim()}`,
-          caja_id: caja.id,
-        }
-      })
+      const lineas: any[] = []
+      for (const g of sel) {
+        const partes = repartirCuota(Math.min(Number(montos[g.id]), g.deuda), g.items)
+        g.items.forEach((i: any, k: number) => {
+          const monto = partes[k]
+          if (monto <= 0) return
+          lineas.push({
+            paciente_id: paciente.id,
+            monto,
+            metodo_pago: metodo,
+            numero_boleta: boleta.trim(),
+            numero_referencia: metodo === 'Transferencia' ? `${banco.trim()} - Ref: ${ref.trim()}` : null,
+            profesional_id: i.profesional_id,
+            item_id: i.id,
+            fecha_pago: fecha,
+            comentario: JSON.stringify([{ id: i.id, prestacion: i.nombre_prestacion, diente: i.diente_id, precio: i.precio_pactado, doctor: doctores[i.profesional_id] || '-', abonado_ahora: monto }]),
+            nota: nota.trim() || `Cuota convenio ${convenio.trim()} (${g.nombre})`,
+            caja_id: caja.id,
+          })
+        })
+      }
       // La clave evita duplicar el pago si se corta internet y se reintenta
       const huella = JSON.stringify(lineas.map(({ fecha_pago, ...r }: any) => r))
       if (!claveRef.current || claveRef.current.huella !== huella) claveRef.current = { huella, clave: nuevaClave() }
       const { error } = await supabase.rpc('registrar_pago', { p_lineas: lineas, p_saldo_usado: 0, p_clave: claveRef.current.clave })
       if (error) throw error
       claveRef.current = null
-      toast.success(`Cuota registrada: ${clp(total)}`)
+      toast.success(`Cuota registrada: ${clp(total)}`, { description: `Repartida en ${lineas.length} prestación(es)` })
       setMontos({}); setRef(''); setBoleta(''); setNota('')
       onListo()
     } catch (e: any) {
@@ -200,24 +234,49 @@ function PagoCuota({ paciente, doctores, bancos, user, convenio, onListo }: any)
 
   return (
     <div className="border-t border-slate-100 bg-[#FBF8F2]/60 px-5 py-4">
-      {pendientes.length === 0 ? <p className="text-[12px] font-semibold text-emerald-600">Sin deuda pendiente.</p> : (
+      {planes.length === 0 ? <p className="text-[12px] font-semibold text-emerald-600">Sin deuda pendiente.</p> : (
         <>
-          <table className="w-full text-left">
-            <thead><tr className="text-[9px] font-black uppercase tracking-widest text-slate-400"><th className="py-1">Prestación</th><th>Doctor</th><th className="text-right">Precio</th><th className="text-right">Pagado</th><th className="text-right">Deuda</th><th className="w-32 pl-3">Cuota a pagar</th></tr></thead>
-            <tbody>
-              {pendientes.map((i: any) => (
-                <tr key={i.id} className="border-t border-slate-100 text-[12px] font-semibold text-slate-700">
-                  <td className="py-2 pr-2">{i.nombre_prestacion}{i.diente_id ? ` (${i.diente_id})` : ''}<span className="block text-[10px] text-slate-400">{i.presupuestos?.nombre_tratamiento}</span></td>
-                  <td className="pr-2 text-[11px]">{doctores[i.profesional_id] || '—'}</td>
-                  <td className="text-right">{clp(i.precio_pactado)}</td>
-                  <td className="text-right">{clp(i.abonado)}</td>
-                  <td className="text-right font-black text-rose-600">{clp(i.deuda)}</td>
-                  <td className="pl-3"><input type="number" min={0} value={montos[i.id] || ''} onChange={e => setMontos({ ...montos, [i.id]: e.target.value })} placeholder="$" className={inputCls} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="mt-4 grid gap-2 md:grid-cols-4">
+          <div className="space-y-3">
+            {planes.map((g: any) => {
+              const m = Number(montos[g.id]) || 0
+              const partes = m > 0 ? repartirCuota(Math.min(m, g.deuda), g.items) : []
+              return (
+                <div key={g.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12px] font-black uppercase text-[#0A111F]">{g.nombre}</p>
+                      <p className="text-[10px] font-semibold text-slate-400">{g.items.length} prestación(es) con deuda · total {clp(g.precio)} · pagado {clp(g.abonado)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Deuda</p>
+                      <p className="text-[14px] font-black text-rose-600">{clp(g.deuda)}</p>
+                    </div>
+                    <div className="w-36"><input type="number" min={0} value={montos[g.id] || ''} onChange={e => setMontos({ ...montos, [g.id]: e.target.value })} placeholder="Cuota $" className={inputCls} /></div>
+                  </div>
+                  <button type="button" onClick={() => setVer(ver === g.id ? null : g.id)} className="mt-1 text-[10px] font-black uppercase tracking-widest text-[#8A6D2F] hover:underline">
+                    {ver === g.id ? 'Ocultar reparto' : 'Ver reparto por prestación'}
+                  </button>
+                  {ver === g.id && (
+                    <table className="mt-2 w-full text-left">
+                      <thead><tr className="text-[9px] font-black uppercase tracking-widest text-slate-400"><th className="py-1">Prestación</th><th>Doctor</th><th className="text-right">Deuda</th><th className="text-right">Recibirá</th></tr></thead>
+                      <tbody>
+                        {g.items.map((i: any, k: number) => (
+                          <tr key={i.id} className="border-t border-slate-100 text-[11px] font-semibold text-slate-700">
+                            <td className="py-1.5 pr-2">{i.nombre_prestacion}{i.diente_id ? ` (${i.diente_id})` : ''}</td>
+                            <td className="pr-2">{doctores[i.profesional_id] || '—'}</td>
+                            <td className="text-right">{clp(i.deuda)}</td>
+                            <td className="text-right font-black text-emerald-700">{m > 0 ? clp(partes[k] || 0) : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          <p className="mt-2 text-[10px] font-semibold text-slate-400">La cuota se divide entre las prestaciones en proporción a lo que cada una debe, para que los doctores reciban su parte de forma pareja.</p>
+          <div className="mt-3 grid gap-2 md:grid-cols-4">
             <select value={metodo} onChange={e => setMetodo(e.target.value)} className={inputCls}>{METODOS.map(m => <option key={m}>{m}</option>)}</select>
             {metodo === 'Transferencia' && <>
               <select value={banco} onChange={e => setBanco(e.target.value)} className={inputCls}><option value="">Banco…</option>{bancos.map((b: string) => <option key={b}>{b}</option>)}</select>
