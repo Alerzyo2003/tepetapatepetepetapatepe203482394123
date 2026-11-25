@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
-import { AlertTriangle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Loader2, Repeat, Save, Trash2, X } from 'lucide-react'
+import { AlertTriangle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Loader2, Plus, Repeat, Save, Trash2, X } from 'lucide-react'
 
 const DIAS_CORTOS = [
   { id: 1, corto: 'Lu', largo: 'lunes' }, { id: 2, corto: 'Ma', largo: 'martes' }, { id: 3, corto: 'Mi', largo: 'miércoles' },
@@ -23,6 +23,20 @@ const etiquetaFecha = (s: string) => deISO(s).toLocaleDateString('es-CL', { week
 
 interface Horario { inicio: string; fin: string }
 
+// Suma minutos a una hora HH:MM (sin pasar de las 23:59)
+const sumarHora = (h: string, min: number) => {
+  const [a, b] = h.split(':').map(Number)
+  const t = Math.min(23 * 60 + 59, (a || 0) * 60 + (b || 0) + min)
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`
+}
+// Un día es inválido si algún tramo tiene el fin antes del inicio o si dos tramos se pisan
+const tramosInvalidos = (tr: Horario[]) => {
+  if (tr.some(t => !t.inicio || !t.fin || t.inicio >= t.fin)) return 'La hora de término debe ser después de la de inicio'
+  const o = [...tr].sort((x, y) => x.inicio.localeCompare(y.inicio))
+  for (let i = 1; i < o.length; i++) if (o[i].inicio < o[i - 1].fin) return 'Los tramos del día se superponen'
+  return ''
+}
+
 interface Props {
   abierto: boolean
   onClose: () => void
@@ -36,9 +50,13 @@ export default function ModalHorarioEspecial({ abierto, onClose, profesional, di
   const hoy = aISO(new Date())
   const [montado, setMontado] = useState(false)
   const [mes, setMes] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1) })
-  const [seleccion, setSeleccion] = useState<Record<string, Horario>>({})
+  // Cada día puede tener varios tramos (ej. 09:00–13:00 y 14:00–18:00, con colación en medio)
+  const [seleccion, setSeleccion] = useState<Record<string, Horario[]>>({})
   const [inicio, setInicio] = useState('09:00')
   const [fin, setFin] = useState('13:00')
+  const [conSegundo, setConSegundo] = useState(false)
+  const [inicio2, setInicio2] = useState('14:00')
+  const [fin2, setFin2] = useState('18:00')
   const [box, setBox] = useState(1)
   // Repetición
   const [diasRep, setDiasRep] = useState<number[]>([])
@@ -53,7 +71,7 @@ export default function ModalHorarioEspecial({ abierto, onClose, profesional, di
     if (!abierto) return
     const d = new Date()
     setMes(new Date(d.getFullYear(), d.getMonth(), 1))
-    setSeleccion({}); setDiasRep([]); setDesde(aISO(d)); setCada(2); setSemanas(8); setCerrarIntermedias(false)
+    setSeleccion({}); setConSegundo(false); setDiasRep([]); setDesde(aISO(d)); setCada(2); setSemanas(8); setCerrarIntermedias(false)
   }, [abierto])
   useEffect(() => {
     if (!abierto) return
@@ -98,11 +116,14 @@ export default function ModalHorarioEspecial({ abierto, onClose, profesional, di
   // Días de la repetición en que el doctor ya atiende todas las semanas: las semanas intermedias quedarían abiertas
   const diasConSemanal = diasRep.filter(d => semanales[d]?.length)
 
+  // Tramos con que se crea un día nuevo
+  const tramosNuevos = (): Horario[] => (conSegundo ? [{ inicio, fin }, { inicio: inicio2, fin: fin2 }] : [{ inicio, fin }])
+
   const marcarRepeticion = () => {
     if (!repeticion.abiertas.length) return toast.error('Elige al menos un día de la semana y desde cuándo')
     setSeleccion(prev => {
       const nueva = { ...prev }
-      for (const f of repeticion.abiertas) if (!nueva[f]) nueva[f] = { inicio, fin }
+      for (const f of repeticion.abiertas) if (!nueva[f]) nueva[f] = tramosNuevos()
       return nueva
     })
     const primero = deISO(repeticion.abiertas[0])
@@ -114,35 +135,51 @@ export default function ModalHorarioEspecial({ abierto, onClose, profesional, di
     if (fecha < hoy) return
     setSeleccion(prev => {
       const nueva = { ...prev }
-      if (nueva[fecha]) delete nueva[fecha]; else nueva[fecha] = { inicio, fin }
+      if (nueva[fecha]) delete nueva[fecha]; else nueva[fecha] = tramosNuevos()
       return nueva
     })
   }
-  const cambiarHora = (fecha: string, campo: keyof Horario, valor: string) =>
-    setSeleccion(prev => ({ ...prev, [fecha]: { ...prev[fecha], [campo]: valor } }))
-  const aplicarATodos = () => setSeleccion(prev => Object.fromEntries(Object.keys(prev).map(f => [f, { inicio, fin }])))
+  const cambiarHora = (fecha: string, i: number, campo: keyof Horario, valor: string) =>
+    setSeleccion(prev => ({ ...prev, [fecha]: prev[fecha].map((t, k) => (k === i ? { ...t, [campo]: valor } : t)) }))
+  // Agrega otro tramo al día, a partir de donde terminó el último (ej. después de la colación)
+  const agregarTramo = (fecha: string) =>
+    setSeleccion(prev => {
+      const tr = prev[fecha] || []
+      const ultimo = tr[tr.length - 1]
+      const ini = ultimo?.fin ? sumarHora(ultimo.fin, 60) : '14:00'
+      const term = sumarHora(ini, 240)
+      return { ...prev, [fecha]: [...tr, { inicio: ini, fin: term }] }
+    })
+  const quitarTramo = (fecha: string, i: number) =>
+    setSeleccion(prev => {
+      const tr = prev[fecha].filter((_, k) => k !== i)
+      const nueva = { ...prev }
+      if (tr.length) nueva[fecha] = tr; else delete nueva[fecha]
+      return nueva
+    })
+  const aplicarATodos = () => setSeleccion(prev => Object.fromEntries(Object.keys(prev).map(f => [f, tramosNuevos()])))
 
   const fechas = Object.keys(seleccion).sort()
-  const invalidas = fechas.filter(f => !seleccion[f].inicio || !seleccion[f].fin || seleccion[f].inicio >= seleccion[f].fin)
+  const invalidas = fechas.filter(f => tramosInvalidos(seleccion[f]))
   const intermediasACerrar = cerrarIntermedias ? repeticion.intermedias.filter(f => !bloqueados[f]) : []
 
   async function guardar() {
     if (!profesional) return
     if (!fechas.length) return toast.error('Elige al menos un día en el calendario')
-    if (invalidas.length) return toast.error(`Revisa el horario de ${invalidas.map(etiquetaFecha).join(', ')}: la hora de término debe ser después de la de inicio`)
+    if (invalidas.length) return toast.error(`Revisa el horario de ${invalidas.map(etiquetaFecha).join(', ')}: ${tramosInvalidos(seleccion[invalidas[0]]).toLowerCase()}`)
     setGuardando(true)
     try {
       // No se duplica un horario idéntico que ya exista ese día
-      const filas = fechas
-        .filter(f => !(especiales[f] || []).some(e => hhmm(e.hora_inicio) === seleccion[f].inicio && hhmm(e.hora_fin) === seleccion[f].fin))
-        .map(f => ({
+      const filas = fechas.flatMap(f => seleccion[f]
+        .filter(t => !(especiales[f] || []).some(e => hhmm(e.hora_inicio) === t.inicio && hhmm(e.hora_fin) === t.fin))
+        .map(t => ({
           profesional_id: profesional.user_id,
           dia_semana: deISO(f).getDay(),
-          hora_inicio: seleccion[f].inicio,
-          hora_fin: seleccion[f].fin,
+          hora_inicio: t.inicio,
+          hora_fin: t.fin,
           box_id: box,
           fecha_especifica: f,
-        }))
+        })))
       if (filas.length) {
         const { error } = await supabase.from('disponibilidad_profesional').insert(filas)
         if (error) throw error
@@ -167,10 +204,11 @@ export default function ModalHorarioEspecial({ abierto, onClose, profesional, di
         }
       }
 
-      const omitidos = fechas.length - filas.length
-      toast.success(`Horario especial guardado en ${filas.length} día${filas.length === 1 ? '' : 's'}`, {
+      const totalTramos = fechas.reduce((a, f) => a + seleccion[f].length, 0)
+      const omitidos = totalTramos - filas.length
+      toast.success(`Horario especial guardado: ${filas.length} tramo${filas.length === 1 ? '' : 's'} en ${fechas.length} día${fechas.length === 1 ? '' : 's'}`, {
         description: [
-          omitidos ? `${omitidos} ya tenían ese mismo horario.` : '',
+          omitidos ? `${omitidos} tramo${omitidos === 1 ? '' : 's'} ya existía${omitidos === 1 ? '' : 'n'}.` : '',
           cerradas ? `${cerradas} día${cerradas === 1 ? '' : 's'} intermedio${cerradas === 1 ? '' : 's'} cerrado${cerradas === 1 ? '' : 's'}.` : '',
         ].filter(Boolean).join(' ') || undefined,
       })
@@ -340,6 +378,22 @@ export default function ModalHorarioEspecial({ abierto, onClose, profesional, di
                   <input type="time" value={fin} onChange={e => setFin(e.target.value)} className="mt-1 w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 outline-none focus:border-[#C9A24B]" />
                 </label>
               </div>
+              <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600 cursor-pointer">
+                <input type="checkbox" checked={conSegundo} onChange={e => setConSegundo(e.target.checked)} className="w-4 h-4 accent-[#0A111F]" />
+                Con colación (segundo tramo después)
+              </label>
+              {conSegundo && (
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Vuelve a las</span>
+                    <input type="time" value={inicio2} onChange={e => setInicio2(e.target.value)} className="mt-1 w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 outline-none focus:border-[#C9A24B]" />
+                  </label>
+                  <label className="block">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Hasta</span>
+                    <input type="time" value={fin2} onChange={e => setFin2(e.target.value)} className="mt-1 w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-900 outline-none focus:border-[#C9A24B]" />
+                  </label>
+                </div>
+              )}
               <div>
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Box</span>
                 <div className="mt-1 grid grid-cols-3 gap-2">
@@ -350,7 +404,7 @@ export default function ModalHorarioEspecial({ abierto, onClose, profesional, di
               </div>
               {fechas.length > 0 && (
                 <button type="button" onClick={aplicarATodos} className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-widest hover:bg-slate-50">
-                  Aplicar {inicio}–{fin} a los {fechas.length} días elegidos
+                  Aplicar {inicio}–{fin}{conSegundo ? ` y ${inicio2}–${fin2}` : ''} a los {fechas.length} días elegidos
                 </button>
               )}
             </div>
@@ -365,8 +419,9 @@ export default function ModalHorarioEspecial({ abierto, onClose, profesional, di
               ) : (
                 <div className="space-y-2 max-h-[42vh] overflow-y-auto pr-1">
                   {fechas.map(f => {
-                    const h = seleccion[f]
-                    const mal = invalidas.includes(f)
+                    const tramos = seleccion[f]
+                    const errorDia = tramosInvalidos(tramos)
+                    const mal = !!errorDia
                     const avisos = [
                       especiales[f] ? `Ya tiene: ${especiales[f].map(e => `${hhmm(e.hora_inicio)}–${hhmm(e.hora_fin)}`).join(', ')}` : '',
                       bloqueados[f] ? (bloqueados[f].hora_inicio ? 'Tiene un bloqueo de algunas horas' : 'Día bloqueado: no se podrá agendar') : '',
@@ -374,15 +429,22 @@ export default function ModalHorarioEspecial({ abierto, onClose, profesional, di
                     ].filter(Boolean)
                     return (
                       <div key={f} className={`rounded-2xl border p-3 ${mal ? 'border-red-300 bg-red-50/50' : 'border-slate-200 bg-slate-50/50'}`}>
-                        <div className="flex items-center gap-2">
-                          <span className="w-24 shrink-0 text-xs font-black text-slate-800 capitalize">{etiquetaFecha(f)}</span>
-                          <input type="time" value={h.inicio} onChange={e => cambiarHora(f, 'inicio', e.target.value)} className="flex-1 min-w-0 p-2 bg-white border border-slate-200 rounded-lg font-bold text-xs text-slate-900 outline-none focus:border-[#C9A24B]" aria-label="Desde" />
-                          <span className="text-slate-400 text-xs">a</span>
-                          <input type="time" value={h.fin} onChange={e => cambiarHora(f, 'fin', e.target.value)} className="flex-1 min-w-0 p-2 bg-white border border-slate-200 rounded-lg font-bold text-xs text-slate-900 outline-none focus:border-[#C9A24B]" aria-label="Hasta" />
-                          <button type="button" onClick={() => alternar(f)} className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50" aria-label="Quitar día"><Trash2 size={14} /></button>
+                        <div className="flex items-start gap-2">
+                          <span className="w-24 shrink-0 pt-2 text-xs font-black text-slate-800 capitalize">{etiquetaFecha(f)}</span>
+                          <div className="flex-1 min-w-0 space-y-1.5">
+                            {tramos.map((t, i) => (
+                              <div key={i} className="flex items-center gap-2">
+                                <input type="time" value={t.inicio} onChange={e => cambiarHora(f, i, 'inicio', e.target.value)} className="flex-1 min-w-0 p-2 bg-white border border-slate-200 rounded-lg font-bold text-xs text-slate-900 outline-none focus:border-[#C9A24B]" aria-label="Desde" />
+                                <span className="text-slate-400 text-xs">a</span>
+                                <input type="time" value={t.fin} onChange={e => cambiarHora(f, i, 'fin', e.target.value)} className="flex-1 min-w-0 p-2 bg-white border border-slate-200 rounded-lg font-bold text-xs text-slate-900 outline-none focus:border-[#C9A24B]" aria-label="Hasta" />
+                                <button type="button" onClick={() => quitarTramo(f, i)} className="p-2 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50" aria-label={tramos.length > 1 ? 'Quitar tramo' : 'Quitar día'}><Trash2 size={14} /></button>
+                              </div>
+                            ))}
+                            <button type="button" onClick={() => agregarTramo(f)} className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[#8A6D2F] hover:underline"><Plus size={12} /> Agregar tramo (colación)</button>
+                          </div>
                         </div>
                         {avisos.length > 0 && <p className="mt-1.5 text-[10px] font-semibold text-amber-700">{avisos.join(' · ')}</p>}
-                        {mal && <p className="mt-1 text-[10px] font-bold text-red-600">La hora de término debe ser después de la de inicio</p>}
+                        {mal && <p className="mt-1 text-[10px] font-bold text-red-600">{errorDia}</p>}
                       </div>
                     )
                   })}
@@ -396,7 +458,7 @@ export default function ModalHorarioEspecial({ abierto, onClose, profesional, di
         <div className="px-4 sm:px-8 py-4 border-t border-slate-200 bg-white flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shrink-0">
           <p className="text-[11px] font-semibold text-slate-500 flex items-start gap-2">
             <CheckCircle2 size={14} className="shrink-0 mt-0.5 text-[#C9A24B]" />
-            Un horario especial reemplaza el horario semanal de ese día. Para agregar un segundo tramo (ej. la tarde), vuelve a abrir el calendario con esos mismos días.
+            Un horario especial reemplaza el horario semanal de ese día. Cada día puede tener varios tramos (ej. 09:00–13:00 y 14:00–18:00 con colación en medio): usa “Con colación” o “Agregar tramo”.
           </p>
           <div className="flex gap-2 shrink-0">
             <button type="button" onClick={onClose} disabled={guardando} className="px-5 py-3.5 rounded-2xl border border-slate-200 text-slate-600 text-[11px] font-black uppercase tracking-widest hover:bg-slate-50">Cancelar</button>

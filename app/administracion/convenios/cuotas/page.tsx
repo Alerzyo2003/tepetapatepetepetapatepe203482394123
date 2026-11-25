@@ -50,9 +50,18 @@ export default function CuotasConveniosPage() {
     if (!lista.length) { setItems([]); setCargando(false); return }
     const { data: its } = await supabase
       .from('presupuesto_items')
-      .select('id, presupuesto_id, nombre_prestacion, diente_id, precio_pactado, abonado, estado, profesional_id, presupuestos!inner(paciente_id, nombre_tratamiento, estado)')
+      .select('id, presupuesto_id, nombre_prestacion, diente_id, precio_pactado, abonado, estado, progreso, profesional_id, presupuestos!inner(paciente_id, nombre_tratamiento, estado)')
       .in('presupuestos.paciente_id', lista.map((p: any) => p.id))
-    setItems((its || []).filter((i: any) => !String(i.presupuestos?.estado || '').toLowerCase().includes('anul')))
+    // Solo cuentan los tratamientos iniciados: el plan está activo/finalizado, o alguna de sus prestaciones ya se inició (realizada, con avance o con abono).
+    // Los borradores y planes sin iniciar no generan deuda en este panel.
+    const todos = (its || []).filter((i: any) => !String(i.presupuestos?.estado || '').toLowerCase().includes('anul'))
+    const iniciada = (i: any) => String(i.estado || '').toLowerCase() !== 'pendiente' || Number(i.progreso || 0) > 0 || Number(i.abonado || 0) > 0
+    const planesIniciados = new Set<string>()
+    for (const i of todos) {
+      const estadoPlan = String(i.presupuestos?.estado || '').toLowerCase()
+      if (estadoPlan.includes('activo') || estadoPlan.includes('finalizado') || iniciada(i)) planesIniciados.add(i.presupuesto_id)
+    }
+    setItems(todos.filter((i: any) => planesIniciados.has(i.presupuesto_id)))
     setCargando(false)
   }, [convenioSel])
   useEffect(() => { cargar() }, [cargar])
@@ -80,7 +89,7 @@ export default function CuotasConveniosPage() {
       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#C9A24B]">Convenios en cuotas</p>
       <h1 className="font-serif text-3xl font-black text-[#0A111F]">Cuotas de sindicatos</h1>
       <p className="mt-1 max-w-2xl text-[12px] font-semibold text-slate-500">
-        Pacientes del convenio con su deuda. Cada cuota que registres aquí queda como pago del paciente (en tu caja) y entra a la liquidación del doctor en el mes en que se paga, sin esperar a que el tratamiento esté pagado al 100%.
+        Pacientes del convenio con su deuda (solo de tratamientos ya iniciados). Cada cuota que registres aquí queda como pago del paciente (en tu caja) y entra a la liquidación del doctor en el mes en que se paga, sin esperar a que el tratamiento esté pagado al 100%.
       </p>
 
       {!convenios.length && !cargando && <p className="mt-8 text-sm font-semibold text-slate-400">No hay convenios marcados como “pago en cuotas”.</p>}
