@@ -267,10 +267,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                                 <SidebarSubLink href="/mi-menu/aranceles" label="Ver Aranceles" onClick={() => setMobileMenuOpen(false)} />
                               )}
 
-                              {/* Recepcionistas y Admins: seguimiento de evaluaciones de implantes */}
-                              {['RECEPCIONISTA', 'ADMIN'].includes(perfil?.rol) && (
-                                <SidebarSubLink href="/mi-menu/evaluaciones-implantes" label="Evaluaciones de implantes" onClick={() => setMobileMenuOpen(false)} />
-                              )}
 
                               {/* Todo el personal: solicitudes a administración */}
                               <SidebarSubLink href="/mi-menu/solicitudes-agenda" label="Solicitudes de agenda" badge={solPend.total - solPend.general} onClick={() => setMobileMenuOpen(false)} />

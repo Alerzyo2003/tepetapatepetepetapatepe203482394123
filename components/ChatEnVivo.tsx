@@ -39,6 +39,18 @@ export default function ChatGlobal({ session }: { session: any }) {
   const chatActivoRef = useRef(chatActivo)
   const isOpenRef = useRef(isOpen)
 
+  // Siempre mostrar el último mensaje: al abrir una conversación baja de inmediato; con mensajes nuevos baja suave
+  const abrioChatRef = useRef(true)
+  useEffect(() => { abrioChatRef.current = true }, [chatActivo?.id])
+  useEffect(() => {
+    if (view !== 'chat' || !isOpen || loading) return
+    const comportamiento: ScrollBehavior = abrioChatRef.current ? 'auto' : 'smooth'
+    abrioChatRef.current = false
+    const t = requestAnimationFrame(() => scrollRef.current?.scrollIntoView({ behavior: comportamiento, block: 'end' }))
+    const t2 = setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' }), 450) // tras la animación de apertura
+    return () => { cancelAnimationFrame(t); clearTimeout(t2) }
+  }, [mensajes.length, view, isOpen, loading, chatActivo?.id])
+
   useEffect(() => { chatActivoRef.current = chatActivo }, [chatActivo])
   useEffect(() => { isOpenRef.current = isOpen }, [isOpen])
 
@@ -374,7 +386,7 @@ export default function ChatGlobal({ session }: { session: any }) {
                           
                           {m.imagen_url && (
                               <div className="mb-2 overflow-hidden rounded-xl bg-black/5 flex justify-center border border-white/10">
-                                 <img src={m.imagen_url} alt="Adjunto" className="max-w-full h-auto object-cover cursor-pointer transition-opacity duration-300 hover:opacity-90" onClick={() => window.open(m.imagen_url, '_blank')} />
+                                 <img onLoad={() => scrollRef.current?.scrollIntoView({ block: 'end' })} src={m.imagen_url} alt="Adjunto" className="max-w-full h-auto object-cover cursor-pointer transition-opacity duration-300 hover:opacity-90" onClick={() => window.open(m.imagen_url, '_blank')} />
                               </div>
                           )}
 
