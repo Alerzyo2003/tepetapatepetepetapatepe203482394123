@@ -101,6 +101,8 @@ export default function HorariosDisponiblesPage() {
                         {f.es_mio ? 'Es tuyo' : `Reclamado por ${nombreCorto(f.reclamado_por)}`}
                         {(f.es_mio || esAdmin) && <button onClick={() => liberar(f)} disabled={trabajando === clave(f)} className="ml-3 text-rose-600 hover:underline">Liberar</button>}
                       </span>
+                    ) : f.cubierto_por ? (
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ya cubierto por {nombreCorto(f.cubierto_por)}</span>
                     ) : puedeReclamar && f.origen_user_id !== undefined ? (
                       <button onClick={() => reclamar(f)} disabled={trabajando === clave(f)}
                         className="inline-flex items-center gap-1.5 rounded-xl bg-[#0A111F] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white disabled:opacity-40">
