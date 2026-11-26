@@ -333,6 +333,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                               <SidebarSubLink href="/administracion/especialidades" label="Especialidades" onClick={() => setMobileMenuOpen(false)} />
                               <SidebarSubLink href="/administracion/convenios" label="Convenios" onClick={() => setMobileMenuOpen(false)} />
                               <SidebarSubLink href="/administracion/convenios/cuotas" label="Cuotas de convenios" onClick={() => setMobileMenuOpen(false)} />
+                              <SidebarSubLink href="/administracion/convenios/fonasa" label="Pagos Fonasa" onClick={() => setMobileMenuOpen(false)} />
                               <SidebarSubLink href="/administracion/box" label="Gestión de Box" onClick={() => setMobileMenuOpen(false)} />
 
                               <GroupTitle title="Operaciones" />
