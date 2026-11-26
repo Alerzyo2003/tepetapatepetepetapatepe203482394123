@@ -60,6 +60,12 @@ export default function PanelSolicitudes({ modo }: { modo: 'agenda' | 'general' 
   }, [modo, verTodas])
 
   useEffect(() => { cargar() }, [cargar])
+  // Al abrir el panel, los avisos pendientes de esta persona se dan por vistos (el número del menú se limpia)
+  useEffect(() => {
+    supabase.rpc('solicitudes_marcar_vistas').then(({ error }) => {
+      if (!error) setTimeout(() => window.dispatchEvent(new Event('solicitudes-vistas')), 400)
+    })
+  }, [])
   useEffect(() => {
     supabase.from('profesionales').select('id, nombre, apellido, user_id').eq('activo', true).order('nombre').then(({ data }) => setProfesionales(data || []))
     supabase.from('perfiles').select('id, nombre_completo').then(({ data }) => {
