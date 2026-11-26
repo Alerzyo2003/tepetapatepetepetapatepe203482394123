@@ -12,7 +12,7 @@ import {
   Loader2, MessageCircle, Plus, Save, Search, User, X,
 } from 'lucide-react'
 import ModalShell from './ModalShell'
-import { contarInasistencias, registrarAuditoria } from './data'
+import { contarInasistencias, obtenerFinanzasPacientes, registrarAuditoria } from './data'
 import {
   abrirWhatsApp, capitalizar, DIRECCION_CLINICA, DURACIONES_DISPONIBLES, esWebPendiente, fechaLarga,
   formatearTelefonoParaGuardar, getDiasLunesSabado, getInitials, getLocalDateISO, horaDeStr,
@@ -282,10 +282,19 @@ function FormularioAgendar({
     setPacientesEncontrados([]);
     setInasistenciasPaciente(0);
 
-    const [{ data }, inasist] = await Promise.all([
+    const [{ data }, inasist, fin] = await Promise.all([
       supabase.from('presupuestos').select('id, nombre_tratamiento').eq('paciente_id', paciente.id).neq('estado', 'finalizado').order('fecha_creacion', { ascending: false }),
       contarInasistencias([paciente.id]),
+      obtenerFinanzasPacientes([paciente.id]).catch(() => null),
     ]);
+    // Aviso de deuda: tratamientos ya realizados que no están pagados
+    const deuda = fin?.[paciente.id]?.deuda_realizada || 0;
+    if (deuda > 0) {
+      toast.warning(`${paciente.nombre} ${paciente.apellido} tiene deuda`, {
+        description: `Debe $${Math.round(deuda).toLocaleString('es-CL')} de tratamientos ya realizados. Recuerda gestionar el pago.`,
+        duration: 12000,
+      });
+    }
     setTratamientosPaciente(data || []);
     setTratamientoSeleccionadoId('MANUAL');
     setInasistenciasPaciente(inasist[paciente.id] || 0);
