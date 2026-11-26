@@ -267,7 +267,7 @@ export default function DetalleLiquidacionPage() {
         for (let i = 0; i < poolProduccion.length; i++) {
           let item = poolProduccion[i];
 
-          if (item.honorario_restante <= 0) continue;
+          if (item.honorario_restante < 1) continue; // menos de $1 son restos de redondeo
           if (montoARepartir <= 0) break;
 
           let fechaItem = new Date(item.fecha ? item.fecha.replace(' ', 'T') : 0);
@@ -299,7 +299,7 @@ export default function DetalleLiquidacionPage() {
 
       // 7. Separar lo que quedó pendiente a pagar de los 100% liquidados
       const pendientesFinal = poolProduccion
-        .filter(p => p.honorario_restante > 0)
+        .filter(p => p.honorario_restante >= 1)
         .map(p => ({
           ...p,
           honorario: p.honorario_restante
@@ -359,7 +359,7 @@ export default function DetalleLiquidacionPage() {
       // Ids ya liquidados 100% en CUALQUIER cierre (no solo los del mes consultado)
       const idsLiquidados = new Set(
         poolProduccion
-          .filter(p => p.honorario > 0 && p.honorario_restante <= 0)
+          .filter(p => p.honorario > 0 && p.honorario_restante < 1)
           .map(p => p.tratamiento_id)
       );
 
