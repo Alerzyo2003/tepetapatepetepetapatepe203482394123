@@ -270,6 +270,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 
                               {/* Todo el personal: solicitudes a administración */}
+                              {['DENTISTA', 'ADMIN'].includes(perfil?.rol) && (
+                                <SidebarSubLink href="/mi-menu/horarios-disponibles" label="Horarios disponibles" onClick={() => setMobileMenuOpen(false)} />
+                              )}
                               <SidebarSubLink href="/mi-menu/solicitudes-agenda" label="Solicitudes de agenda" badge={solPend.total - solPend.general} onClick={() => setMobileMenuOpen(false)} />
                               {['RECEPCIONISTA', 'ASISTENTE', 'DENTISTA', 'ADMIN'].includes(perfil?.rol) && (
                                 <SidebarSubLink href="/mi-menu/solicitudes" label="Solicitudes a administración" badge={solPend.general} onClick={() => setMobileMenuOpen(false)} />
