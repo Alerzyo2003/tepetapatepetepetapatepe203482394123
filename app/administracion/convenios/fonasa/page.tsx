@@ -25,7 +25,8 @@ export default function PagosFonasaPage() {
   const [bancos, setBancos] = useState<string[]>([])
   const [cargando, setCargando] = useState(true)
   const [buscar, setBuscar] = useState('')
-  const [filtro, setFiltro] = useState<'deuda' | 'todos'>('deuda')
+  // Por defecto solo se muestran los pacientes con deuda real (prestación ya iniciada). El botón muestra también los que solo tienen la prestación presupuestada.
+  const [verPresupuestados, setVerPresupuestados] = useState(false)
   const [abierto, setAbierto] = useState<string | null>(null)
 
   useEffect(() => {
@@ -74,14 +75,18 @@ export default function PagosFonasaPage() {
         ...i,
         deuda: Math.max(0, Number(i.precio_pactado || 0) - Number(i.abonado || 0)),
         realizada: ESTADOS_REALIZADO.includes(String(i.estado || '').toLowerCase()),
+        iniciada: String(i.estado || '').toLowerCase() !== 'pendiente' || Number(i.progreso || 0) > 0 || Number(i.abonado || 0) > 0,
       }))
       const total = its.reduce((a, i) => a + Number(i.precio_pactado || 0), 0)
       const abonado = its.reduce((a, i) => a + Number(i.abonado || 0), 0)
-      return { ...p, items: its, total, abonado, deuda: its.reduce((a, i) => a + i.deuda, 0) }
+      // Deuda real: solo de prestaciones iniciadas. Lo que solo está presupuestado no cuenta como deuda.
+      const deuda = its.reduce((a, i) => a + (i.iniciada ? i.deuda : 0), 0)
+      const presupuestado = its.reduce((a, i) => a + (i.iniciada ? 0 : i.deuda), 0)
+      return { ...p, items: its, total, abonado, deuda, presupuestado }
     })
-      .filter(p => (filtro === 'todos' || p.deuda > 0) && (!t || `${p.nombre} ${p.apellido} ${p.rut || ''}`.toLowerCase().includes(t)))
+      .filter(p => (verPresupuestados ? true : p.deuda > 0) && (!t || `${p.nombre} ${p.apellido} ${p.rut || ''}`.toLowerCase().includes(t)))
       .sort((a, b) => b.deuda - a.deuda)
-  }, [pacientes, items, buscar, filtro])
+  }, [pacientes, items, buscar, verPresupuestados])
 
   const totalDeuda = filas.reduce((a, p) => a + p.deuda, 0)
 
@@ -93,14 +98,14 @@ export default function PagosFonasaPage() {
       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#C9A24B]">Prestaciones Fonasa</p>
       <h1 className="font-serif text-3xl font-black text-[#0A111F]">Pagos Fonasa</h1>
       <p className="mt-1 max-w-2xl text-[12px] font-semibold text-slate-500">
-        Pacientes con prestaciones Fonasa presupuestadas, con su deuda. Cada pago que registres aquí queda como pago del paciente (en tu caja).
+        Pacientes con deuda de prestaciones Fonasa ya iniciadas (el botón de abajo muestra también los que solo la tienen presupuestada). Cada pago que registres aquí queda como pago del paciente (en tu caja).
         El doctor recibe su honorario en la liquidación solo cuando la prestación está <b>realizada y pagada al 100%</b>, todo en una misma liquidación.
       </p>
 
       <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3">
         <div className="rounded-2xl border border-slate-100 bg-white p-4"><p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400"><Users size={12} /> Pacientes con deuda</p><p className="mt-1 text-2xl font-black text-[#0A111F]">{filas.filter(p => p.deuda > 0).length}</p></div>
         <div className="rounded-2xl border border-slate-100 bg-white p-4"><p className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400"><Wallet size={12} /> Deuda Fonasa</p><p className="mt-1 text-2xl font-black text-[#0A111F]">{clp(totalDeuda)}</p></div>
-        <div className="col-span-2 rounded-2xl border border-slate-100 bg-white p-4 md:col-span-1"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Prestaciones</p><p className="mt-1 text-2xl font-black text-[#0A111F]">{filas.reduce((a, p) => a + p.items.length, 0)}</p></div>
+        <div className="col-span-2 rounded-2xl border border-slate-100 bg-white p-4 md:col-span-1"><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{verPresupuestados ? 'Mostrando todos' : 'Mostrando con deuda'}</p><p className="mt-1 text-2xl font-black text-[#0A111F]">{filas.length} <span className="text-[11px] font-bold text-slate-400">pacientes</span></p></div>
       </div>
 
       <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -108,7 +113,10 @@ export default function PagosFonasaPage() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
           <input value={buscar} onChange={e => setBuscar(e.target.value)} placeholder="Buscar paciente o RUT" className={`${inputCls} pl-9`} />
         </div>
-        <label className="flex items-center gap-2 text-[11px] font-bold text-slate-500"><input type="checkbox" checked={filtro === 'deuda'} onChange={e => setFiltro(e.target.checked ? 'deuda' : 'todos')} /> Solo con deuda</label>
+        <button onClick={() => setVerPresupuestados(v => !v)}
+          className={`rounded-xl border px-4 py-2 text-[11px] font-black uppercase tracking-wider transition ${verPresupuestados ? 'border-[#0A111F] bg-[#0A111F] text-white' : 'border-slate-200 bg-white text-slate-500 hover:border-[#C9A24B]'}`}>
+          {verPresupuestados ? 'Ver solo con deuda' : 'Ver todos los presupuestados'}
+        </button>
       </div>
 
       <div className="mt-4 space-y-3">
@@ -125,6 +133,7 @@ export default function PagosFonasaPage() {
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Deuda</p>
                 <p className={`text-[15px] font-black ${p.deuda > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{clp(p.deuda)}</p>
                 <p className="text-[10px] font-semibold text-slate-400">de {clp(p.total)} · pagado {clp(p.abonado)}</p>
+                {p.presupuestado > 0 && <p className="text-[10px] font-semibold text-amber-600">+ {clp(p.presupuestado)} solo presupuestado</p>}
               </div>
               <ChevronDown size={16} className={`shrink-0 text-slate-300 transition ${abierto === p.id ? 'rotate-180' : ''}`} />
             </button>
