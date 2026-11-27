@@ -3,10 +3,12 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import {
-  Pill, Plus, Loader2, Save, ClipboardList, ArrowLeft, Printer, Edit, Trash2
+  Pill, Plus, Loader2, Save, ClipboardList, ArrowLeft, Printer, Edit, Trash2, Mail
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
+import EnviarCorreoModal from '@/components/Correo/EnviarCorreoModal'
+import { pdfDeElementoOculto } from '@/lib/correo/pdfCliente'
 
 export default function RecetasPage() {
   const { id: paciente_id } = useParams()
@@ -17,6 +19,7 @@ export default function RecetasPage() {
   const [planes, setPlanes] = useState<any[]>([])
   const [profesionales, setProfesionales] = useState<any[]>([])
   const [paciente, setPaciente] = useState<any>(null)
+  const [correoAbierto, setCorreoAbierto] = useState(false)
   const [cargando, setCargando] = useState(true)
   
   const [showForm, setShowForm] = useState(false)
@@ -335,6 +338,29 @@ export default function RecetasPage() {
               <button onClick={handlePrint} className="bg-white border border-slate-200 text-slate-700 px-4 py-3 md:px-5 md:py-3.5 rounded-[1rem] md:rounded-2xl font-black text-[9px] md:text-[10px] uppercase shadow-sm flex items-center gap-2 hover:bg-slate-50 transition-all flex-1 md:flex-none justify-center">
                 <Printer size={14}/> <span className="hidden sm:inline">Imprimir</span>
               </button>
+              <button onClick={() => setCorreoAbierto(true)} className="bg-[#0A111F] text-white px-4 py-3 md:px-5 md:py-3.5 rounded-[1rem] md:rounded-2xl font-black text-[9px] md:text-[10px] uppercase shadow-sm flex items-center gap-2 hover:bg-slate-800 transition-all flex-1 md:flex-none justify-center">
+                <Mail size={14}/> <span className="hidden sm:inline">Enviar por correo</span>
+              </button>
+              <EnviarCorreoModal
+                abierto={correoAbierto}
+                onClose={() => setCorreoAbierto(false)}
+                tipo="receta"
+                pacienteId={String(paciente_id)}
+                emailPaciente={paciente?.email}
+                nombrePaciente={paciente ? `${paciente.nombre} ${paciente.apellido}` : undefined}
+                nombreArchivo={`Receta_${String(paciente?.nombre || '').split(' ')[0]}_${new Date(recetaSeleccionada.fecha_emision || Date.now()).toISOString().slice(0, 10)}.pdf`}
+                referenciaId={recetaSeleccionada.id}
+                doctor={recetaSeleccionada.profesional_data ? `Dr/a. ${recetaSeleccionada.profesional_data.nombre || ''} ${recetaSeleccionada.profesional_data.apellido || ''}`.trim() : null}
+                generarPdf={() => {
+                  const el = document.getElementById('hoja-impresion')
+                  if (!el) throw new Error('No se encontró la receta')
+                  return pdfDeElementoOculto(el, 794, {
+                    margin: [0, 0, 0, 0],
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollY: 0, onclone: (d: any) => { const st = d.createElement('style'); st.innerHTML = '#hoja-impresion, #hoja-impresion * { box-shadow: none !important; } #hoja-impresion { border-radius: 0 !important; border: none !important; }'; d.head.appendChild(st) } },
+                  })
+                }}
+              />
               <button onClick={iniciarEdicion} className="bg-amber-500 text-white px-4 py-3 md:px-5 md:py-3.5 rounded-[1rem] md:rounded-2xl font-black text-[9px] md:text-[10px] uppercase shadow-md flex items-center gap-2 hover:bg-amber-600 transition-all border border-amber-600 flex-1 md:flex-none justify-center">
                 <Edit size={14}/> <span className="hidden sm:inline">Editar</span>
               </button>

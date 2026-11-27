@@ -7,6 +7,7 @@ import AvisoRutRepetido from '@/components/AvisoRutRepetido'
 import { buscarPacientesMismoRut, rutParaGuardar, rutParaMostrar } from '@/lib/rut'
 import { filtroPalabraPaciente } from '@/lib/busquedaPacientes'
 import { toast } from 'sonner'
+import { enviarConfirmacionCita } from '@/app/correo/actions'
 import {
   Ban, Calendar as CalendarIcon, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Clock,
   Loader2, MessageCircle, Plus, Save, Search, User, X,
@@ -367,6 +368,7 @@ function FormularioAgendar({
       const aFechas = (s: HoraSeleccionada) => rangoCita(s.fecha, s.hora, s.duracion);
       const ordenadas = [...horasSeleccionadas].sort((a, b) => `${a.fecha}${a.hora}`.localeCompare(`${b.fecha}${b.hora}`));
       let citaIdConfirmacion: string | null = null;
+      let creadasIds: string[] = [];
 
       if (citaEnReprogramacion) {
         const s = ordenadas[0];
@@ -391,8 +393,18 @@ function FormularioAgendar({
         const { data: creadas, error } = await supabase.from('citas').insert(nuevasCitas).select('id');
         if (error) throw error;
         citaIdConfirmacion = creadas?.[0]?.id || null;
+        creadasIds = (creadas || []).map((c: any) => c.id);
         const detalle = nuevasCitas.map(c => `Cita para ${pNombreFull} el ${c.inicio.split('T')[0]} a las ${c.inicio.split('T')[1].substring(0, 5)}`).join('; ');
         await registrarAuditoria(usuarioLogueado, 'INSERT / CITA', 'citas', `Agendó: ${detalle}`);
+      }
+
+      // Confirmación por correo (si el paciente tiene email). No bloquea: si falla, la cita igual quedó guardada.
+      const idsCorreo = citaEnReprogramacion ? [citaEnReprogramacion.id] : (creadasIds || []);
+      if (idsCorreo.length) {
+        enviarConfirmacionCita(idsCorreo).then(r => {
+          if (r?.enviado) toast.success('Confirmación enviada por correo', { description: (r as any).para });
+          else if (r?.motivo === 'error') toast.warning('No se pudo enviar el correo de confirmación', { description: (r as any).error });
+        }).catch(() => {});
       }
 
       onGuardadoOk({ paciente: pNombreFull.toUpperCase(), citas: ordenadas, telefono: pTelefono, citaId: citaIdConfirmacion, profesionalId: filtro.profesional_id });
