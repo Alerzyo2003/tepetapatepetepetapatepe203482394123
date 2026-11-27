@@ -6,11 +6,13 @@ import { createPortal } from 'react-dom'
 import { 
   Loader2, Database, Plus, X, Search, Trash2, CheckCircle2, ChevronLeft, ChevronRight, 
   ChevronUp, ChevronDown, Info, Settings, Layers, FileSignature, Stethoscope, Check, Ban,
-  RefreshCcw, Undo2, HelpCircle, Printer, Download, User, Baby, Activity, Wallet, CalendarClock, Building, FileText, EyeOff, Package, Tag, Minus, Save
+  RefreshCcw, Undo2, HelpCircle, Printer, Mail, Download, User, Baby, Activity, Wallet, CalendarClock, Building, FileText, EyeOff, Package, Tag, Minus, Save
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import Link from 'next/link'
+import EnviarCorreoModal from '@/components/Correo/EnviarCorreoModal'
+import { numerarPaginas, pdfDeElementoOculto } from '@/lib/correo/pdfCliente'
 
 // DENTICIÓN PERMANENTE
 const c1 = [18, 17, 16, 15, 14, 13, 12, 11];
@@ -111,6 +113,7 @@ export default function DetalleTratamientoPage() {
   const [labPorDoctorInput, setLabPorDoctorInput] = useState(false)
 
   const [mostrarLeyenda, setMostrarLeyenda] = useState(false)
+  const [correoAbierto, setCorreoAbierto] = useState(false)
   const [modalExportar, setModalExportar] = useState<{abierto: boolean, tipo: 'imprimir'|'descargar'|null}>({abierto: false, tipo: null})
   const [exportarOpciones, setExportarOpciones] = useState({ odontograma: false, finanzas: true })
 
@@ -299,7 +302,7 @@ export default function DetalleTratamientoPage() {
 
         if (pres.paciente_id) {
           setPacienteId(pres.paciente_id);
-          const { data: pac } = await supabase.from('pacientes').select('rut, nombre, apellido, fecha_nacimiento, prevision, saldo_a_favor').eq('id', pres.paciente_id).single();
+          const { data: pac } = await supabase.from('pacientes').select('rut, nombre, apellido, fecha_nacimiento, prevision, saldo_a_favor, email').eq('id', pres.paciente_id).single();
           setPacienteInfo(pac);
 
           const { data: odontoMaster } = await supabase.from('odontogramas').select('dentadura').eq('paciente_id', pres.paciente_id).maybeSingle();
@@ -1814,7 +1817,7 @@ export default function DetalleTratamientoPage() {
         {/* ========================================================
             DOCUMENTO DE IMPRESIÓN ÚNICO (SIN ODONTOGRAMA VISUAL)
             ======================================================== */}
-        <div className="hidden mostrar-en-impresion w-full bg-white" style={{ fontFamily: 'Arial, sans-serif', color: '#1e293b' }}>
+        <div id="documento-presupuesto" className="hidden mostrar-en-impresion w-full bg-white" style={{ fontFamily: 'Arial, sans-serif', color: '#1e293b' }}>
             
             {/* ENCABEZADO CON LOGO */}
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
@@ -1973,7 +1976,29 @@ export default function DetalleTratamientoPage() {
             <button onClick={handleImprimirPresupuesto} className="px-5 py-3 bg-white text-slate-900 border border-slate-200 rounded-xl text-[10px] font-black uppercase hover:bg-slate-50 transition-all flex items-center justify-center gap-2 shadow-sm">
               <Printer size={16}/> Imprimir / PDF
             </button>
+            <button onClick={() => setCorreoAbierto(true)} className="px-5 py-3 bg-[#0A111F] text-white rounded-xl text-[10px] font-black uppercase hover:bg-slate-800 transition-all flex items-center justify-center gap-2 shadow-sm">
+              <Mail size={16}/> Enviar por correo
+            </button>
           </div>
+          {presupuestoData?.paciente_id && (
+            <EnviarCorreoModal
+              abierto={correoAbierto}
+              onClose={() => setCorreoAbierto(false)}
+              tipo="presupuesto"
+              pacienteId={presupuestoData.paciente_id}
+              emailPaciente={pacienteInfo?.email}
+              nombrePaciente={pacienteInfo ? `${pacienteInfo.nombre} ${pacienteInfo.apellido}` : undefined}
+              nombreArchivo={`Presupuesto_${(presupuestoData?.nombre_tratamiento || 'Clinica_Dignidad').replace(/\s+/g, '_')}.pdf`}
+              referenciaId={idURL}
+              titulo={presupuestoData?.nombre_tratamiento || null}
+              total={totalPlan || null}
+              generarPdf={() => {
+                const el = document.getElementById('documento-presupuesto')
+                if (!el) throw new Error('No se encontró el documento del presupuesto')
+                return pdfDeElementoOculto(el, 780, { margin: [12, 12, 15, 12] }, numerarPaginas)
+              }}
+            />
+          )}
         </div>
 
         {/* ========================================================

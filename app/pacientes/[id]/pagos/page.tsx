@@ -6,12 +6,14 @@ import { supabase } from '@/lib/supabase'
 import {  
   Loader2, Coins, ReceiptText, CheckCircle2,
   CreditCard, Banknote, Landmark, History, EyeOff, ChevronUp,
-  ChevronDown, Printer, Trash2, FileText, Wallet, Plus, User, X, CheckSquare, ScanLine, Pencil
+  ChevronDown, Printer, Trash2, FileText, Wallet, Plus, User, X, CheckSquare, ScanLine, Pencil, Mail
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { asegurarMiCaja, obtenerMiCaja } from '@/lib/cajas'
 import { motion, AnimatePresence } from 'framer-motion'
 import ModalRxTomada from '@/components/Modales/ModalRxTomada'
+import EnviarCorreoModal from '@/components/Correo/EnviarCorreoModal'
+import { pdfDeElemento } from '@/lib/correo/pdfCliente'
 
 type MedioPago = {
     id: string;
@@ -68,6 +70,7 @@ export default function PagosPacientePage() {
   const [notaPago, setNotaPago] = useState('')
  
   const [pagoAImprimir, setPagoAImprimir] = useState<any>(null)
+  const [pagoCorreo, setPagoCorreo] = useState<any>(null)
 
   const [editandoPagoId, setEditandoPagoId] = useState<string | null>(null)
   const [nuevoMetodoPago, setNuevoMetodoPago] = useState<string>('')
@@ -1011,6 +1014,7 @@ export default function PagosPacientePage() {
                                                     <div className="flex items-center justify-center gap-1.5">
                                                         <button onClick={() => setExpandedRow(isExpanded ? null : pago.fecha_pago)} className="p-2 text-slate-400 hover:bg-slate-200/80 rounded-xl transition-colors">{isExpanded ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
                                                         <button onClick={() => imprimirComprobante(pago)} className="p-2 text-slate-400 hover:bg-slate-200/80 rounded-xl transition-colors"><Printer size={16} /></button>
+                                                        {!isAnulado && (<button onClick={() => { setPagoAImprimir(pago); setPagoCorreo(pago) }} title="Enviar comprobante por correo" className="p-2 text-slate-400 hover:bg-slate-200/80 rounded-xl transition-colors"><Mail size={16} /></button>)}
                                                         {!isAnulado && (<button onClick={() => reversarPago(pago)} className="p-2 text-red-400 hover:bg-red-50 rounded-xl transition-colors"><Trash2 size={16} /></button>)}
                                                     </div>
                                                 </td>
@@ -1173,6 +1177,23 @@ export default function PagosPacientePage() {
           </div>
         )}
       </AnimatePresence>
+
+      <EnviarCorreoModal
+        abierto={!!pagoCorreo}
+        onClose={() => setPagoCorreo(null)}
+        tipo="comprobante"
+        pacienteId={paciente_id}
+        emailPaciente={pacienteInfo?.email}
+        nombrePaciente={pacienteInfo ? `${pacienteInfo.nombre} ${pacienteInfo.apellido}` : undefined}
+        nombreArchivo={`Comprobante_${pacienteInfo?.rut || 'Pago'}.pdf`}
+        referenciaId={pagoCorreo?.id || pagoCorreo?.fecha_pago || null}
+        total={pagoCorreo ? Number(pagoCorreo.monto) : null}
+        generarPdf={() => {
+          const el = document.getElementById('comprobante-impresion-pdf')
+          if (!el) throw new Error('No se encontró el comprobante')
+          return pdfDeElemento(el, { margin: [15, 15, 20, 15], html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollY: 0, windowWidth: 720 } })
+        }}
+      />
 
       <div style={{ position: 'absolute', top: '-9999px', left: '0' }}>
          <div id="comprobante-impresion-pdf" style={{ width: '720px', boxSizing: 'border-box', backgroundColor: '#ffffff', color: '#111827', padding: '30px', fontFamily: 'Arial, sans-serif' }}>
